@@ -1,0 +1,2 @@
+cpio filter=lfs diff=lfs merge=lfs -text
+mkfs.ext4 filter=lfs diff=lfs merge=lfs -text

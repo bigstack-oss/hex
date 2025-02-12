@@ -1,0 +1,146 @@
+#!/bin/sh
+# HEX SDK
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=/usr/lib/hex_sdk
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+VERBOSE=0
+PRODUCTION=@PRODUCTION@
+export PRODUCTION
+HWLIST="@HARDWARE@"
+OVERRIDE=
+TUNINGS=
+EXTRA=
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] [ <bootdir> <rootdir> ]"
+    echo "-v               Verbose mode"
+    echo "-x               Trace mode"
+    echo "-i               Mini-init mode"
+    echo "-o <hardware>    Override hardware detect with <hardware>"
+    echo "-t <tuning>      Override tunings with <tuning>"
+    echo "<bootdir>        Specify bootdir of installed product"
+    echo "<rootdir>        Specify rootdir of installed product"
+    exit 1
+}
+
+BOOTDIR=
+ROOTDIR=
+TRACE_FLAG=
+
+while getopts "vxio:t:" OPT ; do
+    case $OPT in
+        v) VERBOSE=1 ;;
+        x) TRACE_FLAG=-x ;;
+        i) MINI_INIT=1 ; export MINI_INIT ;;
+        o) HWLIST="$OPTARG" ; OVERRIDE="1" ;;
+        t) TUNINGS="$OPTARG" ; EXTRA="1" ;;
+        *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if [ $# -eq 2 ]; then
+    BOOTDIR="$1"
+    ROOTDIR="$2"
+    shift 2
+fi
+
+[ $# -eq 0 ] || Usage
+
+Echo()
+{
+    [ $VERBOSE -eq 0 ] || echo $@
+}
+
+clear
+
+HWDETECT_DIR=$ROOTDIR/etc/hwdetect.d
+[ -d $HWDETECT_DIR ] || Error "Directory not found: $HWDETECT_DIR"
+
+for H in $HWLIST ; do
+    if [ -f  $HWDETECT_DIR/$H.hwdetect ]; then
+        if /bin/sh $HWDETECT_DIR/$H.hwdetect || [ -n "$OVERRIDE" ] ; then
+            # Create hardware specific system settings
+            if [ -d $ROOTDIR/etc -a -f $HWDETECT_DIR/${H}_settings.sys ]; then
+                Echo "Installing hardware specific system settings"
+                cat $HWDETECT_DIR/${H}_settings.sys >> $ROOTDIR/etc/settings.sys
+            fi
+            if [ -n "$EXTRA" ]; then
+                if [ -f $TUNINGS ]; then
+                    Echo "Installing extra system settings"
+                    cat $TUNINGS >> $ROOTDIR/etc/settings.sys
+                fi
+            fi
+
+            # Create hardware specific boot settings and initial factory defaults
+            if [ -d $ROOTDIR/etc -a -f $HWDETECT_DIR/${H}_settings.txt ]; then
+                Echo "Installing hardware specific settings"
+                cat $HWDETECT_DIR/${H}_settings.txt >> $ROOTDIR/etc/settings.txt
+            fi
+
+            # Create hardware specific hex_sdk module
+            if [ -d $ROOTDIR/usr/lib/hex_sdk/modules -a -f $HWDETECT_DIR/${H}.sdk ]; then
+                Echo "Installing hardware specific hex_sdk module"
+                cp $HWDETECT_DIR/${H}.sdk $ROOTDIR/usr/lib/hex_sdk/modules/sdk_hwdetect.sh
+            fi
+
+            # Create default settings file
+            if [ -d $ROOTDIR/etc -a -f $ROOTDIR/etc/settings.txt ]; then
+                cp $ROOTDIR/etc/settings.txt $ROOTDIR/etc/settings.def
+            fi
+
+            # Hardware specific rc scripts
+            if [ -f $HWDETECT_DIR/$H.rc ]; then
+                if [ -n "$ROOTDIR" ]; then
+                    Echo "Installing hardware specific rc script"
+                    # Installer-mode: replace the install target's /etc/rc.hwdetect script
+                    rm -f $ROOTDIR/etc/rc.hwdetect
+                    cp $HWDETECT_DIR/$H.rc $ROOTDIR/etc/rc.hwdetect
+                    chmod 755 $ROOTDIR/etc/rc.hwdetect
+                    if [ -e $HWDETECT_DIR/$H.kernel.args ]; then
+                        # Kernel args must be in the first line of the file
+                        # Rest of file can contain comments
+                        head -1 $HWDETECT_DIR/$H.kernel.args | sed -e '/^#/d' > $BOOTDIR/kernel.args
+                    fi
+                    if [ -e $HWDETECT_DIR/$H.projkernel.args ]; then
+                        # Kernel args must be in the first line of the file
+                        # Rest of file can contain comments
+                        head -1 $HWDETECT_DIR/$H.projkernel.args | sed -e '/^#/d' > $BOOTDIR/projkernel.args
+                    fi
+                    # Inject all drivers loaded by udev
+                    INITRD_SRC=$(mktemp -u /tmp/initrd_XXXX)
+                    INITRD_DST=$BOOTDIR/initramfs.cgz
+                    ExtractCgz $INITRD_DST $INITRD_SRC
+                    lsmod | sed 1d | tr -s " " | awk '{if($3 > 0) {print $1}}' | xargs -i echo "modprobe {} 2>/dev/null || true" >> ${INITRD_SRC}/etc/hwdetect.d/$H.rc
+                    CreateCgz $INITRD_DST $INITRD_SRC
+                    rm -rf $INITRD_SRC
+                else
+                    # Live-mode: execute immediately
+                    Echo "Running hardware specific rc script (live mode)"
+                    /bin/sh $TRACE_FLAG $HWDETECT_DIR/$H.rc
+                fi
+            fi
+            exit 0
+        fi
+    fi
+done
+
+if [ $PRODUCTION -eq 1 ]; then
+    # Display message every 3 seconds in case a serial console was not initially connected
+    while true ; do
+        echo "The current operating environment and/or hardware is not supported."
+        echo
+        sleep 3
+    done
+else
+    echo "The current operating environment and/or hardware is not supported."
+    exit 1
+fi
+

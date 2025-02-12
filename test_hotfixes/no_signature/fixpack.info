@@ -1,0 +1,3 @@
+FIXPACK_ID="FIX_002"
+FIXPACK_NAME="Bad_Signature"
+FIXPACK_DESCRIPTION="A sample fixpack that touches a single file and backs up hex_config"

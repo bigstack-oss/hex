@@ -1,0 +1,353 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+KERNEL=
+INITRD=
+IMG_SIZE=
+PADDING=1M
+IMG_FMT=
+IMG_TYPE=
+INSTALL_CMD=
+QUIET=0
+KARGS=
+BUNDLE=
+TIMEOUT=100
+CONSOLE_SPEED=115200
+SERIAL_CONSOLE=1
+CONSOLE_ARGS="console=tty0 console=ttyS0"
+KERNEL_NAME=vmlinuz
+INIT_RD_NAME=initrd.img
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <type> <bzImage> <initrd> <image>"
+    echo "  -s <size>       Image size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to size of initfd + padding)"
+    echo "  -p <padding>    Padding size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to 1M)"
+    echo "  -c <cmd>        Command to be run to install additional files to boot image. \"@ROOTDIR@\" will be substituted with root directory"
+    echo "  -q              Quiet mode: suppress kernel output on boot"
+    echo "  -b <bundle>     Include install bundle in image"
+    echo "  -k \"<args>\"     Add these additional args to kernel boot"
+    echo "  -S <speed>      Set console speed. (default is $CONSOLE_SPEED)"
+    echo "  -C              Disable serial console (default is enabled)"
+    echo "  -T              Disable boot prompt timeout (boot immediately)"
+    echo "  <type>          One of: \"usb\" or \"iso\""
+    echo "  <bzImage>       Kernel image"
+    echo "  <initrd>        Ramdisk image"
+    echo "  <image>         Output image file"
+    exit 1
+}
+
+while getopts "s:p:c:qnb:k:S:CT" OPT ; do
+    case $OPT in
+    s) IMG_SIZE="$OPTARG" ;;
+    p) PADDING="$OPTARG" ;;
+    c) INSTALL_CMD="$OPTARG" ;;
+    q) QUIET=1 ;;
+    b) BUNDLE="$OPTARG" ;;
+    k) KARGS="$OPTARG " ;;
+    S) CONSOLE_SPEED="$OPTARG" ;;
+    C) SERIAL_CONSOLE=0 ; CONSOLE_ARGS="" ;;
+    T) TIMEOUT=1 ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 4 ] || Usage
+IMG_TYPE=$1
+KERNEL=$2
+INITRD=$3
+IMG=$4
+
+if [ $QUIET -eq 1 ]; then
+    QUIET_FLAG="quiet"
+else
+    QUIET_FLAG=""
+fi
+
+if [ "$IMG_TYPE" == "usb" ] ; then
+    IMG_FMT="vfat"
+    BOOTLOADER="syslinux"
+elif [ "$IMG_TYPE" == "iso" ] ; then
+    IMG_FMT="iso9660"
+    BOOTLOADER="isolinux"
+else
+    Error "Unsupported image type"
+fi
+
+if [ -f /usr/bin/syslinux ]; then
+    SYSLINUX_BIN=/usr/bin/syslinux
+else
+    Error "Could not find syslinux binary"
+fi
+if [ -f /usr/share/syslinux/mbr.bin ]; then
+    MBR_BIN=/usr/share/syslinux/mbr.bin
+else
+    Error "Could not find mbr.bin"
+fi
+if [ -f /usr/share/syslinux/isolinux.bin ]; then
+    ISO_BIN=/usr/share/syslinux/isolinux.bin
+else
+    Error "Could not find isolinux.bin"
+fi
+if [ -f /usr/share/syslinux/ldlinux.c32 ]; then
+    LDLINUX_C32=/usr/share/syslinux/ldlinux.c32
+else
+    Error "Could not find ldlinux.c32"
+fi
+
+[ -f "$KERNEL" ] || Error "Could not find kernel: $KERNEL"
+[ -f "$INITRD" ] || Error "Could not find ramdisk image: $INITRD"
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+LOOPDEV=
+
+Cleanup()
+{
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+trap Cleanup INT TERM EXIT
+
+TEMPDIR=$(MakeTempDir)
+
+# Size of ramdisk for kernel boot args
+[ -f $INITRD.size ] || Error "Could not find file: $INITRD.size"
+RAMDISK_SIZE=$(cat $INITRD.size)
+
+
+# All sizes are in kilobytes
+KERNEL_SIZE=$(( ( $(GetFileSize $KERNEL) + 1023 ) / 1024 ))
+
+# Size of the gzipped file, not the size of the ramdisk filesystem
+INITRD_SIZE=$(( ( $(GetFileSize $INITRD) + 1023 ) / 1024 ))
+
+# mkisofs will create the image for us from a temp directory
+if [ "$BOOTLOADER" != "isolinux" ] ; then
+    if [ -z "$IMG_SIZE" ]; then
+        if [ -z "$BUNDLE" ]; then
+            BUNDLE_SIZE=0
+        else
+            BUNDLE_SIZE=0
+	    for BDL in ${BUNDLE%.pkg}_*.pkg ; do
+		(( BUNDLE_SIZE += ( $(GetFileSize $BDL) + 1023 ) / 1024 ))
+	    done
+        fi
+
+        IMG_SIZE=$(( $KERNEL_SIZE + $INITRD_SIZE ))
+        IMG_SIZE=$(( $IMG_SIZE + $BUNDLE_SIZE ))
+        IMG_SIZE=$(( $IMG_SIZE + $(ConvertImageSize $PADDING) ))
+        IMG_SIZE=$(( $IMG_SIZE + ( $(GetFileSize $HEX_SCRIPTSDIR/../data/hex_install/BOOTx64.EFI) + 1023 ) / 1024 ))
+    fi
+
+    CreateDiskImage $IMG_FMT $IMG_SIZE $IMG
+
+    if [ "$IMG_FMT" == "vfat" ] ; then
+        # Install master boot record
+        LOOPDEV=$(SetupLoop $IMG)
+        Quiet dd if=$MBR_BIN of=$LOOPDEV bs=440 count=1 conv=notrunc
+        UnmountRemoveLoop $LOOPDEV
+    fi
+
+    LOOPDEV=$(SetupLoop -o $(GetPartitionOneOffset) $IMG)
+    [ "$BOOTLOADER" != "syslinux" ] || $SYSLINUX_BIN --install $LOOPDEV
+
+    mount -t $IMG_FMT $LOOPDEV $TEMPDIR
+fi
+
+if [ "$BOOTLOADER" == "isolinux" ] ; then
+    # prepare UEFI image
+    UEFI_IMG_SIZE=$(( $KERNEL_SIZE + $INITRD_SIZE ))
+    UEFI_IMG_SIZE=$(( $UEFI_IMG_SIZE + $(ConvertImageSize $PADDING) ))
+    CreateDiskImage efi $UEFI_IMG_SIZE $TEMPDIR.efi
+    # mount -o loop,offset=$(GetPartitionOneOffset) $TEMPDIR.efi $TEMPDIR
+    mount $TEMPDIR.efi $TEMPDIR
+    cp $KERNEL $TEMPDIR/vmlinuz
+    cp $INITRD $TEMPDIR/initrd.img
+
+    mkdir -p $TEMPDIR/EFI/BOOT
+    cp $HEX_SCRIPTSDIR/../data/hex_install/BOOTx64.EFI $TEMPDIR/EFI/BOOT/
+    mkdir -p $TEMPDIR/loader/entries
+    cat >$TEMPDIR/loader/loader.conf <<EOF
+timeout 3
+default linux.conf
+
+EOF
+
+    cat >$TEMPDIR/loader/entries/linux.conf <<EOF
+title   Hex Appliance Installer (UEFI)
+linux   vmlinuz
+options initrd=initrd.img rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 $CONSOLE_ARGS $QUIET_FLAG $KARGS erst_disable
+
+EOF
+    sync
+    umount $TEMPDIR
+
+    mkdir -p $TEMPDIR/isolinux
+    cp $ISO_BIN $TEMPDIR/isolinux/isolinux.bin
+    cp $LDLINUX_C32 $TEMPDIR/isolinux/ldlinux.c32
+    # lay down standard linux boot files
+    cp $KERNEL $TEMPDIR/isolinux/$KERNEL_NAME
+    cp $INITRD $TEMPDIR/isolinux/$INIT_RD_NAME
+
+    # FIXME: make banner configurable
+    cat >$TEMPDIR/isolinux/display.txt <<EOF
+
+Hex Appliance Installer (BIOS)
+
+Wait 10 seconds or press enter to boot the appliance installer.
+
+Type "boothdd" to boot from hard drive.
+
+
+EOF
+
+    touch $TEMPDIR/isolinux/isolinux.cfg
+    if [ $SERIAL_CONSOLE -eq 1 ]; then
+        cat >>$TEMPDIR/isolinux/isolinux.cfg <<EOF
+SERIAL 0 $CONSOLE_SPEED 0x003
+EOF
+    fi
+
+    cat >>$TEMPDIR/isolinux/isolinux.cfg <<EOF
+DEFAULT linux
+PROMPT 1
+TIMEOUT $TIMEOUT
+DISPLAY display.txt
+
+LABEL linux
+KERNEL $KERNEL_NAME
+MENU LABEL Boot Hex Appliance Installer (BIOS)
+APPEND initrd=$INIT_RD_NAME rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 $CONSOLE_ARGS $QUIET_FLAG $KARGS erst_disable
+
+LABEL boothdd
+MENU LABEL Boot from Hard Drive
+localboot -1
+EOF
+    mv $TEMPDIR.efi $TEMPDIR/uefi.img
+elif [ "$BOOTLOADER" == "syslinux" ] ; then
+    # Install kernel and ramdisk
+    # just lay down standard linux boot files
+    cp $KERNEL $TEMPDIR/vmlinuz
+    cp $INITRD $TEMPDIR/initrd.img
+    KERNEL_NAME="vmlinuz"
+    INIT_RD_NAME="initrd.img"
+
+    cat >$TEMPDIR/display.txt <<EOF
+
+Hex Appliance Installer (BIOS)
+
+Wait 10 seconds or press enter to boot the appliance installer.
+
+Type "boothdd" to boot from hard drive.
+
+
+EOF
+
+    touch $TEMPDIR/syslinux.cfg
+    if [ $SERIAL_CONSOLE -eq 1 ]; then
+        cat >>$TEMPDIR/syslinux.cfg <<EOF
+SERIAL 0 $CONSOLE_SPEED 0x003
+EOF
+    fi
+    cat >>$TEMPDIR/syslinux.cfg <<EOF
+DEFAULT linux
+PROMPT 1
+TIMEOUT $TIMEOUT
+DISPLAY display.txt
+
+LABEL linux
+MENU LABEL Boot Hex Appliance Installer (BIOS)
+KERNEL $KERNEL_NAME
+APPEND initrd=$INIT_RD_NAME root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 $CONSOLE_ARGS $QUIET_FLAG $KARGS erst_disable
+
+LABEL boothdd
+MENU LABEL Boot from Hard Drive
+localboot -1
+EOF
+
+    # prepare UEFI boot
+    mkdir -p $TEMPDIR/EFI/BOOT
+    cp $HEX_SCRIPTSDIR/../data/hex_install/BOOTx64.EFI $TEMPDIR/EFI/BOOT/
+    mkdir -p $TEMPDIR/loader/entries
+    cat >$TEMPDIR/loader/loader.conf <<EOF
+timeout 10
+default linux.conf
+
+EOF
+
+    cat >$TEMPDIR/loader/entries/linux.conf <<EOF
+title   Hex Appliance Installer (UEFI)
+linux   vmlinuz
+options initrd=initrd.img rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 $CONSOLE_ARGS $QUIET_FLAG $KARGS erst_disable
+
+EOF
+
+else
+    mkdir -p $TEMPDIR/boot/grub2
+    cp /boot/grub2/* $TEMPDIR/boot/grub2/
+
+    cat >$TEMPDIR/boot/grub2/grub.cfg <<EOF
+default=0
+EOF
+
+    if [ $QUIET -eq 1 ]; then
+        cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
+timeout=0
+EOF
+    else
+        cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
+timeout=1
+EOF
+        if [ $SERIAL_CONSOLE -eq 1 ]; then
+            cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
+serial --unit=0 --speed=$CONSOLE_SPEED
+terminal --timeout=1 serial console
+EOF
+        fi
+    fi
+
+    cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
+
+title Linux
+root (hd0,0)
+kernel /boot/bzImage root=/dev/ram0 rw ramdisk_size=$RAMDISK_SIZE net.ifnames=0 $CONSOLE_ARGS $QUIET_FLAG $KARGS
+initrd /boot/initramfs.cgz
+EOF
+
+    ## some systems want grub.conf instead of menu.lst
+    cp $TEMPDIR/boot/grub2/grub.cfg $TEMPDIR/boot/grub2/grub.conf
+
+    cp $KERNEL $TEMPDIR/boot/bzImage
+    cp $INITRD $TEMPDIR/boot/initramfs.cgz
+
+    cat <<EOF | grub --batch
+device (hd0) $IMG
+root (hd0,0)
+setup (hd0)
+makeactive
+quit
+EOF
+fi
+
+# Copy bundle
+[ -z "$BUNDLE" ] || for BDL in ${BUNDLE%.pkg}_*.pkg ; do cp $BDL $TEMPDIR/ ; done
+
+# Run install command
+[ -z "$INSTALL_CMD" ] || eval `echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$TEMPDIR,g"`
+
+if [ "$BOOTLOADER" == "isolinux" ] ; then
+    MakeISO $IMG $TEMPDIR
+fi
+
+exit 0

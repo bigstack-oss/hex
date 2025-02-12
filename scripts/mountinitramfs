@@ -1,0 +1,127 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions 
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage()
+{
+    echo "Usage: $PROG [ <options> ] <install-cmd> <initramfs-igz> [ <new-initramfs-igz> ]" >&2
+    echo "   or: $PROG [ <options> ] -r <install-cmd> <initramfs-igz>" >&2
+    echo "   or: $PROG [ <options> ] -i <initramfs-igz> [ <new-initramfs-igz> ]" >&2
+    echo "   or: $PROG [ <options> ] -ir <initramfs-igz>" >&2
+    echo "   or: $PROG [ <options> ] -C <initramfs-igz> [ <new-initramfs-igz> ]" >&2
+    echo "   or: $PROG [ <options> ] -Cr <initramfs-igz>" >&2
+    echo "-i              Launch interactive shell to perform manual installation (not chroot)" >&2
+    echo "-C              Launch interactive chroot shell to perform manual testing" >&2
+    echo "-r              Launch interactive shell (-i or -C) in readonly mode" >&2
+    echo "-R              Remove DPKG database from final initramfs image" >&2
+    echo "-s <size>       Image size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to size of rootfs + padding)"
+    echo "-p <padding>    Padding size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to 10M)"
+    echo "Note: If both image size (-s) and padding (-p) are specified, image size (-s) takes precedence."
+    exit 1
+}
+
+REMOVE_DPKG=0
+INTERACTIVE=0
+CHROOT=0
+READONLY=0
+IMG_SIZE=
+PADDING=10M
+
+while getopts "RiCrs:p:" OPT ; do
+    case $OPT in
+    R) REMOVE_RPM=1 ;;
+    i) INTERACTIVE=1 ;;
+    C) CHROOT=1 ;;
+    r) READONLY=1 ;;
+    s) IMG_SIZE="$OPTARG" ;;
+    p) PADDING="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if [ $INTERACTIVE -eq 1 -a $CHROOT -eq 1 ]; then
+    Usage 
+fi
+
+if [ $INTERACTIVE -eq 0 -a $CHROOT -eq 0 ]; then
+    [ $# -ge 1 ] || Usage
+    INSTALL_CMD="$1"
+    shift 1
+fi
+
+[ $# -eq 1 -o $# -eq 2 ] || Usage
+
+[ -f $1 ] || Usage
+OLDIMG=$1
+
+if [ $# -eq 2 ]; then
+    NEWIMG=$2
+else
+    NEWIMG=$1
+fi
+
+if [ $HEX_USETEMP -eq 1 ]; then
+    ROOTDIR=$(MakeTempDir)
+    chmod 755 $ROOTDIR
+    ExtractCgz $OLDIMG $ROOTDIR
+else
+    HEX_CLEANUP=0
+    ROOTDIR="${NEWIMG%.cgz}"
+    ExtractCgz $OLDIMG $ROOTDIR
+
+    # Remove half-baked static folders when interrupted by ctrl+c
+    trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
+fi
+
+if [ $INTERACTIVE -eq 1 ]; then
+    if [ $READONLY -eq 1 ]; then
+        echo "Interactive mode (readonly)"
+    else
+        echo "Interactive mode"
+    fi
+    echo "Exit shell to umount ramdisk image"
+    echo "Current directory: $(pwd)"
+    [ -n "$SHELL" ] || SHELL=/bin/sh
+    (cd $ROOTDIR && PS1="$PROG \$ " PS2="> " $SHELL)
+elif [ $CHROOT -eq 1 ]; then
+    if [ $READONLY -eq 1 ]; then
+        echo "Chroot mode (readonly)"
+    else
+        echo "Chroot mode"
+    fi
+    echo "Exit shell to umount ramdisk image"
+    echo "Current directory: /"
+    SHELL=/bin/sh PS1="$PROG \$ " PS2="> " chroot $ROOTDIR
+else
+    eval $(echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g")
+fi
+
+[ $READONLY -eq 0 ] || exit 0
+
+[ $REMOVE_DPKG -eq 0 ] || rm -rf $ROOTDIR/var/lib/dpkg
+
+# Remove list of installed packages and files
+rm -f $ROOTDIR/*.tsv $ROOTDIR/*_rpms.txt
+
+CreateCgz $NEWIMG $ROOTDIR
+
+if [ -z "$IMG_SIZE" ]; then
+    IMG_SIZE=$(du -sk $ROOTDIR | awk '{print $1}')
+
+    # Add padding to rootfs size
+    IMG_SIZE=$(( $IMG_SIZE + $(ConvertImageSize $PADDING) ))
+fi
+echo ${IMG_SIZE}KB > $NEWIMG.size
+
+exit 0

@@ -1,0 +1,28 @@
+Files that can reside in this directory:
+
+fixpack.info [required]
+    Manifest file with fix pack name and description
+
+post_install.sh [optional]
+post_rollback.sh [optional]
+pre_install.sh [optional]
+pre_rollback.sh [optional]
+    Scripts to run pre/post install and rollback
+
+backup.lst [optional]
+    List of files to backup before installing fix pack, and restore on rollback
+
+remove.lst [optional]
+    List of files to remove before installing fix pack
+    NOTE: These files should also be included in 'backup.lst'
+
+rootfs.cgz [optional]
+    Gzipped-cpio archive of files to install
+
+norollback [optional]
+    Marker file that indicates that this fix pack cannot be uninstalled
+
+Fix pack can also include arbitrary files that are explicitly referenced by
+the pre_install.sh/post_install.sh scripts, but these files will not be available
+during rollback.
+

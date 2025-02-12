@@ -1,0 +1,13 @@
+# Care only about disk drivers in switchroot_init
+if [ -n "$MINI_INIT" ]; then
+    # sata support
+    # Below are purposely commented out to test out if missing drivers can
+    # be supplemented by injecting udev loaded drivers during install time
+    :
+    # modprobe sd_mod
+    # modprobe ata_piix
+    # modprobe ahci
+    # modprobe virtio_scsi
+fi
+
+# Rely on drivers loaded by udev

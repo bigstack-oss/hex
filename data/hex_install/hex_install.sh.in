@@ -1,0 +1,672 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+# Increment this version number anytime there are changes to the partitioning scheme
+VERSION=1
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=/usr/lib/hex_sdk
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+OVERRIDE_HWDETECT_FLAG=
+OVERRIDE_HWDETECT_SETTINGS=
+OVERRIDE_TUNING_FLAG=
+OVERRIDE_TUNING_SETTINGS=
+
+BOOT_DIR="/boot"
+GRUB_DIR="$BOOT_DIR/grub2"
+GRUB_ENV="$GRUB_DIR/grubenv"
+GRUB_CFG="$GRUB_DIR/grub.cfg"
+
+source hex_tuning /etc/settings.sys
+VENDOR_NAME=$T_sys_vendor_name
+
+Echo()
+{
+    [ $VERBOSE -eq 0 ] || echo $@
+}
+
+RestoreUsage()
+{
+    echo "Usage: $PROG list"
+    echo "   or: $PROG [ <options> ] restore [ <file(s)> ]"
+    echo "-w            Wipe drive and repartition"
+    echo "-v            Display verbose output"
+    echo "-o <hardware> Override detected hardware with <hardware>"
+    echo "-t <tuning>   Override tunings with <tuning> file"
+    echo "-C            Disable serial console"
+    echo "<file>        Filename to restore (globbing supported) (default is \"*.pkg\")"
+    exit 1
+}
+
+UpdateUsage()
+{
+    echo "Usage: $PROG list"
+    echo "   or: $PROG [ <options> ] update [ <file(s)> ]"
+    echo "-v            Display verbose output"
+    echo "-n            Do not migrate data to new partition"
+    echo "-c            Do not check version"
+    echo "<file>        Filename to update (globbing supported) (default is \"/var/update/*.pkg\")"
+    echo "<dir>         Directory where pkg file is mounted"
+    exit 1
+}
+
+CheckPartVersion()
+{
+    if [ $WIPEHDD -eq 0 ]; then
+        [ -f $BOOT_DIR/version -a "$(cat $BOOT_DIR/version)" = "$VERSION" ] ||
+            Error "Incompatible version. Must wipe disk."
+    fi
+}
+
+## check version $1 against target version $2
+## if $1 >= $2, return 0, else return 1
+CheckImageVersion()
+{
+    local version=$1 check=$2
+    local winner=$(echo -e "$version\n$check" | sed '/^$/d' | sort -t. -k1,1nr -k2,2nr -k3,3nr | head -1 )
+    [[ "$winner" = "$version" ]] && return 0
+    return 1
+}
+
+ListImages()
+{
+    local IMAGES=$(find -L $SRC -type f -regex ".*[.]pkg$" | sed "s;.*/;;g" | sed -E "s/_.[.]pkg//" | sed -E "s/[.]pkg//" | sort | uniq)
+    if [ -n "$IMAGES" ]; then
+        for i in $IMAGES; do
+            echo $(basename $i)
+        done
+        exit 0
+    else
+        Error "No images found"
+    fi
+}
+
+CONSOLE_SPEED="@CONSOLE_SPEED@"
+export QUIET_KERNEL_ARG="@QUIET_KERNEL_ARG@"
+export KERNEL_ARGS="@KERNEL_ARGS@"
+if timeout 3 bash -c "echo -n ' ' >/dev/ttyS0" ; then
+    export CONSOLE_ARGS="console=tty0 console=ttyS0"
+else
+    export CONSOLE_ARGS="console=ttyS0 console=tty0"
+fi
+
+IMAGE=""
+WIPEHDD=0
+DESTLIST="1"
+VERBOSE=0
+MIGRATE=1
+CHECK_VERSION=1
+MKFS_FLAGS="-F"
+
+# These are the only settings that are safe to read now
+# The rest are dependent on hardware and must wait until we see if hwdetect is overridden
+PRODUCTION=$T_sys_build_production
+MODE=$T_sys_install_mode
+
+[ -n "$MODE" ] || MODE="ppu"
+
+if [ "$MODE" = "ppu" ] ; then
+    # Update in PPU mode
+    SRC=/var/update
+
+    while getopts "vnc" OPT ; do
+        case $OPT in
+            v) VERBOSE=1;;
+            n) MIGRATE=0;;
+            c) CHECK_VERSION=0;;
+            *) UpdateUsage ;;
+        esac
+    done
+    shift $(($OPTIND - 1))
+
+    [ $# -ge 1 ] || UpdateUsage
+    case $1 in
+        list)
+            ListImages
+            ;;
+        update)
+            shift 1
+            IMAGE=$(ls ${1%%.pkg}*.pkg 2>/dev/null || find -L $SRC -type f -regex ".*${1%%.pkg}.*[.]pkg$")
+            ;;
+        *)
+            UpdateUsage
+            ;;
+    esac
+else
+    # Restore from USB, ISO, or PXE installer mode
+    SRC=/mnt/install
+
+    while getopts "vwo:t:" OPT ; do
+        case $OPT in
+            v) VERBOSE=1 ;;
+            w) WIPEHDD=1 ; CHECK_VERSION=0 ;;
+            o) OVERRIDE_HWDETECT_FLAG="-o $OPTARG" ; OVERRIDE_HWDETECT_SETTINGS=/etc/hwdetect.d/${OPTARG}_settings.sys ;;
+            t) OVERRIDE_TUNING_FLAG="-t $OPTARG" ; OVERRIDE_TUNING_SETTINGS=$OPTARG ;;
+            *) RestoreUsage ;;
+        esac
+    done
+    shift $(($OPTIND - 1))
+
+    if [ -n "$OVERRIDE_HWDETECT_SETTINGS" ]; then
+        source hex_tuning $OVERRIDE_HWDETECT_SETTINGS
+    fi
+    if [ -n "$OVERRIDE_TUNING_SETTINGS" ]; then
+        source hex_tuning $OVERRIDE_TUNING_SETTINGS
+    fi
+
+    case $MODE in
+        usb)
+            # Boot media already mounted by rc.mount
+            # Override HDD and GRUB_TEMP_HD to support QEMU
+            # HDD will be the 2nd device during install, and first device after install
+            [ -z "$T_sys_install_usb_hdd" ] || TEMP_HDD="$T_sys_install_usb_hdd"
+            [ -z "$T_sys_install_usb_grub_hd" ] || GRUB_TEMP_HD="$T_sys_install_usb_grub_hd"
+            ;;
+        iso)
+            # Boot media already mounted by rc.mount
+            ;;
+        pxe)
+            # Nothing to mount
+            # BIN image is stored in /mnt/install directory of PXE initramfs
+            ;;
+        *)
+            Error "installation not supported"
+            ;;
+    esac
+
+    [ $# -ge 1 ] || RestoreUsage
+    case $1 in
+        list)
+            ListImages
+            ;;
+        restore)
+            shift 1
+            IMAGE=$(ls $SRC/${1%%.pkg}*.pkg 2>/dev/null || ls ${1%%.pkg}*.pkg 2>/dev/null)
+            ;;
+        *) RestoreUsage ;;
+    esac
+fi
+
+# Read hw-dependent settings (must be done after hw was overridden on the command line)
+HDD=$T_sys_install_hdd
+[ -n "$HDD" ] || HDD="/dev/$(lsblk -no pkname $(findmnt -n -o SOURCE / ))"
+[ -e $HDD -a ${#HDD} -gt 5 ] || HDD="/dev/sda"
+HDD_PART=$HDD
+if echo $HDD | grep -q nvme; then
+    HDD_PART=${HDD_PART}p
+fi
+
+GRUB_HD="$T_sys_install_grub_hd"
+[ -n "$GRUB_HD" ] || GRUB_HD="hd0"
+
+GRUB_TIMEOUT="$T_sys_install_grub_timeout"
+[ -n "$GRUB_TIMEOUT" ] || GRUB_TIMEOUT=3
+
+[ -n "$TEMP_HDD" ] || TEMP_HDD="$HDD"
+TEMP_HDD_PART=$TEMP_HDD
+if echo $TEMP_HDD | grep -q nvme; then
+    TEMP_HDD_PART=${TEMP_HDD_PART}p
+fi
+
+[ -n "$GRUB_TEMP_HD" ] || GRUB_TEMP_HD="$GRUB_HD"
+
+BOOTSIZE=$T_sys_install_boot_size
+[ -n "$BOOTSIZE" ] || BOOTSIZE=1G
+
+SWAPSIZE=$T_sys_install_swap_size
+[ -n "$SWAPSIZE" ] || SWAPSIZE=0
+
+# Autodetect SSD (rotational device means spiner)
+INSTALL_ROTA=$(lsblk $TEMP_HDD -d -r -o rota | tail -n1)
+if [ $INSTALL_ROTA -eq 0 ] ; then
+    # Disable swap
+    SWAPSIZE=0
+
+    INSTALL_SSD_ELEVATOR_NOOP=$T_sys_install_ssd_elevator_noop
+    [ -n "$INSTALL_SSD_ELEVATOR_NOOP" ] || INSTALL_SSD_ELEVATOR_NOOP=0
+
+    INSTALL_SSD_EXT4_NO_JOURNAL=$T_sys_install_ssd_ext4_no_journal
+    [ -n "$INSTALL_SSD_EXT4_NO_JOURNAL" ] || INSTALL_SSD_EXT4_NO_JOURNAL=0
+
+    if [ $INSTALL_SSD_ELEVATOR_NOOP -eq 1 ]; then
+        # Use "noop" I/O scheduler
+        KERNEL_ARGS="$KERNEL_ARGS elevator=noop"
+    fi
+
+    if [ $INSTALL_SSD_EXT4_NO_JOURNAL -eq 1 ]; then
+        # Disable ext4 journaling
+        MKFS_FLAGS="$MKFS_FLAGS -O ^has_journal"
+    fi
+fi
+
+INSTALL_EXT4_LAZY_ITABLE_INIT=$T_sys_install_ext4_lazy_itable_init
+[ -n "$INSTALL_EXT4_LAZY_ITABLE_INIT" ] || INSTALL_EXT4_LAZY_ITABLE_INIT=1
+if [ $INSTALL_EXT4_LAZY_ITABLE_INIT -eq 1 ]; then
+    # Enable ext4 lazy inode table allocation
+    MKFS_FLAGS="$MKFS_FLAGS -E lazy_itable_init=1"
+fi
+
+# Set preferred /dev/console device for kernel
+# Last console listed will get assigned to /dev/console device. All listed
+# will get kernel message output (see Documentation/serial-console.txt in
+# kernel sources).
+# Use system setting if not specified on the command line
+# Default is serial console enabled
+if [ -z "$SERIAL_CONSOLE" ]; then
+    SERIAL_CONSOLE="$T_sys_install_serial_console"
+    [ -n "$SERIAL_CONSOLE" ] || SERIAL_CONSOLE=1
+fi
+
+# Allow H/W knowledgeable settings.sys to override the console settings
+# explicitly.
+FORCE_CONSOLE="$T_sys_install_force_console"
+if [ -n "$FORCE_CONSOLE" ] ; then
+    CONSOLE_ARGS="$FORCE_CONSOLE"
+fi
+
+CreateGrubMenu()
+{
+    local GRUB_CUST="/etc/default/grub"
+
+    # Install more than 1 partition
+    if [ $NPART -gt 1 ] ; then
+        DESTPART=1
+    fi
+
+    mkdir -p $(dirname $GRUB_CUST)
+
+    cat <<EOF > $GRUB_CUST
+GRUB_TIMEOUT=$GRUB_TIMEOUT
+GRUB_DISABLE_SUBMENU=true
+GRUB_PRELOAD_MODULES=gzio
+GRUB_FONT="$GRUB_DIR/fonts/unicode.pf2"
+EOF
+
+    # add single boot modes for non-production
+    if [ $PRODUCTION -ne 0 ]; then
+        cat <<EOF >> $GRUB_CUST
+GRUB_DISABLE_RECOVERY=true
+EOF
+    fi
+
+    if [ $SERIAL_CONSOLE -eq 1 ]; then
+        cat <<EOF >> $GRUB_CUST
+GRUB_SERIAL_COMMAND="serial --unit=0 --speed=$CONSOLE_SPEED"
+GRUB_TERMINAL="serial console"
+EOF
+    fi
+
+    if [ -e $GRUB_DIR/images/bg.png ]; then
+        cat <<EOF >> $GRUB_CUST
+GRUB_BACKGROUND="$GRUB_DIR/images/bg.png"
+EOF
+    fi
+
+    /usr/bin/grub2-editenv $GRUB_ENV set PART1TITLE=${PART1TITLE:-$NEWTITLE}
+    /usr/bin/grub2-editenv $GRUB_ENV set PART2TITLE=${PART2TITLE:-$NEWTITLE}
+    /usr/sbin/grub2-mkconfig -o $GRUB_CFG >/dev/null 2>&1
+
+    # Production builds only
+    # GRUB shell password
+    printf '%s\n' "hex@Bigstack" "hex@Bigstack" | script -qf -c "grub2-set-password -o $GRUB_DIR" > /dev/null
+
+    if [ $NPART -eq 1 ] ; then /usr/sbin/grub-set-default $DESTPART ; fi
+}
+
+UmountBoot()
+{
+    sync
+    umount $BOOT_DIR >/dev/null 2>&1
+}
+
+SetupBoot()
+{
+    # Here is a safe net as /boot shoud already exist in install media rootfs
+    mkdir -p $BOOT_DIR
+
+    if [ -d /sys/firmware/efi ] ; then
+        TMP_BOOT_DIR=$(MakeTempDir)
+        find $BOOT_DIR -type f -iregex ".*/grubx64.efi" -o -iregex ".*shimx64.efi" | xargs -i cp {} $TMP_BOOT_DIR/
+    fi
+
+    trap UmountBoot INT TERM EXIT
+    mount ${TEMP_HDD_PART}1 $BOOT_DIR
+
+    if [ -d /sys/firmware/efi ] ; then
+        mkdir -p $GRUB_DIR/fonts
+        cp $TMP_BOOT_DIR/* $GRUB_DIR/
+        cp -f /usr/share/grub/unicode.pf2 $GRUB_DIR/fonts/
+        cp -rf /usr/lib/grub/x86_64-efi $GRUB_DIR/
+    else
+        mkdir -p $GRUB_DIR
+    fi
+}
+
+UmountTempRoot()
+{
+    sync
+    umount $TEMPROOT >/dev/null 2>&1
+}
+
+InstallImage()
+{
+    PKGDIRS="$*"
+    PKGDIR=$1
+
+    NEWTITLE=$(cat $PKGDIR/release)
+
+    if [ $CHECK_VERSION -eq 1 ]; then
+        local sys=$(cat /etc/version | awk -F'_' '{print $2}')
+        local img=$(cat $PKGDIR/release | awk -F'_' '{print $2}')
+        if [ $(CheckImageVersion "$sys" "$img") ]; then
+            Error "Installed version($img) is older than system version($sys)"
+        fi
+    fi
+
+    PART1TITLE=$(/usr/bin/grub2-editenv $GRUB_ENV list | grep PART1TITLE | cut -d '=' -f 2 )
+    PART2TITLE=$(/usr/bin/grub2-editenv $GRUB_ENV list | grep PART2TITLE | cut -d '=' -f 2 )
+
+    if [ $WIPEHDD -eq 1 ] ; then
+        Echo "Partitioning disk"
+        PartitionSysHDD $TEMP_HDD $BOOTSIZE $SWAPSIZE
+        # Quiet umount ${TEMP_HDD_PART}1 >/dev/null 2>&1 || true
+        Echo "Formatting boot partition"
+        if [ -d /sys/firmware/efi ] ; then
+            Quiet mkfs.vfat -F 32 ${TEMP_HDD_PART}1
+        else
+            Quiet mkfs.ext4 $MKFS_FLAGS ${TEMP_HDD_PART}1
+        fi
+
+        if [ "$SWAPSIZE" != "0" ]; then
+            Echo "Formatting swap partition"
+            Quiet mkswap ${TEMP_HDD_PART}2
+        fi
+
+        # create backup partition on fresh restore
+        DESTLIST="1 2"
+
+        # only mount & umount /boot in restore
+        SetupBoot
+    else
+        case $(/usr/sbin/grub-get-default) in
+            1)
+                DESTLIST=2
+                /usr/bin/grub2-editenv $GRUB_ENV set PART1_UUID=$(GetBlkUuid ${TEMP_HDD_PART}5)
+                ;;
+            2)
+                DESTLIST=1
+                /usr/bin/grub2-editenv $GRUB_ENV set PART2_UUID=$(GetBlkUuid ${TEMP_HDD_PART}6)
+                ;;
+            *)
+                Error "Could not determine current root partition"
+                ;;
+        esac
+    fi
+
+    NPART=0
+    for DESTPART in ${DESTLIST} ; do
+        NPART=$(( $NPART + 1 ))
+
+        case $DESTPART in
+            1)  ROOTPART=5
+                OLDRPART=6
+                PART1TITLE=$NEWTITLE
+                ;;
+            2)  ROOTPART=6
+                OLDRPART=5
+                PART2TITLE=$NEWTITLE
+                ;;
+            *)  Error "Unknown destination partition $DESTPART. Must be 1 or 2." ;;
+        esac
+
+        if [ $NPART -gt 1 ] ; then
+            Echo "Creating backup partition $DESTPART"
+        fi
+
+        Echo "Formatting partition $DESTPART"
+        sync
+        umount $TEMP_HDD_PART$ROOTPART >/dev/null 2>&1 || true
+        Quiet mkfs.ext4 $MKFS_FLAGS $TEMP_HDD_PART$ROOTPART
+
+        # Mount root partition
+        (
+            TEMPROOT=$(MakeTempDir)
+            trap "UmountTempRoot" INT TERM EXIT
+            mount -t ext4 $TEMP_HDD_PART$ROOTPART $TEMPROOT
+
+            Echo "Installing $NEWTITLE"
+
+            # Copy rootfs to root partition
+            for PKGD in $PKGDIRS ; do ExtractCgz $PKGD/rootfs*.cgz $TEMPROOT ; done
+
+            # Copy kernel/initramfs to boot partition
+            mkdir -p $BOOT_DIR/Part${DESTPART}
+            cp -f $PKGDIR/bzImage $BOOT_DIR/Part${DESTPART}
+            cp -f $PKGDIR/initramfs.cgz $BOOT_DIR/Part${DESTPART}
+            cp -f $PKGDIR/initramfs.cgz.size $BOOT_DIR/Part${DESTPART}
+            echo "$KERNEL_ARGS $CONSOLE_ARGS" > $BOOT_DIR/Part${DESTPART}/kernel.args
+
+            # Generate grub background image if any
+            if [ -e $TEMPROOT/root/bg.png ]; then
+                mkdir -p $GRUB_DIR/images
+                rm -f $GRUB_DIR/images/bg.png
+                cp -f $TEMPROOT/root/bg.png $GRUB_DIR/images/
+                rm -f $TEMPROOT/root/bg.png
+            fi
+
+            # Read settings.sys from new root partition
+            source hex_tuning -p NEW_ $TEMPROOT/etc/settings.sys
+
+            # Create info file
+            (
+                echo "firmware_version = $NEW_sys_product_description $NEW_sys_product_version"
+                # Time since Epoch (must be reformatted by CLI/LMI)
+                echo "install_date = $(date '+%s')"
+                if [ "$MODE" == "ppu" ]; then
+                    echo "install_type = PPU"
+                elif [ "$MODE" == "usb" ]; then
+                    echo "install_type = USB"
+                elif [ "$MODE" == "iso" ]; then
+                    echo "install_type = ISO"
+                else # PXE
+                    echo "install_type = Factory"
+                fi
+                echo "last_boot = Never"
+            ) >${GRUB_DIR}/info${DESTPART}
+
+            # Clear comment file
+            rm -f ${GRUB_DIR}/comment${DESTPART}
+            touch ${GRUB_DIR}/comment${DESTPART}
+
+            # Detect hardware and install hw-specific settings, modules, etc.
+            VERBOSE_FLAG=
+            [ $VERBOSE -eq 0 ] || VERBOSE_FLAG=-v
+            Quiet $TEMPROOT/usr/sbin/hex_hwdetect $VERBOSE_FLAG $OVERRIDE_HWDETECT_FLAG $OVERRIDE_TUNING_FLAG $BOOT_DIR/Part${DESTPART} $TEMPROOT
+
+            if [ $INSTALL_ROTA -eq 0 ]; then
+                # SSD was autodetected
+                # Setting sys tuning parameter for use by other components
+                sed -i -e '/^sys.install.ssd *=/d' $TEMPROOT/etc/settings.sys
+                echo "sys.install.ssd = 1" >> $TEMPROOT/etc/settings.sys
+            fi
+            BOOT_UUID=$(GetBlkUuid ${TEMP_HDD_PART}1)
+            ROOT_UUID=$(GetBlkUuid $TEMP_HDD_PART$ROOTPART)
+            /usr/bin/grub2-editenv $GRUB_ENV set BOOT_UUID=$BOOT_UUID
+            /usr/bin/grub2-editenv $GRUB_ENV set PART${DESTPART}_UUID=$ROOT_UUID
+
+            # Always disable updating file access times (noatime) (better performance on both HDDs and SSDs)
+            cat <<EOF > $TEMPROOT/etc/fstab
+UUID=${BOOT_UUID}     $BOOT_DIR   auto     noatime    0 0
+UUID=${ROOT_UUID}     /       ext4     noatime    0 0
+EOF
+
+            # UUID is only available after formatting
+            if [ "$MODE" != "ppu" ] ; then
+                if [ $WIPEHDD -eq 1 -a $DESTPART -eq 1 ] ; then
+                    Echo "Formatting system storage partition"
+                    FormatSysHDD
+                fi
+            fi
+            STORE_UUID=$(GetBlkUuid ${TEMP_HDD_PART}7)
+            echo "UUID=${STORE_UUID}     /store  ext4     noatime    0 0" >> $TEMPROOT/etc/fstab
+
+            # Generate /etc/rc.mount
+            if [ -e /store/.swap ]; then
+                echo "/store/.swap                                  swap    swap     defaults   0 0" >> $TEMPROOT/etc/fstab
+                cat <<EOF > $TEMPROOT/etc/rc.mount
+/bin/mount $BOOT_DIR >/dev/null 2>&1 || /usr/bin/true
+/sbin/swapon -a
+EOF
+            elif [ "$SWAPSIZE" == "0" ]; then
+                echo sys.swap.disabled=1 >> $TEMPROOT/etc/settings.sys
+                cat <<EOF > $TEMPROOT/etc/rc.mount
+/bin/mount $BOOT_DIR >/dev/null 2>&1 || /usr/bin/true
+EOF
+            else
+                SWAP_UUID=$(GetBlkUuid ${HDD_PART}2)
+                echo "UUID=${SWAP_UUID}     swap    swap     defaults   0 0" >> $TEMPROOT/etc/fstab
+                cat <<EOF > $TEMPROOT/etc/rc.mount
+/bin/mount $BOOT_DIR >/dev/null 2>&1 || /usr/bin/true
+/sbin/swapon -a
+EOF
+            fi
+            chmod +x $TEMPROOT/etc/rc.mount
+
+            # Execute HEX and/or project-specific install.sh script (if exists)
+            # "install.sh" is run from the original hex_install context before reboot
+            if [ -f $PKGDIR/install.sh ]; then
+                Echo "Running install script"
+                (
+                    echo "#!/bin/sh"
+                    echo "set -vx"
+                    echo "ROOTDIR=$TEMPROOT"
+                    echo "SRC=$SRC"
+                    echo "MODE=$MODE"
+                    if [ "$MODE" = "ppu" ]; then
+                        echo "UPDATE=$MIGRATE"
+                    else
+                        echo "UPDATE=0"
+                    fi
+                    cat $PKGDIR/install.sh
+                    if [ -f $PKGDIR/update.sh -a "$MODE" = "ppu" ]; then
+                        cat $PKGDIR/update.sh
+                    fi
+                ) > $TEMPROOT/install.sh
+                chmod 755 $TEMPROOT/install.sh
+                $TEMPROOT/install.sh > $TEMPROOT/var/log/install.log 2>&1
+                rm -f $TEMPROOT/install.sh
+            fi
+
+            # Install HEX and/or project-specific post-install script (if exists)
+            # "postinstall.sh" is run inside new rootfs on first boot after install or update
+            rm -f $TEMPROOT/etc/rc.postinstall
+            if [ -f $PKGDIR/postinstall.sh ]; then
+                Echo "Installing postinstall script"
+                (
+                    echo "#!/bin/sh"
+                    echo "set -vx"
+                    if [ "$MODE" = "ppu" ]; then
+                        echo "UPDATE=$MIGRATE"
+                    else
+                        echo "UPDATE=0"
+                    fi
+                    cat $PKGDIR/postinstall.sh
+                    if [ -f $PKGDIR/postupdate.sh -a "$MODE" = "ppu" ]; then
+                        cat $PKGDIR/postupdate.sh
+                    fi
+                ) > $TEMPROOT/etc/rc.postinstall
+                chmod 755 $TEMPROOT/etc/rc.postinstall
+            fi
+
+            # Trap umounts when block ends
+        )
+    done
+
+    # These actions are unrecoverable if anything goes wrong so it's safer to keep working setups
+    if [ $WIPEHDD -eq 1 ] ; then
+        # UEFI create new var bootnum can only work via ISO/USB/PXE restore when $HDD is not in use
+        if [ -d /sys/firmware/efi ] ; then
+            efibootmgr | grep -o "Boot0..." | sed "s/Boot//i"  | xargs -i efibootmgr -B -q -b '{}'
+            efibootmgr -q -c -d $HDD -p 1 -L "$T_sys_vendor_description" -l "/grub2/shimx64.efi"
+            efibootmgr -q -a -b 0000
+        else
+            if [ "$MODE" = "usb" ]; then
+                /usr/sbin/grub2-install $TEMP_HDD >/dev/null 2>&1
+            else
+                /usr/sbin/grub2-install $HDD >/dev/null 2>&1
+            fi
+        fi
+    else
+        cp -f $GRUB_CFG ${GRUB_CFG}.$(date "+%Y%m%d")
+    fi
+
+    CreateGrubMenu
+}
+
+MountAndInstallImage()
+{
+    (
+        local TEMPLOOPS=
+        local LOOPDEVS=
+        for i in $IMAGE ; do
+            if file $i | grep -q "ext2 filesystem data"; then
+                LOOPDEV=$(SetupLoop $i)
+                TEMPLOOP=$(mktemp -d  /tmp/MountAndInstallImage.XXXXXX)
+                mount -o ro -t ext4 $LOOPDEV $TEMPLOOP
+                TEMPLOOPS+=" $TEMPLOOP"
+                LOOPDEVS+=" $LOOPDEV"
+            fi
+        done
+
+        if [ -n "$TEMPLOOPS" ]; then
+            InstallImage $TEMPLOOPS
+            UnmountRemoveLoop $LOOPDEVS
+            rmdir $TEMPLOOPS
+        else
+            Error "No valid image detected in: $IMAGE"
+        fi
+    )
+}
+
+FormatSysHDD()
+{
+    umount ${TEMP_HDD_PART}7 >/dev/null 2>&1 || true
+    Quiet mkfs.ext4 $MKFS_FLAGS ${TEMP_HDD_PART}7
+    sync
+}
+
+FormatDataHDD()
+{
+    SYSDEV=$(basename $TEMP_HDD)
+    for BLOCKDEV in /sys/block/sd* /sys/block/nvme* ; do
+        if readlink $BLOCKDEV | egrep -q -v "loop|usb|$SYSDEV"
+        then
+            DEV=/dev/$(basename $BLOCKDEV)
+            [ -b $DEV ] || continue
+            PrepareDataDisk $DEV
+        fi
+    done
+    sync
+}
+
+# main()
+if [ "$MODE" = "ppu" ] ; then
+    # Update from HDD
+    MountAndInstallImage
+    Echo "Finished updating. Please reboot appliance."
+else
+    # Install from USB/ISO/PXE
+    MountAndInstallImage
+    Echo "Formatting data storage partition"
+    FormatDataHDD
+    Echo "Finished installing. Please remove media if required and reboot appliance."
+fi
+

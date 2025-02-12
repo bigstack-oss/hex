@@ -1,0 +1,3 @@
+FIXPACK_ID="FIX_001"
+FIXPACK_NAME="Force Fsck Failure"
+FIXPACK_DESCRIPTION="Force filesystem check failure on next boot -- DO NOT DISTRIBUTE"

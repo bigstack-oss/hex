@@ -1,0 +1,5 @@
+# Generic Hardware
+
+echo "Generic hardware detected"
+exit 0
+

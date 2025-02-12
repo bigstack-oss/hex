@@ -1,0 +1,174 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <old-firmware> <new-firmware> <fixpack-file>"
+    echo "  -p <padding>                    Padding size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to 1M)"
+    echo "  -u                              Resulting fixpack may not be uninstalled."
+    echo "  -n                              Resulting fixpack will not be signed."
+    echo "  -i < id >                       Id string for fixpack."
+    echo "  -l < name >                     Name string for fixpack."
+    echo "  -b <pre_install_shell_script>   Shell script to run before installing the fixpack."
+    echo "  -a <post_install_shell_script>  Shell script to run after installing the fixpack."
+    echo "  -d '<description>'              description of the fixpack"
+    echo "  <old-firmware>                  Firmware to use in generating base file set for the fixpack."
+    echo "  <new-firmware>                  Firmware that contains the new modifications for the fixpack."
+    echo "  <fixpack-file>                  Output fixpack file"
+    exit 1
+}
+
+PADDING=1M
+INSTALL_CMD=
+SIGN_PROG=/usr/true
+NOSIGN=0
+NOREMOVE=0
+PRE_INSTALL_SCRIPT=
+POST_INSTALL_SCRIPT=
+FIXPACKDESCRIPTION=
+FIXPACKNAME=
+
+while getopts "p:nub:a:d:i:l:" OPT ; do
+    case $OPT in
+    n) NOSIGN=1 ;;
+    u) NOREMOVE=1 ;;
+    p) PADDING="$OPTARG" ;;
+    b) PRE_INSTALL_SCRIPT="$OPTARG" ;;
+    a) POST_INSTALL_SCRIPT="$OPTARG" ;;
+    d) FIXPACKDESCRIPTION="$OPTARG" ;;
+    l) FIXPACKNAME="$OPTARG" ;;
+    i) FIXPACKID="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 3 ] || Usage
+OLDPKG=$1
+NEWPKG=$2
+FIXPACKFILE=$3
+
+NEWTEMPDIR=$(MakeTempDir)
+OLDTEMPDIR=$(MakeTempDir)
+
+MountAndExtractCgz $OLDPKG $OLDTEMPDIR
+MountAndExtractCgz $NEWPKG $NEWTEMPDIR
+backup=$(mktemp /tmp/backup.XXXX)
+changed=$(mktemp /tmp/changed.XXXX)
+remove=$(mktemp /tmp/remove.XXXX)
+new=$(mktemp /tmp/new.XXXX)
+
+#any files changed or removed in new dir?
+SHOPTS="$-"
+SAVEIFS=$IFS
+IFS=$(echo -en "\n\b")
+
+set +xe
+list=$(cd $OLDTEMPDIR ; find etc/policies usr/lib/hex_sdk usr/lib64 var/www -type f ; find usr/sbin -type f -name 'hex_*')
+
+# look for any update and removed files
+for file in $list; do
+   diff -q $OLDTEMPDIR/$file $NEWTEMPDIR/$file >/dev/null 2>&1
+   case $? in
+        1) echo "$file" >> $backup
+           echo "$file" >> $changed;;
+        2) echo "$file" >> $backup
+           echo "$file" >> $remove;;
+    esac
+done
+
+# look for any new files
+list=$(cd $NEWTEMPDIR ; find etc/policies usr/lib/hex_sdk usr/lib64 var/www -type f ; find usr/sbin -type f -name 'hex_*')
+for file in $list; do
+    if [ ! -e $OLDTEMPDIR/$file ]; then
+        echo $file >> $new
+    fi
+done
+
+set -$SHOPTS
+IFS=$SAVEIFS
+#$backup contains list of files that need to be saved into Uninstall
+#$changed contains list of files modifed for this fixpack
+#$remove contains list of files removed for this fixpack
+#$new contains list of files added by this fixpack
+
+#assemble new rootfs.cgz based on changed and new
+FIXPACKTEMPDIR=$(MakeTempDir)
+TEMPROOTFSDIR=$(MakeTempDir)
+while read filename
+do
+    mkdir -p $TEMPROOTFSDIR/$(dirname ${filename})
+    cp $NEWTEMPDIR/${filename} $TEMPROOTFSDIR/${filename}
+done <$changed
+
+while read filename
+do
+    mkdir -p $TEMPROOTFSDIR/$(dirname ${filename})
+    cp $NEWTEMPDIR/${filename} $TEMPROOTFSDIR/${filename}
+done <$new
+
+#create manifest for fixpack
+(cd $TEMPROOTFSDIR; find . -type f > $FIXPACKTEMPDIR/manifest)
+
+#now create and rootfs.cgz
+CreateCgz $FIXPACKTEMPDIR/rootfs.cgz $TEMPROOTFSDIR
+
+#copy in PRE and POST scripts
+[ -n "$PRE_INSTALL_SCRIPT" ] && cp $PRE_INSTALL_SCRIPT $FIXPACKTEMPDIR/pre_install.sh
+[ -n "$POST_INSTALL_SCRIPT" ] && cp $POST_INSTALL_SCRIPT $FIXPACKTEMPDIR/post_install.sh
+
+#copy the backup list to FIXPACK DIR
+cp $backup $FIXPACKTEMPDIR/backup.lst
+cp $remove $FIXPACKTEMPDIR/remove.lst
+
+#can you uninstall this fixpack ?
+[ $NOREMOVE -eq 1 ] && touch $FIXPACKTEMPDIR/norollback
+
+#create .info file
+cat <<EOF > $FIXPACKTEMPDIR/fixpack.info
+FIXPACK_ID="$FIXPACKID"
+FIXPACK_NAME="$FIXPACKNAME"
+FIXPACK_DESCRIPTION="$FIXPACKDESCRIPTION"
+CREATION_DATE="$(date)"
+EOF
+
+#create install script
+cp $HEX_SCRIPTSDIR/../data/hex_fixpack/install.sh $FIXPACKTEMPDIR/install.sh
+
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+LOOPDEV=
+
+Cleanup()
+{
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+
+trap Cleanup INT TERM EXIT
+
+FIXPACKFILE_SIZE=$(( $(du -sk $FIXPACKTEMPDIR |cut -f 1) + $(ConvertImageSize $PADDING) ))
+TEMPFIXPACKMOUNTDIR=$(MakeTempDir)
+TEMPFIXPACKFILE=$(MakeTemp)
+
+CreateFsImage ext4 $FIXPACKFILE_SIZE $TEMPFIXPACKFILE
+mv $TEMPFIXPACKFILE $FIXPACKFILE
+
+(
+    trap 'eval UnmountRemoveLoop $LOOPDEV' INT TERM EXIT
+    LOOPDEV=$(SetupLoop $FIXPACKFILE)
+    mount -t ext4 $LOOPDEV $TEMPFIXPACKMOUNTDIR
+    cp -r $FIXPACKTEMPDIR/* $TEMPFIXPACKMOUNTDIR
+)
+
+exit 0

@@ -1,0 +1,122 @@
+#!/bin/sh
+# HEX SDK
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="	"
+
+Usage()
+{
+    echo "Usage: $PROG [<options>] <root-dir> <archive-file> ..." >&2
+    echo "-d <dir>          Specify subdirectory to extract tar file into (default is /)" >&2
+    echo "-s <num>          Strip NUMBER leading components from file names on extraction (imply tar --strip-components option)" >&2
+    echo "<root-dir>        Directory where root filesystem is located" >&2
+    exit 1
+}
+
+DIR=
+STRIP=0
+while getopts "d:s:" OPT ; do
+    case $OPT in
+    d) DIR="$OPTARG" ;;
+    s) STRIP="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -ge 2 ] || Usage
+[ -d $1 ] || Usage
+
+ROOTDIR="$1"
+shift 1
+
+for ARC in $* ; do
+    [ -f $ARC ] || Error "Package not found: $ARC"
+
+    NAME=$(basename $(basename $ARC .tgz) .tar.gz)
+    BASE=$(dirname $ARC)/$NAME
+
+    # Run pre install script (if exists and non-empty)
+    PRE="${BASE}.pre"
+    if [ -f "$PRE" ]; then
+        if [ $(GetFileSize $PRE) -gt 0 ]; then
+            cp $PRE $ROOTDIR/tmp/preinstall
+            Quiet chroot $ROOTDIR /bin/sh /tmp/preinstall
+            rm -f $ROOTDIR/tmp/preinstall
+        fi
+    fi
+
+    # Extract files to temp location
+    TOTAL=0
+    TEMP=$(MakeTemp)
+    TEMPIN=$(MakeTemp)
+    TEMPDIR=$(MakeTempDir)
+    tar -C $TEMPDIR --strip-components=$STRIP -zxvf $ARC > $TEMPIN
+    cut -d'/' -f$(( $STRIP + 1 ))- $TEMPIN > $TEMP
+    rm -f $TEMPIN
+
+    # Remove excluded files
+    EXCL=${BASE}.exclude
+    if [ -f "$EXCL" ]; then
+        cat $EXCL | sed 's%^/%./%' | ( cd $TEMPDIR && xargs rm -rf )
+    fi
+
+    # Move remaining files to rootfs
+    mkdir -p $ROOTDIR/$DIR
+
+    # We need to manually create the various directories, rather than having
+    # cpio do this for us. The reason for this is that we have linked
+    # A to B, and if any archive attempts to install to A
+    # the original cpio command would clobber the link.
+
+    OWD=$PWD
+    cd $TEMPDIR
+    # care only new line
+    OLDIFS=$IFS
+    IFS=$'\n'
+    for dir in $(find . -type d); do
+    if [ ! -d $ROOTDIR/$DIR/$dir -a ! -L $ROOTDIR/$DIR/$dir ] ; then
+        mkdir -p $ROOTDIR/$DIR/$dir
+        chmod $(stat -c %a $dir) $ROOTDIR/$DIR/$dir
+        [ "$(stat -c %U $dir)" != 'UNKNOWN' ] && chown $(stat -c %U $dir) $ROOTDIR/$DIR/$dir
+        [ "$(stat -c %G $dir)" != 'UNKNOWN' ] && chgrp $(stat -c %G $dir) $ROOTDIR/$DIR/$dir
+    fi
+    done
+    # restore it
+    IFS=$OLDIFS
+    cd $OWD
+
+    # Move remaining files to rootfs
+    (cd $TEMPDIR && find . -depth ! -type d | cpio --quiet -pum $ROOTDIR/$DIR)
+    rm -rf $TEMPDIR
+
+    # Run post install script (if exists and non-empty)
+    POST="${BASE}.post"
+    if [ -f "$POST" ]; then
+        if [ $(GetFileSize $POST) -gt 0 ]; then
+            cp $POST $ROOTDIR/tmp/postinstall
+            Quiet chroot $ROOTDIR /bin/sh /tmp/postinstall
+            rm -f $ROOTDIR/tmp/postinstall
+        fi
+    fi
+
+    # ORIGIN=$(basename $(dirname $ARC))
+    # while read FILE ; do
+    #     if [ -f "$ROOTDIR/$DIR/$FILE" ]; then
+    #         SIZE=$(GetFileSize $ROOTDIR/$DIR/$FILE)
+    #         echo "ARC_FILE$_T_$DIR/$FILE$_T_$SIZE$_T_$ARC" >> $ROOTDIR/package_files.tsv
+    #         TOTAL=$(( $TOTAL + $SIZE ))
+    #     fi
+    # done < $TEMP
+    # echo "ARC$_T_$_T_$ARC$_T_$TOTAL$_T_$ORIGIN" >> $ROOTDIR/packages.tsv
+done
+
+exit 0

@@ -1,0 +1,2 @@
+# Start crash daemon
+/usr/sbin/hex_crashd || true

@@ -1,0 +1,68 @@
+#!/bin/sh
+# HEX SDK
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions 
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="   "
+
+Usage()
+{
+    echo "Usage: $PROG <root-dir> <module-list> ..." >&2
+    exit 1
+}
+
+[ $# -ge 2 ] || Usage
+
+[ -d $1 ] || Usage
+
+if [[ "$1" = /* ]]; then
+    ROOTDIR=$1
+else
+    ROOTDIR=$(pwd)/$(basename $1)
+fi
+shift 1
+
+[ -n "$KERNEL_MODULE_DIR" ] || Error "Environment variable not set: KERNEL_MODULE_DIR"
+
+ORIGIN=hex
+ALL_COPIED=$ROOTDIR/$KERNEL_MODULE_DIR/.all
+TEMP=$(MakeTemp)
+for MODLIST in $* ; do
+    [ ! -e  $ALL_COPIED ] || break
+    set -o noglob
+    for pattern in $(cat $(readlink -fqn $MODLIST)); do
+        ptn=$(echo $pattern | sed 's/*/.*/g')
+        (cd /; find $KERNEL_MODULE_DIR -type f -iregex "$ptn" -exec rsync -aRKv {} $ROOTDIR/ >> $TEMP \;)
+        if [ "x$ptn" = "x.*.ko.xz" ]; then
+            touch $ALL_COPIED
+            break
+        fi
+    done
+    set +o noglob
+
+    # grep '^lib/modules/.*' < $TEMP | while read FILE ; do
+    #     if [ -f $ROOTDIR/$FILE ]; then
+    #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
+    #         # MODULES     ./lib/modules/4.2.0-19-generic/kernel/drivers/video/fbdev/uvesafb.ko    49113B
+    #         echo "MODULES$_T_$_T_$FILE$_T_$SIZE" >> $ROOTDIR/package_files.tsv
+    #     fi
+    # done
+done
+
+# this script might be invoked multiple times
+# recompute size of all kernel modules after each invocation
+# [ -f $ROOTDIR/packages.tsv ] && sed -r -e '/.*MODULES.*/d' -i $ROOTDIR/packages.tsv
+# echo "MODULES$_T_$_T_$(du -sb $ROOTDIR/$KERNEL_MODULE_DIR | awk '{print $1}')$_T_$ORIGIN" >> $ROOTDIR/packages.tsv
+
+# install modules.order and modules.builtin for depmod
+(cd /; find $KERNEL_MODULE_DIR -name "*modules.builtin" -o -name "*modules.order" | xargs -i rsync -aRKv {} $ROOTDIR/)
+
+chroot $ROOTDIR depmod -a $KERNEL_VERS
+exit 0

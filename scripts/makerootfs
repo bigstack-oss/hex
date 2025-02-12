@@ -1,0 +1,324 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <rootfs-cgz>"
+    echo "-c <cmd>          Command to be run to install additional files to boot image. \"@ROOTDIR@\" will be substituted with root directory"
+    echo "<rootfs-cgz>      Specify location of output rootfs compressed cpio archive"
+    echo "-d <path> Create debug symbol in alternate path to file"
+    echo "-r <core> Specify core rootfs rather than create from scratch"
+    echo "-D        Skip automatic addition of *_debug.cgz to tempfs location"
+    echo "-p        Use cpio instead of tar to unpack project rootfs as fakeroot"
+    echo "-u        Update package source list"
+    exit 1
+}
+
+CMD=
+ROOTFS=
+DEBUGIMG=
+SKIPDEBUG=0
+HAS_CORE=0
+USE_CPIO=0
+UPD_SRC_LIST=0
+CORE_AR=
+
+while getopts "c:d:r:Dpu" OPT ; do
+    case $OPT in
+    c) CMD="$OPTARG" ;;
+    d) DEBUGIMG="$OPTARG" ;;
+    r) HAS_CORE=1 ; CORE_AR="$OPTARG" ;;
+    D) SKIPDEBUG=1 ;;
+    p) USE_CPIO=1 ;;
+    u) UPD_SRC_LIST=1 ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 1 ] || Usage
+ROOTFS=$1
+[ -n "$DEBUGIMG" ] || DEBUGIMG="${ROOTFS%.*}_debug.cgz"
+
+umask 022
+if [ $HEX_USETEMP -eq 1 ]; then
+    ROOTDIR=$(MakeTempDir)
+else
+    HEX_CLEANUP=0
+    ROOTDIR="${ROOTFS%.cgz}"
+    mkdir -p $ROOTDIR
+
+    # Remove half-baked static folders when interrupted by ctrl+c
+    trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
+fi
+chmod 755 $ROOTDIR
+
+CreateBaseFs()
+{
+# Create filesystem hierarchy
+# Run in a subshell since we change directories
+(
+    mkdir -p $ROOTDIR/etc/ld.so.conf.d
+    mkdir -p $ROOTDIR/proc/modules
+    mkdir -p $ROOTDIR/sys
+    mkdir -p $ROOTDIR/tmp
+    chmod 1777 $ROOTDIR/tmp
+    mkdir -p $ROOTDIR/root
+    mkdir -p $ROOTDIR/var/av
+    mkdir -p $ROOTDIR/var/cache
+    mkdir -p $ROOTDIR/var/log
+    mkdir -p $ROOTDIR/var/etc
+    mkdir -p $ROOTDIR/var/run
+    mkdir -p $ROOTDIR/var/www/html
+    mkdir -p $ROOTDIR/var/www/auth
+    mkdir -p $ROOTDIR/var/lib/empty
+    mkdir -p $ROOTDIR/var/lib/misc
+)
+}
+
+CreateHexFs()
+{
+(
+    # Used by init for switchroot and backup/restore
+    mkdir -p $ROOTDIR/mnt/hdd
+
+    # Used by hex_config to mount USB media
+    mkdir -p $ROOTDIR/mnt/usb
+
+    # Used by hex_config to mount ISO/CDROM media
+    mkdir -p $ROOTDIR/mnt/iso
+
+    # Used by hex_install to mount the install media (USB/ISO) during factory install/restore
+    mkdir -p $ROOTDIR/mnt/install
+
+    # Used by hex_install to mount the target partition during firmware update
+    mkdir -p $ROOTDIR/mnt/target
+)
+}
+
+MakeNode()
+{
+    mknod $* 2>/dev/null || true
+}
+
+PopulateDev()
+{
+# Populate stuff in /dev
+# Run in a subshell since we change directories
+(
+    mkdir -p $ROOTDIR/dev
+    cd $ROOTDIR/dev
+
+    MakeNode -m 0600 console c 5 1
+    MakeNode -m 0666 null c 1 3
+    MakeNode -m 0660 ttyS0 c 4 64
+    MakeNode -m 0660 ttyS1 c 4 65
+    MakeNode -m 0660 cua0 c 5 64
+    MakeNode -m 0660 cua1 c 5 65
+    MakeNode -m 0660 zero c 1 5
+    MakeNode -m 0660 mem c 1 1
+    for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ; do
+        MakeNode -m 0660 ram$i b 1 $i
+    done
+    rm -rf ram ramdisk
+    ln -sf ram1 ram
+    ln -sf ram0 ramdisk
+    for i in 0 1 2 3 4 5 6 7 ; do
+        MakeNode -m 0660 loop${i} b 7 ${i}
+    done
+    MakeNode -m 0640 hda b 3 0
+    MakeNode -m 0640 hdb b 3 64
+    MakeNode -m 0640 hdc b 22 0
+    MakeNode -m 0640 hdd b 22 64
+    MakeNode -m 0640 hde b 33 0
+    MakeNode -m 0640 hdf b 33 64
+    MakeNode -m 0640 hdg b 34 0
+    MakeNode -m 0640 sda b 8 0
+    MakeNode -m 0640 sdb b 8 16
+    MakeNode -m 0640 sdc b 8 32
+    MakeNode -m 0640 sdd b 8 48
+    MakeNode -m 0640 sde b 8 64
+    MakeNode -m 0640 sdf b 8 80
+    MakeNode -m 0640 sdg b 8 96
+    MakeNode -m 0660 tty0 c 4 0
+    MakeNode -m 0660 tty1 c 4 1
+    MakeNode -m 0660 tty2 c 4 2
+    MakeNode -m 0660 tty3 c 4 3
+    MakeNode -m 0660 tty4 c 4 4
+    MakeNode -m 0660 fd0 b 2 0
+    MakeNode -m 0660 sr0 b 11 0
+    ln -sf sr0 cdrom
+
+    i=0
+    while [ $i -le 31 ]; do
+        MakeNode -m 0640 scd$i b 11 $i
+        i=$(expr $i + 1)
+    done
+
+    for disk in a b c d e f g ; do
+        case $disk in
+        a) m=3  ; i=1  ;;
+        b) m=3  ; i=65 ;;
+        c) m=22 ; i=1  ;;
+        d) m=22 ; i=65 ;;
+        e) m=33 ; i=1  ;;
+        f) m=33 ; i=65 ;;
+        g) m=34 ; i=1  ;;
+        esac
+
+        for loop in 1 2 3 4 5 6 7 8 9 ; do
+            MakeNode -m 0640 hd$disk$loop b $m $i
+            i=$(expr $i + 1)
+        done
+    done
+
+    for disk in a b c d e f g ; do
+        case $disk in
+        a) i=1  ;;
+        b) i=17 ;;
+        c) i=33 ;;
+        d) i=49 ;;
+        e) i=65 ;;
+        f) i=81 ;;
+        g) i=97 ;;
+        esac
+
+        for loop in 1 2 3 4 5 6 7 8 9 ; do
+            MakeNode -m 0640 sd$disk$loop b 8 $i
+            i=$(expr $i + 1)
+        done
+    done
+    MakeNode -m 0644 random c 1 8
+    MakeNode -m 0644 urandom c 1 9
+    MakeNode -m 0600 watchdog c 10 130
+
+    # need /dev/shm for POSIX stuff
+    [ -d shm ] || mkdir shm
+
+    # devpts filesystem mount point
+    [ -d pts ] || mkdir pts
+)
+}
+
+SourceListUpdate()
+{
+    DNF=$(type -p dnf)
+    DIST=$(cat /etc/hex.manifest | grep _HEX_DIST | awk -F'=' '{print $2}')
+    OPTIONS="-y --nodocs"
+
+    cp /etc/resolv.conf $ROOTDIR/etc
+
+    echo "LANG=en_US.utf8" > $ROOTDIR/etc/locale.conf
+
+    # enable parallel downloading
+    echo "max_parallel_downloads=20" >> $ROOTDIR/etc/dnf/dnf.conf
+    echo "keepcache=True" >> $ROOTDIR/etc/dnf/dnf.conf
+    echo "retries=10" >> $ROOTDIR/etc/dnf/dnf.conf
+
+    chroot $ROOTDIR dnf reinstall -y --nogpgcheck dnf* *gpg* rpm glibc
+    chroot $ROOTDIR dnf clean all
+    chroot $ROOTDIR rm -f /var/lib/rpm/.rpm.lock
+
+    local XTRA_REPO=
+    chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1'
+    chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*'
+    XTRA_REPO+="https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm "
+    XTRA_REPO+="https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm "
+    XTRA_REPO+="https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-9.noarch.rpm "
+    XTRA_REPO+="http://rpms.remirepo.net/enterprise/remi-release-9.rpm"
+    # work around intermittent Curl error (7): Couldn't connect to server (likely rate limits)
+    for C in {1..5}; do
+        if chroot $ROOTDIR dnf install -y --nogpgcheck $XTRA_REPO; then
+            break
+        else
+            sleep 60
+            [ $C -lt 5 ] || exit 1
+        fi
+    done
+    chroot $ROOTDIR sh -c 'dnf config-manager --enable crb'
+    chroot $ROOTDIR dnf clean all
+    chroot $ROOTDIR dnf -y update
+    rm -f $ROOTDIR/etc/resolv.conf
+}
+
+RootfsCleanUp()
+{
+    cat /dev/null > $ROOTDIR/etc/issue
+
+    cat <<EOF >$ROOTDIR/etc/ld.so.conf.d/libhex.conf
+# Hex Libraries directories
+/usr/lib64
+EOF
+}
+
+CreateFromCore()
+{
+    if [ $USE_CPIO -eq 1 ]; then
+        if gzip -t $CORE_AR 2>/dev/null; then
+            pigz -cd $CORE_AR | ( cd $ROOTDIR && cpio -iumd --quiet )
+        else
+            cat $CORE_AR | ( cd $ROOTDIR && cpio -iumd --quiet )
+        fi
+    else
+        tar -I pigz --numeric-owner -C $ROOTDIR -xf $CORE_AR
+    fi
+
+    # cleanup for ubi8 base image
+    local corename=$(basename $CORE_AR)
+    if [ "$corename" == "ubi8.tar.gz" ]; then
+        cp -f /etc/machine-id $ROOTDIR/etc/machine-id
+
+        # these are symblic links point to /dev/null for stopping service running in a container environment
+        # but we may need this for a bootable image
+        rm -rf $ROOTDIR/etc/systemd/system/console-getty.service
+        rm -rf $ROOTDIR/etc/systemd/system/dev-hugepages.mount
+        rm -rf $ROOTDIR/etc/systemd/system/getty.target
+        rm -rf $ROOTDIR/etc/systemd/system/sys-fs-fuse-connections.mount
+        rm -rf $ROOTDIR/etc/systemd/system/systemd-logind.service
+        rm -rf $ROOTDIR/etc/systemd/system/systemd-remount-fs.service
+        # handling user/group creation by our own
+        rm -rf $ROOTDIR/usr/lib/systemd/system/systemd-sysusers.service
+    elif [ "$corename" == "ubi9.tar.gz" ]; then
+        cp -f /etc/machine-id $ROOTDIR/etc/machine-id
+        MakeNode -m 0644 $ROOTDIR/dev/urandom c 1 9
+    fi
+}
+
+if [ $HAS_CORE -eq 1 ]; then
+    CreateFromCore
+fi
+
+if [ $UPD_SRC_LIST -eq 1 ]; then
+    SourceListUpdate
+fi
+
+CreateBaseFs
+CreateHexFs
+PopulateDev
+RootfsCleanUp
+
+# Run install command
+[ -z "$CMD" ] || eval `echo $CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g"`
+
+# Update dynamic linker config
+ldconfig -r $ROOTDIR
+
+# Create the debug Cgz
+[ $SKIPDEBUG -eq 1 ] || CreateCgz $DEBUGIMG $ROOTDIR "-name *.debug"
+find $ROOTDIR -name \*.debug | xargs rm -rf
+
+CreateCgz $ROOTFS $ROOTDIR
+
+du -sk $ROOTDIR | awk '{print $1"KB"}' > $ROOTFS.size
+
+exit 0

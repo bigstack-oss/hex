@@ -1,0 +1,14 @@
+# QEMU Simulator
+
+# First condition detection works if -cpu is not specified or if it is specified
+# as qemu64. Fallthrough to second condition for other qemu -cpu arguments 
+if cat /proc/cpuinfo | grep 'QEMU Virtual CPU' >/dev/null 2>&1 ; then
+    echo "QEMU detected"
+    exit 0
+elif cat /proc/cpuinfo | grep 'hypervisor' >/dev/null 2>&1 &&
+        ! /usr/sbin/dmidecode | grep 'VMware Virtual Platform' >/dev/null 2>&1 &&
+        ! /usr/sbin/dmidecode | grep 'VirtualBox' >/dev/null 2>&1 ; then
+    echo "QEMU detected"
+    exit 0
+fi
+exit 1

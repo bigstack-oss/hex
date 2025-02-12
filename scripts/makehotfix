@@ -1,0 +1,188 @@
+#!/bin/bash
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <fixpack-dir> <fixpack>"
+    echo "   or: $PROG -C [ <options> ] <fixpack-dir> <fixpack>"
+    echo "   or: $PROG -R [ <options> ] <fixpack-dir> <rootfs-cgz> <ppu> <fixpack>"
+    echo
+    echo "-p <padding>          Padding size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to 50k)"
+    echo "-n                    Do not sign the output file"
+    echo "-s                    Check hardware serial number"
+    echo "<fixpack-dir>         Directory containing fixpack sources"
+    echo "<rootfs-cgz>          Project \"rootfs.cgz\" file to extract from"
+    echo "<ppu>                 Previous PPU package to extract FIPS checksums from"
+    echo "<fixpack>             Fixpack output basename (e.g., ~/test will become ~/test_dev.fixpack)"
+    echo
+    echo "Without -R, $PROG assumes that the <fixpack-dir> will already contain a \"rootfs.cgz\" file if needed."
+    echo
+    echo "With -R, $PROG will create the fix pack \"rootfs.cgz\" by extracting the files listed in \"<fixpack-dir>/backup.lst\""
+    echo "and \"<fixpack-dir>/new.lst\" from the supplied project <rootfs-cgz>."
+    exit 1
+}
+
+# Minimum size required by ext2 filesystem
+FIXPACKFILE_MINSIZE=60
+
+CREATE_MODE=0
+EXTRACT_MODE=0
+PADDING=2048k
+SIGN_PROG=/usr/true
+NOSIGN=0
+
+while getopts "CRp:ns:" OPT ; do
+    case $OPT in
+    C) CREATE_MODE=1 ;;
+    R) EXTRACT_MODE=1 ;;
+    p) PADDING="$OPTARG" ;;
+    n) NOSIGN=1 ;;
+    s) SNDIR="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if [ $EXTRACT_MODE -eq 1 ]; then
+    [ $# -eq 4 ] || Usage
+    FIXPACKDIR=$1
+    NEW_ROOTFS=$2
+    [ -f $NEW_ROOTFS ] || Error "Could not find rootfs file: $NEW_ROOTFS"
+    PREV_PPU=$3
+    [ -f $PREV_PPU ] || Error "Could not find PPU package: $PREV_PPU"
+    FIXPACKFILE="$2"
+elif [ $CREATE_MODE -eq 1 ]; then
+    [ $# -eq 2 ] || Usage
+    FIXPACKDIR=$1
+    ROOTFSDIR=$FIXPACKDIR/rootfs
+    FIXPACKFILE="$2"
+else
+    [ $# -eq 2 ] || Usage
+    FIXPACKDIR=$1
+    FIXPACKFILE="$(dirname $2)/$(basename $(basename $2 .fixpack) _dev)_dev.fixpack"
+fi
+
+[ -d $FIXPACKDIR ] || Usage
+
+# Checking fixpack.info may not be necessary
+# [ -f $FIXPACKDIR/fixpack.info ] || Error "Could not find fixpack.info"
+
+#[ -x $SIGN_PROG ] || Error "Must install sign progrom first"
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+LOOPDEV=
+
+Cleanup()
+{
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+trap Cleanup INT TERM EXIT
+
+# Copy fix pack sources to temporary directory
+NEW_FIXPACKDIR=$(MakeTempDir)
+cp -r $FIXPACKDIR/* $NEW_FIXPACKDIR
+
+# Fix up manifest files
+# 1. Convert from dos to unix
+# 2. Remove leading slashes
+# 3. Remove duplicate entries
+(
+    cd $NEW_FIXPACKDIR
+    for I in backup.lst new.lst remove.lst ; do
+        touch $I
+        if [ "$I" = "backup.lst" ]; then
+            # Always include the signed FIPS checksums file in backup
+            #echo "etc/checksums" >> backup.lst
+            #echo "etc/checksums.sig" >> backup.lst
+            :
+        fi
+        cat $I | dos2unix | sort | uniq | sed -e 's!^/!!' > $I.tmp
+        mv $I.tmp $I
+    done
+)
+
+# Extract files from rootfs
+if [ $EXTRACT_MODE -eq 1 ]; then
+    # Extract rootfs from previous PPU package
+    PREV_ROOTFS=$(MakeTemp)
+    $HEX_SCRIPTSDIR/mountppu -r "cp @ROOTDIR@/rootfs.cgz $PREV_ROOTFS" $PREV_PPU
+
+    # Extract all files from previous rootfs
+    PREV_ROOTFS_DIR=$(MakeTempDir)
+    ExtractCgz $PREV_ROOTFS $PREV_ROOTFS_DIR
+    rm -f $PREV_ROOTFS
+
+    # Create list of files to extract from new rootfs
+    #FIXME: need to extract from the new PPU package after files are signed
+    FIXPACK_FILES=$(MakeTemp)
+    cat $NEW_FIXPACKDIR/backup.lst $NEW_FIXPACKDIR/new.lst | sort | uniq > $FIXPACK_FILES
+
+    # Extract files from new rootfs into previous rootfs
+    zcat $NEW_ROOTFS | ( cd $PREV_ROOTFS_DIR && cpio -iumd --quiet -E $FIXPACK_FILES )
+
+    # Compute checksums for newly extracted files
+    # Must be performed inside a chroot env of a full rootfs containing fipchecksum, readelf, ...
+    cp $HEX_SCRIPTSDIR/fipschecksum $PREV_ROOTFS_DIR
+    cp /usr/bin/readelf $PREV_ROOTFS_DIR/usr/bin
+    chroot $PREV_ROOTFS_DIR sh ./fipschecksum
+
+    # Developer sign the new checksums file
+    # Quiet $SIGN_PROG $PREV_ROOTFS_DIR/etc/checksums
+
+    # Copy fix pack files to new rootfs dir
+    NEW_ROOTFS_DIR=$(MakeTempDir)
+    chmod 755 $NEW_ROOTFS_DIR
+    cat $FIXPACK_FILES | ( cd $PREV_ROOTFS_DIR && cpio --quiet -pdum $NEW_ROOTFS_DIR )
+    # Fix ownership of lmi directory
+    if [ -d $NEW_ROOTFS_DIR/var/www/lmi ]; then
+        chown -R www-data:www-data $NEW_ROOTFS_DIR/var/www/lmi
+    fi
+
+    # Create fix pack rootfs
+    CreateCgz $NEW_FIXPACKDIR/rootfs.cgz $NEW_ROOTFS_DIR
+fi
+
+if [ $CREATE_MODE -eq 1 ]; then
+    rm -rf $NEW_FIXPACKDIR/rootfs
+    [ -e $ROOTFSDIR ] || mkdir -p $ROOTFSDIR
+    CreateCgz $NEW_FIXPACKDIR/rootfs.cgz $ROOTFSDIR
+fi
+
+# Add the hex fix pack installer
+cp $HEX_SCRIPTSDIR/../data/hex_fixpack/install.sh $NEW_FIXPACKDIR
+chmod 755 $NEW_FIXPACKDIR/install.sh
+
+cat ${SNDIR:-$HEX_SRCDIR/registered_sn}/*.sn 2>/dev/null | cut -d":" -f1 | sort | uniq >$NEW_FIXPACKDIR/sn.lst || true
+
+rm -f $NEW_FIXPACKDIR/rootfs.cgz.size $NEW_FIXPACKDIR/rootfs_debug.cgz
+
+# Calculate size
+FIXPACKFILE_SIZE=$(( $(du -sk $NEW_FIXPACKDIR | cut -f 1) + $(ConvertImageSize $PADDING) ))
+TEMPFIXPACKMOUNTDIR=$(MakeTempDir)
+TEMPFIXPACKFILE=$(MakeTemp)
+
+CreateFsImage ext4 $FIXPACKFILE_SIZE $TEMPFIXPACKFILE
+mv $TEMPFIXPACKFILE $FIXPACKFILE
+
+(
+    trap 'eval UnmountRemoveLoop $LOOPDEV' INT TERM EXIT
+    LOOPDEV=$(SetupLoop $FIXPACKFILE)
+    mount -t ext4 $LOOPDEV $TEMPFIXPACKMOUNTDIR
+    cp -r $NEW_FIXPACKDIR/* $TEMPFIXPACKMOUNTDIR
+)
+
+# Developer sign the fixpack
+# [ $NOSIGN -eq 0 ] && Quiet $SIGN_PROG $FIXPACKFILE
+chmod 644 $FIXPACKFILE
+
+exit 0

@@ -1,0 +1,129 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <project-name> <bzImage> <initrd> <ppu> [<profile>]"
+    echo "  -q              Quiet mode: suppress kernel output on boot"
+    echo "  -s <server> Set NFS server address (default is 10.32.0.200)"
+    echo "  -p <path>   Set NFS directory. (default is /volume1/pxe-server)"
+    echo "  <project-name>  Project name"
+    echo "  <bzImage>       Kernel image"
+    echo "  <initrd>        Ramdisk image"
+    echo "  <ppu>           Firmware image"
+    echo "  <prifle>        Set profile path"
+    exit 1
+}
+
+QUIET=0
+SERVER="10.32.0.200"
+SRVDIR="/volume1/pxe-server"
+
+while getopts "qs:p:c:" OPT ; do
+    case $OPT in
+    q) QUIET=1 ;;
+    s) SERVER="$OPTARG" ;;
+    p) SRVDIR="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -ge 4 ] || Usage
+
+NAME=$1
+KERNEL=$2
+INITRD=$3
+PPU=$4
+PROFILE=$5
+
+QUIET_KERNEL_ARG=""
+
+if [ $QUIET -eq 1 ]; then
+    QUIET_KERNEL_ARG="quiet"
+fi
+
+[ -f "$KERNEL" ] || Error "Could not find kernel: $KERNEL"
+[ -f "$INITRD" ] || Error "Could not find ramdisk image: $INITRD"
+[ -f "$INITRD.size" ] || Error "Could not find file: $INITRD.size"
+[ -f "$PPU" ] || Error "Could not firmware image: $PPU"
+[ -n "$PROFILE" -a -f "$PROJ_PROFILEDIR/$PROFILE.profile" ] && . $PROJ_PROFILEDIR/$PROFILE.profile
+
+# Size of ramdisk for kernel boot args
+RAMDISK_SIZE=$(cat $INITRD.size)
+TEMPDIR=$(MakeTempDir)
+
+Cleanup()
+{
+    sleep 1
+    umount -l $TEMPDIR
+    RemoveTempFiles
+}
+
+trap Cleanup INT TERM EXIT
+
+mount -t nfs -o nolock $SERVER:$SRVDIR $TEMPDIR
+
+rm -rf $TEMPDIR/$NAME
+mkdir $TEMPDIR/$NAME
+
+cp $KERNEL ${TEMPDIR}/$NAME
+cp $INITRD ${TEMPDIR}/$NAME
+cp $PPU ${TEMPDIR}/$NAME
+
+KERNEL=$(basename $KERNEL)
+
+sed -i "/Type \"$NAME\",/d" $TEMPDIR/netboot.msg
+cat >>$TEMPDIR/netboot.msg <<EOF
+Type "$NAME", and then press ENTER.
+EOF
+
+# BIOS configurations
+sed -i "/label $NAME\$/d" $TEMPDIR/pxelinux.cfg/default
+sed -i "/\/$NAME\//d" $TEMPDIR/pxelinux.cfg/default
+if [ -n "$PXE_NET_BUSID" ]; then
+    cat >>$TEMPDIR/pxelinux.cfg/default <<EOF
+label $NAME
+KERNEL /$NAME/$KERNEL
+APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
+EOF
+else
+    cat >>$TEMPDIR/pxelinux.cfg/default <<EOF
+label $NAME
+KERNEL /$NAME/$KERNEL
+APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
+EOF
+fi
+
+# UEFI configurations
+sed -i "/linuxefi \/$NAME\//d" $TEMPDIR/grub.cfg
+if [ -n "$PXE_NET_BUSID" ]; then
+    cat >>$TEMPDIR/grub.cfg <<EOF
+menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD}
+EOF
+else
+    cat >>$TEMPDIR/grub.cfg <<EOF
+menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD }
+EOF
+fi
+
+cat >$TEMPDIR/${NAME}/pxe.cfg <<EOF
+PKG_SERVER=nfs://${SERVER}${SRVDIR}/$NAME
+EOF
+if [ -n "$INSTALL_DRIVE" ]; then
+cat >>$TEMPDIR/${NAME}/pxe.cfg <<EOF
+INSTALL_DRIVE=$INSTALL_DRIVE
+EOF
+fi
+
+exit 0

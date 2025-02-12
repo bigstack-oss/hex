@@ -1,0 +1,169 @@
+#!/bin/sh
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="	"
+
+Usage()
+{
+    echo "Usage: $PROG [<options>] <root-dir> <pkg> ..."
+    echo "-a                      Enable autostart"
+    echo "-r                      Reinstall"
+    echo "-u <proxy url>          Specify proxy URL"
+    echo "-t <tag>                Specify build tag"
+    echo "-d                      download from other source"
+    echo "-w                      Specify weak dependencies. using --allowerasing --nobest"
+    echo "-n                      no reolve dependencies. download specified pkgs"
+    exit 1
+}
+
+AUTOSTART=0
+WEAK_DEP=0
+NO_RESOLVE=0
+CMD=localinstall
+RPMDIR=$(pwd)/RPMS
+DNF_CONF=$ROOTDIR/etc/dnf/dnf.conf
+DOWNLOAD_FROM=
+
+while getopts "aru:t:d:wn" OPT ; do
+    case $OPT in
+    a) AUTOSTART=1 ;;
+    r) CMD=reinstall ;;
+    u) PROXY_URL="$OPTARG" ;;
+    t) RPMDIR="$RPMDIR-$OPTARG" ;;
+    d) DOWNLOAD_FROM="$OPTARG" ;;
+    w) WEAK_DEP=1 ;;
+    n) NO_RESOLVE=1 ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -ge 1 ] || Usage
+
+[ -d $1 ] || Usage
+ROOTDIR="$1"
+CLEANUP=
+shift 1
+
+WGET=$(type -p wget)
+DNF=$(type -p dnf)
+OPTIONS="-y --nodocs"
+[ $WEAK_DEP -eq 0 ] || OPTIONS+=" --allowerasing --nobest"
+
+SetNetwork()
+{
+    cp -f /etc/resolv.conf $ROOTDIR/etc
+    CLEANUP="$CLEANUP $ROOTDIR/etc/resolv.conf"
+}
+
+SetAutostart()
+{
+    local NULL_DIR=$ROOTDIR/root/null
+
+    if [ $AUTOSTART -eq 0 ]; then
+        mkdir -p $NULL_DIR
+        # auto start after install
+        #ln -sf /bin/true $NULL_DIR/service
+        # auto enable after install
+        CLEANUP="$CLEANUP $NULL_DIR"
+    fi
+}
+
+DownloadPkg()
+{
+    local PWD=$(pwd)
+    local pkgs=$*
+
+    cd $RPMDIR
+
+    # download the latest pkgs
+    if [ -n "$DOWNLOAD_FROM" ]; then
+        for D in $DOWNLOAD_FROM
+        do
+            [ -e ${D##*/} ] || $WGET $D
+        done
+    fi
+
+    local DL_OPTIONS=
+    [ $NO_RESOLVE -eq 1 ] || DL_OPTIONS+=" --resolve"
+
+    for pkg in $pkgs ; do
+        [ -e ${pkg}.rpm ] || missing_pkgs+="$pkg "
+    done
+    if [ "x$missing_pkgs" != "x" ]; then
+        # downloading from elrepo tends to be time consuming. Skip it if no rpms from elrepo are needed
+        echo $missing_pkgs | grep -q -i elrepo || chroot $ROOTDIR dnf config-manager --set-disabled elrepo elrepo-kernel 2>/dev/null || true
+
+        chroot $ROOTDIR sh -c "cd $(basename $RPMDIR) && $DNF download $missing_pkgs $OPTIONS $DL_OPTIONS"
+    fi
+    [ $(ls -1 $RPMDIR/ | wc -l) -gt 0 ] || exit
+
+    for pkg in $(cat $ROOTDIR/blklst_rpms.txt 2>/dev/null) ; do
+        echo $pkg >> $ROOTDIR/removed_rpms.txt
+        rm -f ${pkg##*/}-*.rpm
+    done
+    for pkg in $(ls) ; do
+        pkgname=$(rpm -q --qf '%{N}' $pkg 2>/dev/null) || continue
+        pkgver=$(rpm -q --qf '%{V}-%{R}' $pkg)
+        dups=
+        for dup in $(ls ${pkgname}*.{x86_64,noarch}.rpm 2>/dev/null); do
+            dupname=$(rpm -q --qf '%{N}' $dup 2>/dev/null)
+            [ "x$dupname" != "x$pkgname" ] || dups+="$dup "
+        done
+        dups=${dups% }
+
+        if [ $(echo $dups | wc -w) -eq 2 ]; then
+            rpmdev-vercmp $dups >/dev/null 2>&1 || retcmp=$?
+            if [ ${retcmp:-0} -eq 11 ]; then
+                toremove=$(echo $dups | cut -d" " -f2)
+                locked=$(echo ${toremove%.rpm} | sed -e 's/.noarch$//' -e 's/.x86_64$//')
+                if grep -q ${locked:-NOLOCKED} $ROOTDIR/locked_rpms.txt ; then
+                    toremove=$(echo $dups | cut -d" " -f1)
+                fi
+            elif [ ${retcmp:-0} -eq 12 ]; then
+                toremove=$(echo $dups | cut -d" " -f1)
+                locked=$(echo ${toremove%.rpm} | sed -e 's/.noarch$//' -e 's/.x86_64$//')
+                if grep -q ${locked:-NOLOCKED} $ROOTDIR/locked_rpms.txt ; then
+                    toremove=$(echo $dups | cut -d" " -f2)
+                fi
+            fi
+            echo $toremove >> $ROOTDIR/removed_rpms.txt
+            rm -f $toremove
+        elif [ $(echo $dups | wc -w) -gt 2 ]; then
+            Error "Unhandled pkg duplicates: $dups"
+        fi
+    done
+
+    cd $PWD
+}
+
+Cleanup()
+{
+    rm -rf $CLEANUP
+    RootfsDisableDns
+    RootfsDisableProxy
+    RootfsUnbind $(basename $RPMDIR)
+}
+
+trap Cleanup INT TERM EXIT
+
+RootfsEnableDns
+RootfsEnableProxy
+SetAutostart
+RootfsBind $RPMDIR $(basename $RPMDIR)
+DownloadPkg $*
+
+chroot $ROOTDIR /usr/bin/env PATH=/root/null:$PATH sh -c "cd $(basename $RPMDIR) && $DNF $OPTIONS $CMD *.rpm"
+
+exit 0

@@ -1,0 +1,16 @@
+[Unit]
+Description=Hex User Service
+DefaultDependencies=no
+Before=multi-user.target
+After=systemd-hexctl-sys.service dbus.service
+Requires=systemd-hexctl-sys.service
+BindsTo=systemd-hexctl-sys.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/bootstrap
+TimeoutSec=infinity
+
+[Install]
+WantedBy=multi-user.target

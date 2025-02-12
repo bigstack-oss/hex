@@ -1,0 +1,122 @@
+#!/bin/sh
+# HEX SDK
+
+set -e 
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions 
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage()
+{
+    echo "Usage: $PROG [ <options> ] <root-dir> <src> ... <dest-dir>" >&2
+    echo "-t <type>         Specify type of src file as one of:" >&2
+    echo "                      prog, so, lkm, script, or other" >&2
+    echo "-s                Strip unneeded symbols" >&2
+    echo "-S                set stick bit for user" >&2
+    echo "-f                Treat <dest-dir> as the full target path instead of a directory" >&2
+    echo "-d                Disable Create debug symbol files for <src>" >&2
+    echo "<root-dir>        Directory where root filesystem is located" >&2
+    echo "<src>             Path to source file to intall" >&2
+    echo "<dest-dir>        Destination directory (or file path if -f is specified) relative to <root-dir>" >&2
+    exit 1
+}
+
+TYPE=other
+DO_STRIP=0
+FULL_PATH=0
+STICKYBIT=0
+DO_DEBUG=1
+
+while getopts "t:sSfd" OPT ; do
+    case $OPT in
+    t) TYPE="$OPTARG" ;;
+    s) DO_STRIP=1 ;;
+    S) STICKYBIT=4;;
+    f) FULL_PATH=1 ;;
+    d) DO_DEBUG=0 ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -ge 3 ] || Usage
+
+ROOTDIR=$1
+shift 1
+
+if [ $DO_STRIP -eq 1 ]; then
+    [ -n "$STRIP" ] || STRIP=strip
+fi
+
+Install()
+{
+    SRC="$1"
+    DEST="$2"
+
+    [ $FULL_PATH -eq 1 ] || DEST="$2/$(basename $1)"
+    DESTDIR=$(dirname $DEST)
+    mkdir -p $ROOTDIR/$DESTDIR
+
+    case $TYPE in
+    prog)
+        rm -f $ROOTDIR/$DEST
+        /usr/bin/install -p -D -m ${STICKYBIT}755 $SRC $ROOTDIR/$DEST
+        if [ $DO_STRIP -eq 1 ]; then
+            [ $DO_DEBUG -eq 0 ] || /usr/bin/objcopy --only-keep-debug "$ROOTDIR/$DEST" "$ROOTDIR/$DEST.debug"
+            $STRIP --strip-debug --strip-unneeded $ROOTDIR/$DEST
+            [ $DO_DEBUG -eq 0 ] || /usr/bin/objcopy --add-gnu-debuglink="$ROOTDIR/$DEST.debug" "$ROOTDIR/$DEST"
+        fi
+        touch --reference=$SRC $ROOTDIR/$DEST
+        ;;
+    so)
+        rm -f $ROOTDIR/$DEST
+        /usr/bin/install -p -D -m 0755 $SRC $ROOTDIR/$DEST
+        if [ $DO_STRIP -eq 1 ]; then
+            [ $DO_DEBUG -eq 0 ] || /usr/bin/objcopy --only-keep-debug "$ROOTDIR/$DEST" "$ROOTDIR/$DEST.debug"
+            $STRIP --strip-debug --strip-unneeded $ROOTDIR/$DEST
+            [ $DO_DEBUG -eq 0 ] || /usr/bin/objcopy --add-gnu-debuglink="$ROOTDIR/$DEST.debug" "$ROOTDIR/$DEST"
+        fi
+        touch --reference=$SRC $ROOTDIR/$DEST
+        ;;
+    lkm)
+        rm -f $ROOTDIR/$DEST
+        /usr/bin/install -p -D -m 0644 $SRC $ROOTDIR/$DEST
+        [ -n "$KERNEL_VERS" ] || Error "Environment variable not set: KERNEL_VERS"
+        chroot $ROOTDIR depmod -a $KERNEL_VERS
+        [ $DO_STRIP -eq 0 ] || $STRIP --strip-debug $ROOTDIR/$DEST
+        touch --reference=$SRC $ROOTDIR/$DEST
+        ;;
+    script)
+        rm -f $ROOTDIR/$DEST
+        /usr/bin/install -p -D -m ${STICKYBIT}755 $SRC $ROOTDIR/$DEST
+        ;;
+    other)
+        rm -f $ROOTDIR/$DEST
+        /usr/bin/install -p -D -m 0644 $SRC $ROOTDIR/$DEST
+        ;;
+    *)  Usage ;;
+    esac
+
+    # Do not need add to packages.tsv since we don't have any package info
+}
+
+if [ $# -eq 2 ]; then
+    Install $1 $2
+else
+    # Use special bash syntax to get last argument
+    LAST=${!#}
+    # Destination must always be a directory
+    [ $FULL_PATH -eq 0 ] || Usage
+    # Process all source arguments
+    while [ $# -gt 1 ]; do
+        [ -f $1 ] || Error "file not found: $1"
+        Install $1 $LAST
+        shift 1
+    done
+fi

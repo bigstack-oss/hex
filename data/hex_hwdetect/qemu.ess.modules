@@ -1,0 +1,5 @@
+*/scsi/virtio_*
+*/kernel/lib/*
+*/cdrom/*
+*/net/dns_resolver/*
+*/net/ceph/*

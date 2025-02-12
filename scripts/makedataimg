@@ -1,0 +1,98 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+IMG_SIZE=
+PADDING=1M
+IMG_TYPE=
+INSTALL_CMD=
+QUIET=0
+BUNDLE=
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <type> <image>"
+    echo "  -s <size>       Image size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to size of initfd + padding)"
+    echo "  -p <padding>    Padding size in kilobytes. Can also specify G (Gig) or M (Meg) suffix. (defaults to 1M)"
+    echo "  -c <cmd>        Command to be run to install additional files to boot image. \"@ROOTDIR@\" will be substituted with root directory"
+    echo "  -b <bundle>     Include install bundle in image"
+    echo "  <type>          One of: \"usb\" or \"iso\""
+    echo "  <image>         Output image file"
+    exit 1
+}
+
+while getopts "s:p:c:b:" OPT ; do
+    case $OPT in
+        s) IMG_SIZE="$OPTARG" ;;
+        p) PADDING="$OPTARG" ;;
+        c) INSTALL_CMD="$OPTARG" ;;
+        q) QUIET=1 ;;
+        b) BUNDLE="$(readlink -f $OPTARG)" ;;
+        *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 2 ] || Usage
+IMG_TYPE=$1
+IMG=$2
+
+if [ $QUIET -eq 1 ]; then
+    QUIET_FLAG="quiet"
+else
+    QUIET_FLAG=""
+fi
+
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+LOOPDEV=
+
+Cleanup()
+{
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+trap Cleanup INT TERM EXIT
+
+TEMPDIR=$(MakeTempDir)
+if [ -z "$IMG_SIZE" ]; then
+    if [ -z "$BUNDLE" ]; then
+        BUNDLE_SIZE=0
+    else
+        BUNDLE_SIZE=0
+        for BDL in ${BUNDLE%.pkg}_*.pkg ; do
+            (( BUNDLE_SIZE += ( $(GetFileSize $BDL) + 1023 ) / 1024 ))
+        done
+    fi
+    IMG_SIZE=$(( $IMG_SIZE + $BUNDLE_SIZE ))
+    IMG_SIZE=$(( $IMG_SIZE + $(ConvertImageSize $PADDING) ))
+fi
+
+if [ "$IMG_TYPE" == "usb" ] ; then
+    CreateDiskImage ext4 $IMG_SIZE $IMG
+    LOOPDEV=$(SetupLoop -o $(GetPartitionOneOffset) $IMG)
+    mount $LOOPDEV $TEMPDIR
+    # Copy bundle
+    [ -z "$BUNDLE" ] || for BDL in ${BUNDLE%.pkg}_*.pkg ; do cp $BDL $TEMPDIR/ ; done
+    # Run install command
+    [ -z "$INSTALL_CMD" ] || eval `echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$TEMPDIR,g"`
+elif [ "$IMG_TYPE" == "iso" ] ; then
+    # Copy bundle
+    [ -z "$BUNDLE" ] || for BDL in ${BUNDLE%.pkg}_*.pkg ; do cp $BDL $TEMPDIR/ ; done
+    # Run install command
+    [ -z "$INSTALL_CMD" ] || eval `echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$TEMPDIR,g"`
+    MakeDataISO $IMG $TEMPDIR
+else
+    Error "Unsupported image type"
+fi
+
+exit 0

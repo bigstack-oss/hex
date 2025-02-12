@@ -1,0 +1,2 @@
+
+killall -KILL daemontest || true

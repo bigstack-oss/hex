@@ -1,0 +1,3 @@
+FIXPACK_ID="FIX_003"
+FIXPACK_NAME="No_Rollback"
+FIXPACK_DESCRIPTION="A sample fixpack that can not be removed and backs up hex_config"

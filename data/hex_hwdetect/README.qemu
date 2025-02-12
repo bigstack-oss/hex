@@ -1,0 +1,54 @@
+To boot from live USB image:
+
+    qemu -nographic -m 768 hex_testd_live.usb
+
+To boot from live ISO image:
+
+    qemu -nographic -m 768 -boot d -cdrom hex_testd_live.iso
+
+To boot from USB image and install to harddisk:
+
+    makediskimg -s 2g qemu.img
+    qemu -nographic -m 768 -hda hex_testd.usb -hdb qemu.img
+
+To boot from ISO image and install to harddisk:
+
+    makediskimg -s 2g qemu.img
+    qemu -nographic -m 768 -boot d -cdrom hex_testd.iso -hdb qemu.img
+
+To boot from harddisk after installing via either USB or ISO:
+
+    qemu -nographic -m 768 -hda qemu.img
+
+To boot from harddisk with 2 mgmt ports (eth0/eth1), 1 protection pair (eth2/eth3) and 1 gdb server interface (eth4):
+
+    # vtest_gdbnet will create the vtest_gdbnet_up, vtest_gdbnet_down, and vtest_gdbnet_rc scripts
+    vtest_gdbnet tap0 eth4
+    qemu -nographic -m 768 -hda qemu.img \
+    -net nic,model=e1000,vlan=100 -net user,vlan=100,hostname=vtest,name=eth0 \
+    -net nic,model=e1000,vlan=101 -net user,vlan=101,hostname=vtest,name=eth1 \
+    -net nic,model=e1000,vlan=102 -net user,vlan=102,hostname=vtest,name=eth2 \
+    -net nic,model=e1000,vlan=103 -net user,vlan=103,hostname=vtest,name=eth3 \
+    -net nic,model=e1000,vlan=999 -net tap,ifname=tap0,name=eth4,vlan=999,script=vtest_gdbnet_up,downscript=vtest_gdbnet_down
+
+Once the system boots you'll have to manually bring up the gdb interface by running the commands listed in the vtest_gdbnet_rc script, e.g.:
+
+    ifconfig eth4 192.168.xxx.1 up
+
+Once the qemu instance is booted you can start gdbserver on the executable you're interested in:
+
+    gdbserver host:1234 /usr/sbin/hex_config
+
+NOTE: The "host" is ignored and "1234" the port you want gdbserver to listen on. This value typically works fine.
+
+If you don't have gdbserver in you're image, you should be able to scp over to the appliance using the gdb interface.
+
+Outside the qemu instance, start gdb pointing at the same debug executable in your build tree:
+
+    gdb ~/workspace/build/core/main/hex_config
+    > target remote 192.168.xxx.1:1234
+    # set breakpoints
+    > continue
+
+NOTE: "makediskimg" and "vtest_gdbnet" can be found in the HEX scripts directory.
+

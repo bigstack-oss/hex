@@ -1,0 +1,1 @@
+net.ifnames=0 acpi=force intel_iommu=on amd_iommu=on iommu=pt

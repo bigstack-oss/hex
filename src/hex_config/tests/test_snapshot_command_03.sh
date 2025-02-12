@@ -1,0 +1,4 @@
+
+
+# Should fail
+! ./$TEST --test

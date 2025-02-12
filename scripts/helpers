@@ -1,0 +1,297 @@
+#!/bin/bash
+# HEX SDK
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $(readlink -f $0))
+HEX_SHMODDIR=$HEX_SCRIPTSDIR/../src/sdk_sh
+PROJ_MAINDIR=$HEX_SCRIPTSDIR/../../core/main
+PROJ_SHMODDIR=$HEX_SCRIPTSDIR/../../core/sdk_sh
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    source $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+if [ -f "$PROJ_MAINDIR/proj_functions" ]; then
+    . $PROJ_MAINDIR/proj_functions
+fi
+
+for sdk_sh in $HEX_SHMODDIR/*.sh; do
+    . $sdk_sh
+done 2>/dev/null
+
+for sdk_sh in $PROJ_SHMODDIR/*.sh; do
+    . $sdk_sh
+done 2>/dev/null
+
+HEX_DIR=$(readlink -f $HEX_SCRIPTSDIR/..)
+TEMPDIR=
+
+Usage()
+{
+    cat <<EOF >&2
+    function list:
+$(compgen -A function)
+
+Usage: $PROG pkg <package>          download <package> and its dependencies for rootfs
+       $PROG npm <package.json>     build a npm bundle with all dependencies by giving <package.json>
+       $PROG ssh-copy-id <host>     copy ssh public key to remote host
+       $PROG pxe-delete <name>      delete entry in pxe deployment server
+       $PROG nfs-snap-list [<path>] list snapshot in nfs server (e.g. tw/ha)
+       $PROG nfs-snap-delete <name> delete entry in nfs server
+       $PROG license-generate       generate a license
+       $PROG license-generate-v1    generate a v1 license
+       $PROG usbimg-create <dir> <img_name> [<size>]    create a <size: default 4M> usb image <img_name> including <dir> contents can mounted in hex CLL
+       $PROG <function>             run function of hex/scripts/functions, check usage
+EOF
+    exit 1
+}
+
+Cleanup()
+{
+    if [ -n "$TEMPDIR" ]; then
+        sleep 1
+        umount -l $TEMPDIR 2>/dev/null
+        RemoveTempFiles
+    fi
+}
+
+trap Cleanup INT TERM EXIT
+
+PkgList()
+{
+    local pkgs
+
+    cd $1
+    deblist=$(ls *.deb 2>/dev/null)
+    if [ -n "$deblist" ]; then
+        pkgs=$(ls *.deb | awk -F'_' '{print "#"$1"#"}')
+    fi
+    cd - >/dev/null
+
+    echo -n $pkgs
+}
+
+DownloadDeb()
+{
+    PKG_NAME=$1
+    PKG_DEPS=$(/usr/bin/apt-rdepends $PKG_NAME | grep -v "^ ")
+    CORE_MANIFEST=$(cat $HEX_DIR/pkg/x86_64/core/*.manifest | awk '{print $1}' | awk -F':' '{print "#"$1"#"}')
+    HEX_MANIFEST=$(PkgList $HEX_DIR/pkg/x86_64/hex1.0)
+    CUR_MANIFEST=$(PkgList .)
+
+    set +e
+    for d in $PKG_DEPS ; do
+        [[ $CORE_MANIFEST == *"#$d#"* ]] || [[ $HEX_MANIFEST == *"#$d#"* ]] || [[ $CUR_MANIFEST == *"#$d#"* ]] || /usr/bin/apt-get download $d 2>/dev/null
+    done
+    set -e
+}
+
+DownloadRpm()
+{
+    PKG_NAME=$1
+    PKG_DEPS=$(/usr/bin/apt-rdepends $PKG_NAME | grep -v "^ ")
+    CORE_MANIFEST=$(cat $HEX_DIR/pkg/x86_64/core/*.manifest | awk '{print $1}' | awk -F':' '{print "#"$1"#"}')
+    HEX_MANIFEST=$(PkgList $HEX_DIR/pkg/x86_64/hex1.0)
+    CUR_MANIFEST=$(PkgList .)
+
+    set +e
+    for d in $PKG_DEPS ; do
+        [[ $CORE_MANIFEST == *"#$d#"* ]] || [[ $HEX_MANIFEST == *"#$d#"* ]] || [[ $CUR_MANIFEST == *"#$d#"* ]] || /usr/bin/apt-get download $d 2>/dev/null
+    done
+    set -e
+}
+
+BuildNpmBundle()
+{
+    PKG_JSON=$1
+
+    TEMPDIR=$(MakeTempDir)
+    cp -f $PKG_JSON $TEMPDIR/package.json
+
+    OWD=$PWD
+
+    cd $TEMPDIR
+    npm install
+    npm audit fix
+    npm ls --depth=1 | tee $OWD/pkg.manifest
+    npm pack
+    mv *.tgz $OWD
+
+    cd $OWD
+}
+
+SshCopyId()
+{
+    local HOST=$1
+
+    if [ ! -f /root/.ssh/id_rsa.pub ]; then
+        ssh-keygen
+    fi
+
+    ssh-copy-id -i /root/.ssh/id_rsa.pub $HOST
+}
+
+PxeDelete()
+{
+    local NAME=$1
+    local SERVER="10.32.0.200"
+    local SRVDIR="/volume1/pxe-server"
+
+    TEMPDIR=$(MakeTempDir)
+
+    mount -t nfs -o nolock $SERVER:$SRVDIR $TEMPDIR
+
+    rm -rf $TEMPDIR/$NAME
+    sed -i "/Type \"$NAME\",/d" $TEMPDIR/netboot.msg
+    sed -i "/'$NAME (UEFI)'/d" $TEMPDIR/grub.cfg
+    sed -i "/label $NAME\$/d" $TEMPDIR/pxelinux.cfg/default
+    sed -i "/\/$NAME\//d" $TEMPDIR/pxelinux.cfg/default
+}
+
+NfsSnapshotList()
+{
+    local SUB=$1
+    local SERVER="10.32.0.200"
+    local SRVDIR="/volume1/snaps"
+
+    VERBOSE=1
+    snapshot_nfs_list $SERVER:$SRVDIR/$1
+}
+
+NfsSnapshotDelete()
+{
+    local NAME=$1
+    local SERVER="10.32.0.200"
+    local SRVDIR="/volume1/snaps"
+
+    TEMPDIR=$(MakeTempDir)
+
+    mount -t nfs -o nolock $SERVER:$SRVDIR $TEMPDIR
+
+    sh -c "rm -rf $TEMPDIR/$NAME"
+}
+
+LicenseGenerate1()
+{
+    local PRIVATE_PEM=/etc/ssl/private.pem
+    local PASSPHRASE="3mE5ydqfYfLmTEGaCBX4JdkjdcQg9yTSwNqygcLeti4Fc48kmiW8nXqvV7PhHhT"
+
+    read -p 'license type (trial, perpetual, subscribed): ' licensenType
+    read -p 'issue to: ' issueTo
+    read -p 'issue hardware: ' issueHardware
+    read -p 'valid days: ' days
+    read -p 'license name: ' name
+
+cat <<EOF >$name.dat
+license.type=$licensenType
+issue.by=Bigstack Ltd.
+issue.to=$issueTo
+issue.hardware=$issueHardware
+issue.date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+expiry.date=$(date --date="$days days" -u +"%Y-%m-%d %H:%M:%S UTC")
+EOF
+
+    openssl dgst -sha256 -sign $PRIVATE_PEM -out $name.sig -passin pass:$PASSPHRASE $name.dat
+    zip $name.license $name.dat $name.sig
+    echo "================================================="
+    cat $name.dat
+    echo "================================================="
+    rm -f $name.dat $name.sig
+    echo "license file $name.license is created in the current folder"
+}
+
+LicenseGenerate2()
+{
+    local PRIVATE_PEM=/etc/ssl/private.pem
+    local PASSPHRASE="3mE5ydqfYfLmTEGaCBX4JdkjdcQg9yTSwNqygcLeti4Fc48kmiW8nXqvV7PhHhT"
+
+    read -p 'license type (trial, prime, subscribed, community): ' licensenType
+    read -p 'issue to: ' issueTo
+    read -p 'issue hardware: ' issueHardware
+    read -p 'product: ' product
+    read -p 'feature (all, virtualization, as-a-service): ' feature
+    read -p 'quantity (0: unlimited): ' quantity
+    read -p 'sla (5x8, 7x24, fully-managed): ' sla
+    read -p 'valid days: ' days
+    read -p 'license name: ' name
+
+cat <<EOF >$name.dat
+license.type=$licensenType
+issue.by=Bigstack Ltd.
+issue.to=$issueTo
+issue.hardware=$issueHardware
+product=$product
+feature=$feature
+quantity=$quantity
+sla=$sla
+issue.hardware=$issueHardware
+issue.date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+expiry.date=$(date --date="$days days" -u +"%Y-%m-%d %H:%M:%S UTC")
+EOF
+
+    openssl dgst -sha256 -sign $PRIVATE_PEM -out $name.sig -passin pass:$PASSPHRASE $name.dat
+    zip $name.license $name.dat $name.sig
+    echo "================================================="
+    cat $name.dat
+    echo "================================================="
+    rm -f $name.dat $name.sig
+    echo "license file $name.license is created in the current folder"
+}
+
+UsbImgCreate()
+{
+    local dir=$1
+    local fname=$2
+    local size=${3:-4M}
+    CreateDiskImage "vfat" $size $fname 0
+    MountImg $fname /mnt 0
+    cp -rf $dir/* /mnt
+}
+
+[ $# -ge 1 ] || Usage
+CMD="$1"
+shift 1
+case "$CMD" in
+deb)
+    [ $# -eq 1 ] || Usage
+    DownloadDeb $1
+    ;;
+rpm)
+    [ $# -eq 1 ] || Usage
+    DownloadRpm $1
+    ;;
+npm)
+    [ $# -eq 1 ] || Usage
+    BuildNpmBundle $1
+    ;;
+ssh-copy-id)
+    [ $# -eq 1 ] || Usage
+    SshCopyId $1
+    ;;
+pxe-delete)
+    [ $# -eq 1 ] || Usage
+    PxeDelete $1
+    ;;
+nfs-snap-list)
+    NfsSnapshotList $1
+    ;;
+nfs-snap-delete)
+    [ $# -eq 1 ] || Usage
+    NfsSnapshotDelete $1
+    ;;
+license-generate)
+    LicenseGenerate2
+    ;;
+license-generate-v1)
+    LicenseGenerate1
+    ;;
+usbimg-create)
+    [ $# -eq 2 -o $# -eq 3 ] || Usage
+    UsbImgCreate $1 $2 $3
+    ;;
+*)
+    $CMD $@
+    ;;
+esac

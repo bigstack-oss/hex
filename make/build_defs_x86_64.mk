@@ -1,0 +1,7 @@
+# HEX SDK
+
+OPTFLAGS += -march=core2
+
+INSTALL_LIBDIR = /usr/lib64
+
+HEX_EXPORT_VARS += INSTALL_LIBDIR

@@ -1,0 +1,177 @@
+#! /bin/sh
+set -e
+
+prefix="/usr"
+exec_prefix="/usr"
+datarootdir="/usr/share"
+
+. "/usr/share/grub/grub-mkconfig_lib"
+eval $(/usr/bin/grub2-editenv /boot/grub2/grubenv list)
+
+export TEXTDOMAIN=grub
+export TEXTDOMAINDIR="${datarootdir}/locale"
+
+CLASS="--unrestricted"
+OS="\"$(cat /etc/version)\""
+
+mktitle()
+{
+    local title_type
+    local version
+
+    title_type=$1 && shift
+    version=$1 && shift
+
+    case $title_type in
+        backup)
+            title=$(printf '%s backup' "${version}")
+            ;;
+        recovery)
+            title=$(printf '%s single' "${version}")
+            ;;
+        *)
+            title=$(printf '%s' "${version}")
+            ;;
+    esac
+    echo -n ${title}
+}
+
+title_correction_code=
+
+linux_entry()
+{
+    os="$1"
+    version="$2"
+    type="$3"
+    args="$4"
+    sixteenbit="16"
+
+    if [ x$type != xsimple ] ; then
+        title=$(mktitle "$type" "$version")
+        if [ x"$title" = x"$GRUB_ACTUAL_DEFAULT" ] || [ x"Previous Linux versions>$title" = x"$GRUB_ACTUAL_DEFAULT" ]; then
+            replacement_title="$(echo "Advanced options for ${OS}" | sed 's,>,>>,g')>$(echo "$title" | sed 's,>,>>,g')"
+            quoted="$(echo "$GRUB_ACTUAL_DEFAULT" | grub_quote)"
+            title_correction_code="${title_correction_code}if [ \"x\$default\" = '$quoted' ]; then default='$(echo "$replacement_title" | grub_quote)'; fi;"
+        fi
+        echo "menuentry '$(echo "$title" | grub_quote)' ${CLASS} { " | sed "s/^/$submenu_indentation/"
+    else
+        echo "menuentry '$(echo "$os" | grub_quote)' ${CLASS} { " | sed "s/^/$submenu_indentation/"
+    fi
+    if [ x$type != xrecovery ] ; then
+        save_default_entry | grub_add_tab
+    fi
+
+    if [ -d /sys/firmware/efi ]; then
+        sed "s/^/$submenu_indentation/" << EOF
+    linuxefi ${rel_dirname}/${basename} root=UUID=${ROOT_UUID} ro ${args}
+EOF
+    else
+        sed "s/^/$submenu_indentation/" << EOF
+    linux${sixteenbit} ${rel_dirname}/${basename} root=UUID=${ROOT_UUID} ro ${args}
+EOF
+    fi
+
+    if test -n "${initrd}" ; then
+        if [ -d /sys/firmware/efi ]; then
+            sed "s/^/$submenu_indentation/" << EOF
+    initrdefi ${rel_dirname}/${initrd}
+EOF
+        else
+            sed "s/^/$submenu_indentation/" << EOF
+    initrd${sixteenbit} ${rel_dirname}/${initrd}
+EOF
+        fi
+    fi
+    sed "s/^/$submenu_indentation/" << EOF
+}
+EOF
+}
+
+GENKERNEL_ARCH==`uname -m`
+prepare_boot_cache=
+prepare_root_cache=
+boot_device_id=
+title_correction_code=
+
+cat <<EOF
+
+if [ "x\$default" = "x2" -o "x\$default" = "x3" ]; then
+  set timeout=0.0
+fi
+
+EOF
+
+# Extra indentation to add to menu entries in a submenu. We're not in a submenu
+# yet, so it's empty. In a submenu it will be equal to '\t' (one tab).
+submenu_indentation=""
+
+list=`for i in /boot/Part?/bzImage ; do  echo -n "$i " ; done`
+list=$(echo "$list" | tr " " "\n" | sort | tr "\n" " ")
+list=${list% }
+
+add_entry() {
+    is_top_level=true
+
+    for linux in $list ; do
+        gettext_printf "($1) Found linux image: %s\n" "$linux" >&2
+        basename=`basename $linux`
+        dirname=`dirname $linux`
+        rel_dirname=`make_system_path_relative_to_its_root $dirname`
+        partn=`echo $linux | grep -o 'Part.'`
+        num=$(echo $partn | sed 's/Part//')
+        bootdir="/boot"
+        title=$( eval echo "\$$(echo $partn | tr a-z A-Z)TITLE" )
+        version=${title:-`cat /etc/release`}
+
+        # The markers "hex_part1_args" and "hex_part2_args" are used by some hardware rc scripts to
+        # dynamically update kernel args based on detected cpu, memory, etc.
+        if [ -e "$bootdir/$partn/kernel.args" ] ; then
+            eval PART${num}_KERNEL_ARGS=\"$KERNEL_ARGS $(cat $bootdir/$partn/kernel.args)\"
+        elif [ -e "$bootdir/grub2/kernel.args" ] ; then
+            eval PART${num}_KERNEL_ARGS=\"$KERNEL_ARGS $(cat $bootdir/grub2/kernel.args)\"
+        fi
+
+        if [ -e "$bootdir/$partn/projkernel.args" ] ; then
+            eval PART${num}_KERNEL_ARGS=\"$PART${num}_KERNEL_ARGS $(cat $bootdir/$partn/projkernel.args)\"
+        elif [ -e "$bootdir/grub2/projkernel.args" ] ; then
+            eval PART${num}_KERNEL_ARGS=\"$PART${num}_KERNEL_ARGS $(cat $bootdir/grub2/projkernel.args)\"
+        fi
+
+        initrd="initramfs.cgz"
+        if [ -e "${dirname}/${initrd}" ] ; then
+            gettext_printf "($1) Found initrd image: %s\n" "${dirname}/${initrd}" >&2
+        fi
+
+        if [ "$partn" = "Part1" ]; then
+            ROOT_UUID=$PART1_UUID
+            HEXBACKUPTO=$PART2_UUID
+        else
+            ROOT_UUID=$PART2_UUID
+            HEXBACKUPTO=$PART1_UUID
+        fi
+
+        GENERAL_ARGS="HexBootDevice=UUID=$BOOT_UUID HexSaveDefault=$num hex_part${num}_args $(eval echo \$PART${num}_KERNEL_ARGS) $CONSOLE_ARGS"
+
+        if [ "$1" = "active" ]; then
+            linux_entry "${OS}" "${version}" active "$GENERAL_ARGS $QUIET_KERNEL_ARG"
+        elif [ "$1" = "backup" ]; then
+            linux_entry "${OS}" "${version}" backup "$GENERAL_ARGS HexBackupTo=UUID=$HEXBACKUPTO $QUIET_KERNEL_ARG"
+        elif [ "$1" = "recovery" ]; then
+            linux_entry "${OS}" "${version}" recovery "$GENERAL_ARGS single_user_init single_mount_root single_switch_root"
+        fi
+    done
+}
+
+add_entry "active"
+add_entry "backup"
+if [ "x${GRUB_DISABLE_RECOVERY}" != "xtrue" ]; then
+    add_entry "recovery"
+fi
+
+# If at least one kernel was found, then we need to
+# add a closing '}' for the submenu command.
+if [ x"$is_top_level" != xtrue ]; then
+    echo '}'
+fi
+
+# echo "$title_correction_code"

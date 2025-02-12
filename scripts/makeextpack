@@ -1,0 +1,55 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+IMG_SIZE=0
+PADDING=1M
+
+Usage() {
+    echo "Usage: $PROG <image> <files>"
+    echo "  <image>         Output image file"
+    exit 1
+}
+
+[ $# -ge 2 ] || Usage
+IMG=$1
+shift
+
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+LOOPDEV=
+Cleanup()
+{
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+trap Cleanup INT TERM EXIT
+
+BUNDLE_SIZE=0
+for BDL in $@ ; do
+    (( BUNDLE_SIZE += $(GetFileSize $BDL) ))
+done
+IMG_SIZE=$(( ( ( $BUNDLE_SIZE + 1023 ) / 1024 ) + $(ConvertImageSize $PADDING) ))
+
+[ ! -e $IMG ] || rm -f $IMG
+CreateFsImage ext4 $IMG_SIZE $IMG
+
+LOOPDEV=$(SetupLoop $IMG)
+TEMPDIR=$(MakeTempDir)
+mount $LOOPDEV $TEMPDIR
+
+for BDL in $@ ; do cp $BDL $TEMPDIR/ ; done
+rmdir $TEMPDIR/lost+found
+sync
+
+exit 0

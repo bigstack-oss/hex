@@ -1,0 +1,149 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions 
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <project-name> <bzImage> <initrd> <ppu> <image>"
+    echo "  -c <cmd>        Command to be run to install additional files to boot image. \"@ROOTDIR@\" will be substituted with root directory"
+    echo "  -q              Quiet mode: suppress kernel output on boot"
+    echo "  -i <init>       Prepare a hardware diagnostics PXE image to boot with specified init script"
+    echo "  -S <speed>      Set console speed. (default is 9600)"
+    echo "  <project-name>  Project name"
+    echo "  <bzImage>       Kernel image"
+    echo "  <initrd>        Ramdisk image"
+    echo "  <ppu>           Firmware image"
+    echo "  <image>         Output image file"
+    exit 1
+}
+
+KERNEL=
+INITRD=
+INSTALL_CMD=
+QUIET=0
+INITSCRIPT=
+CONSOLE_SPEED=115200
+KERNEL_NAME=vmlinuz
+INIT_RD_NAME=initrd.img
+
+while getopts "c:qi:S:" OPT ; do
+    case $OPT in
+    c) INSTALL_CMD="$OPTARG" ;;
+    q) QUIET=1 ;;
+    i) INITSCRIPT="$OPTARG" ;;
+    S) CONSOLE_SPEED="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 5 ] || Usage
+
+NAME=$1
+KERNEL=$2
+INITRD=$3
+PPU=$4
+IMG=$5
+
+QUIET_KERNEL_ARG=""
+
+if [ $QUIET -eq 1 ]; then
+    QUIET_KERNEL_ARG="quiet"
+fi
+
+[ -f "$KERNEL" ] || Error "Could not find kernel: $KERNEL"
+[ -f "$INITRD" ] || Error "Could not find ramdisk image: $INITRD"
+[ -f "$INITRD.size" ] || Error "Could not find file: $INITRD.size"
+[ -f "$PPU" ] || Error "Could not firmware image: $PPU"
+[ -f /proc/mounts ] || Error "proc filesystem not mounted in build environment!"
+
+# Size of ramdisk for kernel boot args
+RAMDISK_SIZE=$(cat $INITRD.size)
+
+LOOPDEV=
+
+Cleanup()
+{
+    sleep 1
+    UnmountRemoveLoop $LOOPDEV
+    RemoveTempFiles
+}
+trap Cleanup INT TERM EXIT
+
+TEMPDIR=$(MakeTempDir)
+mkdir $TEMPDIR/$NAME
+
+cp  $KERNEL ${TEMPDIR}/$NAME/$KERNEL_NAME
+cp  $INITRD ${TEMPDIR}/$NAME/$INIT_RD_NAME
+cp  $PPU ${TEMPDIR}/$NAME
+
+KERNEL=$(basename $KERNEL)
+
+if [ -z "$INITSCRIPT" ]; then
+    cat >$TEMPDIR/${NAME}_netboot.msg <<EOF
+
+Hex Appliance PXE Installer
+
+Type "reinstall", and then press ENTER.
+
+CAUTION: Booting from the PXE Installer restores the appliance
+to its original configuration and removes any customized settings.
+The appliance also reverts to the default login name and password.
+This action is non-recoverable.
+
+EOF
+    cat >$TEMPDIR/${NAME}_default <<EOF
+serial 0 $CONSOLE_SPEED 0x003
+default reinstall
+prompt 0
+timeout 0
+display ${NAME}_netboot.msg
+F1 ${NAME}_netboot.msg
+label reinstall
+KERNEL /$NAME/$KERNEL_NAME
+APPEND initrd=/$NAME/$INIT_RD_NAME rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable
+EOF
+else
+    cat >$TEMPDIR/${NAME}_netboot.msg <<EOF
+
+Hex Appliance Hardware Diagnostics
+
+Type "rescue", and then press ENTER.
+
+EOF
+    cat >$TEMPDIR/${NAME}_default <<EOF
+serial 0 $CONSOLE_SPEED 0x003
+default rescue
+prompt 1
+timeout 0
+display ${NAME}_netboot.msg
+F1 ${NAME}_netboot.msg
+label rescue
+KERNEL /$NAME/$KERNEL_NAME
+APPEND initrd=/$NAME/$INIT_RD_NAME rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init=$INITSCRIPT console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable
+EOF
+
+fi
+
+# UEFI grub configuration
+cat >$TEMPDIR/grub.cfg <<EOF
+set default=0
+set timeout=0
+menuentry  'Hex Appliance Installer (UEFI)' --class gnu-linux --class gnu --class os {
+   linuxefi /$NAME/$KERNEL_NAME rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init=$INITSCRIPT console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable
+   initrdefi /$NAME/$INIT_RD_NAME
+}
+EOF
+
+(cd $TEMPDIR && tar cvf - grub.cfg ${NAME}_default ${NAME}_netboot.msg ${NAME} | pigz -9 > $IMG)
+
+exit 0

@@ -1,0 +1,7 @@
+# Bootstrap the system
+if [ -f /etc/bootstrap.cfg ]; then
+    . /etc/bootstrap.cfg
+fi
+/usr/sbin/hex_config bootstrap $BOOTSTRAP_MODULE || true
+printf "\nBootstrap Done" | tee -a $(/usr/sbin/hex_sdk GetKernelConsoleDevices) >/dev/null 2>&1 || true
+touch /run/bootstrap_done

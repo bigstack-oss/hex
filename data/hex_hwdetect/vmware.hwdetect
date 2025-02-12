@@ -1,0 +1,7 @@
+# VMware
+
+if /usr/sbin/dmidecode | grep 'VMware Virtual Platform' >/dev/null 2>&1 ; then
+    echo "VMware detected"
+    exit 0
+fi
+exit 1

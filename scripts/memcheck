@@ -1,0 +1,61 @@
+#!/bin/sh
+# HEX SDK
+
+PROG=`basename $0`
+
+valgrind -h >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "$PROG: valgrind not found" >&2
+    exit 1
+fi
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $PROG [-s] <test> [ <args> ... ]" >&2
+    echo "-s    Ignore errors, and generate suppression rules" >&2
+    exit 1
+fi
+
+GEN_SUPPRESSIONS=0
+if [ X"$1" = X"-s" ]; then
+    GEN_SUPPRESSIONS=1
+    VALGRIND_OPTS=--gen-suppressions=all
+    export VALGRIND_OPTS
+    shift 1
+fi
+
+TEST="$1"
+shift 1
+
+if [ ! -x $TEST ]; then
+    echo "$PROG: test not found: $TEST" >&2
+    exit 1
+fi
+
+if [ `basename $TEST .sh`.sh = `basename $TEST` ]; then
+    echo "$PROG: invalid argument: $TEST" >&2
+    exit 1
+fi
+
+# RESULT tells you if $TEST succeeded or not (some are not supposed to succeed)
+RESULT=0
+valgrind -q --tool=memcheck --leak-check=full --log-fd=2 --error-exitcode=75 $TEST "$@"
+RESULT=$?
+
+# Look for core file
+if [ -f vgcore.* ]; then
+    for f in vgcore.*; do
+#        n=$(echo $f | sed 's/vgcore.\([0-9]\)/core.\1/')
+        n=core.$(basename $TEST)
+        mv $f $n
+    done
+elif [ $GEN_SUPPRESSIONS -eq 1 ]; then
+    RESULT=0
+fi
+
+if [ $RESULT -eq 75 ]; then
+    # Tell runtest about the failure by creating this marker file
+    touch runtests_failed
+    RESULT=1
+fi
+
+exit $RESULT

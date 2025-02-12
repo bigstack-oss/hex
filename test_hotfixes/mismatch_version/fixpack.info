@@ -1,0 +1,4 @@
+FIXPACK_ID="FIX_MIS_VERSION"
+FIXPACK_NAME="Mis-match Firmware Version"
+FIXPACK_DESCRIPTION="Fails on install, not logged"
+SUPPORTED_FIRMWARES="99.99.99 100.100.100"

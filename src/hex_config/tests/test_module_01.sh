@@ -1,0 +1,5 @@
+
+
+# Should succeed
+./$TEST --test
+

@@ -1,0 +1,51 @@
+#!/bin/bash
+# HEX SDK
+
+PROG=$(basename $0)
+
+if [ -f /etc/init_functions ]; then
+    . /etc/init_functions
+fi
+if [ -f /usr/lib/hex_sdk/functions ]; then
+    . /usr/lib/hex_sdk/functions
+fi
+if [ -f /usr/lib/hex_sdk/proj_functions ]; then
+    . /usr/lib/hex_sdk/proj_functions
+fi
+
+for sdk_sh in /usr/lib/hex_sdk/modules/*.sh; do
+    . $sdk_sh
+done 2>/dev/null
+
+Usage()
+{
+    cat <<EOF >&1
+Usage: $PROG <function>            run hex_sdk functions
+Functions:
+$(compgen -A function | grep -v '^_')
+Options:
+-x            enable trace mode
+-v            verbose/full output
+-f <format>   {pretty,json,line,value,shell} the output format, defaults to pretty
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || Usage
+
+VERBOSE=
+FORMAT=pretty
+
+while getopts "xvf:" OPT ; do
+    case $OPT in
+        x) set -x;;
+        v) VERBOSE=1 ;;
+        f) FORMAT=$OPTARG ;;
+        *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+CMD="$1"
+shift 1
+$CMD $@

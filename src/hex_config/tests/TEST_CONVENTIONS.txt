@@ -1,0 +1,7 @@
+
+System settings:        /etc/settings.sys
+Default settings:       /etc/settings.def
+Bad boot settings:      /etc/settings.bad
+Current boot settings:  /etc/settings.txt
+New settings:           ./test.txt
+Test-specific output:   ./test.out

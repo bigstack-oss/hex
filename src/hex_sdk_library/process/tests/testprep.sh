@@ -1,0 +1,2 @@
+
+killall daemontest || true

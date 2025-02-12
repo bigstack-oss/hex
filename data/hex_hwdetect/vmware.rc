@@ -1,0 +1,8 @@
+# Care only about disk drivers in switchroot_init
+if [ -n "$MINI_INIT" ]; then
+    modprobe ahci
+    modprobe vmw_pvscsi
+    modprobe sd_mod
+fi
+
+# Rely on drivers loaded by udev

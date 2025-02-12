@@ -1,0 +1,137 @@
+#!/bin/sh
+# HEX SDK
+
+# NOTE: Set DUMP_RPM_INFO=1 in the env to dump rpm dependencies, files list, pre/post scripts during install
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions 
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="	"
+BLDID_PATH="usr/lib/.build-id"
+
+Usage()
+{
+    echo "Usage: $PROG <root-dir> <rpm> ..."
+    exit 1
+}
+
+[ $# -ge 1 ] || Usage
+
+[ -d $1 ] || Usage
+ROOTDIR="$1"
+shift 1
+
+for RPM in $* ; do
+    [ -f $RPM ] || Error "file not found: $RPM"
+
+    BASE="$(dirname $RPM)/$(basename $RPM .rpm)"
+
+    # Run pre install script (if exists and non-empty)
+    PRE="${BASE}.pre"
+    if [ -f "$PRE" ]; then
+        if [ $(GetFileSize $PRE) -gt 0 ]; then
+            cp $PRE $ROOTDIR/tmp/preinstall
+            Quiet chroot $ROOTDIR /bin/sh /tmp/preinstall
+            rm -f $ROOTDIR/tmp/preinstall
+        fi
+    elif [ "$(rpm -qp --qf '%{prein}' $RPM)" != "(none)" ]; then
+        echo "$(basename $RPM .rpm): unaudited pre-install script"
+        if [ -n "$DUMP_RPM_INFO" ]; then
+            rpm -qp --qf '%{prein}\n' $RPM > $BASE.pre-new
+            echo $PROG: pre-install script dumped to $BASE.pre-new
+        fi
+    fi
+
+    # Install files with rpm2cpio into temp location
+    TEMPDIR=$(MakeTempDir)
+    PATTERN=
+    if [ "$ROOTFS_RPM" = "true" ]; then
+        if [ -f "${BASE}.include" ]; then
+            PATTERN=$(sed 's;^/;./;' "${BASE}.include")
+        else
+            Error "${BASE}.rpm: unaudited rpm package (missing include file)"
+        fi
+    fi
+
+    rpm2cpio $RPM | (cd $TEMPDIR && cpio -idu --quiet $PATTERN)
+
+    # We need to manually create the various directories, rather than having
+    # cpio do this for us.  The reason for this is that we have linked
+    # A to B, and if any RPM's attempt to install to A
+    # the original cpio command would clobber the link.
+
+    OWD=$PWD
+
+    cd $TEMPDIR
+    for dir in $(find . -path ./$BLDID_PATH -prune -false -o -type d); do
+        if [ ! -d $ROOTDIR/$dir -a ! -L $ROOTDIR/$dir ] ; then
+            mkdir -p $ROOTDIR/$dir
+            chmod $(stat -c %a $dir) $ROOTDIR/$dir
+            chown $(stat -c %U $dir) $ROOTDIR/$dir
+            chgrp $(stat -c %G $dir) $ROOTDIR/$dir
+        fi
+    done
+    cd $OWD
+
+    # Move remaining files to rootfs
+    (cd $TEMPDIR && find . -path ./$BLDID_PATH -prune -false -o ! -type d | cpio --quiet -pum $ROOTDIR)
+    rm -rf $TEMPDIR
+
+    # Run post install script (if exists and non-empty)
+    POST="${BASE}.post"
+    if [ -f "$POST" ]; then
+        if [ $(GetFileSize $POST) -gt 0 ]; then
+            cp $POST $ROOTDIR/tmp/postinstall
+            Quiet chroot $ROOTDIR /bin/sh /tmp/postinstall
+            rm -f $ROOTDIR/tmp/postinstall
+        fi
+    elif [ "$(rpm -qp --qf '%{postin}' $RPM)" != "(none)" ]; then
+        echo "$(basename $RPM .rpm): unaudited post-install script"
+        if [ -n "$DUMP_RPM_INFO" ]; then
+            rpm -qp --qf '%{postin}\n' $RPM > $BASE.post-new
+            echo $PROG: post-install script dumped to $BASE.post-new
+        fi
+    fi
+
+    # Save siglst files to be used for signing
+    SIGLST="${BASE}.siglst"
+    if [ -f $SIGLST ]; then
+        mkdir -p $ROOTDIR/etc/signing
+        cp $SIGLST $ROOTDIR/etc/signing
+    fi
+
+    # Check open source components for required documentation
+    ORIGIN=$(basename $(dirname $RPM))
+    if [ "$ORIGIN" = "oss" ]; then
+        SRPM=$(dirname $RPM)/$(rpm -qp --qf '%{sourcerpm}' $RPM)
+        [ -f $SRPM -o -f ${BASE}.srpm ] || echo "$(basename $RPM .rpm): missing source rpm: $SRPM"
+        #[ -f ${BASE}.ossc ] || echo "$(basename $RPM .rpm): missing ossc manifest" #FIXME: format not yet finalized
+    fi
+
+    # Save file/size/pkg for generating build report
+    # ORIGIN=$(basename $(dirname $RPM))
+    # TOTAL=0
+    # TEMP=$(MakeTemp)
+    # rpm -qlp $RPM | grep -v "$BLDID_PATH" > $TEMP
+    # while read FILE ; do
+    #     if [ -f "$ROOTDIR/$FILE" ]; then
+    #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
+    #         echo "RPM_FILE$_T_$FILE$_T_$SIZE$_T_$RPM" >> $ROOTDIR/package_files.tsv
+    #         TOTAL=$(( $TOTAL + $SIZE ))
+    #     fi
+    # done < $TEMP
+    # # Save package total
+    # # Ignore empty trigger rpms
+    # [ $TOTAL -eq 0 ] || echo "RPM$_T_$_T_$RPM$_T_$TOTAL$_T_$ORIGIN" >> $ROOTDIR/packages.tsv
+done
+
+exit 0
+

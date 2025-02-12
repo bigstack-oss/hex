@@ -1,0 +1,114 @@
+#!/bin/sh
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="	"
+
+Usage()
+{
+    echo "Usage: $PROG [<options>] <root-dir> <pkg> ..."
+    echo "-n                      no reinstall"
+    echo "-c <constraint_file>    Specify constraint file"
+    echo "-t <tag>                Specify build tag"
+    echo "-b                      download branch (git -b branch)"
+    echo "-d                      download from (git clone url)"
+    exit 1
+}
+
+PIP="python3 -m pip"
+GIT=git
+CMD=install
+PIPDIR=$(pwd)/PIPS
+CST_FILE=
+OPTIONS="--ignore-installed --cache-dir /PIPS"
+DOWNLOAD_FROM=
+
+while getopts "nc:t:d:b:" OPT ; do
+    case $OPT in
+    n) OPTIONS="";;
+    c) CST_FILE="$OPTARG" ;;
+    t) PIPDIR="$PIPDIR-$OPTARG" ;;
+    b) GIT_BRANCH="$OPTARG" ;;
+    d) DOWNLOAD_FROM="$OPTARG" ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -ge 1 ] || Usage
+
+[ -d $1 ] || Usage
+ROOTDIR="$1"
+CLEANUP=
+shift 1
+
+DownloadPkg()
+{
+    if [ -n "$DOWNLOAD_FROM" ]; then
+        cd $PIPDIR
+        for d in $DOWNLOAD_FROM; do
+            if [ ! -e $PIPDIR/${d##*/}/requirements.txt ]; then
+                for i in {1..10} ; do
+                    if $GIT clone -b $GIT_BRANCH $d ${d##*/} ; then
+                        break
+                    elif $GIT clone -b ${GIT_BRANCH/stable/unmaintained} $d ${d##*/} ; then
+                        break
+                    elif $GIT clone $d ${d##*/} ; then
+                        break
+                    else
+                        sleep 10
+                    fi
+                done
+            fi
+        done
+        cd -
+    fi
+}
+
+SetConstraint()
+{
+    if [ -n "$CST_FILE" ]; then
+        cp -f $CST_FILE $ROOTDIR/constraint.txt
+        OPTIONS="$OPTIONS -c /constraint.txt"
+        CLEANUP="$CLEANUP $ROOTDIR/constraint.txt"
+    fi
+}
+
+Cleanup()
+{
+    rm -rf $CLEANUP
+    RootfsDisableDns
+    RootfsDisableProxy
+    RootfsUnbind $(basename $PIPDIR)
+}
+
+trap Cleanup INT TERM EXIT
+
+RootfsEnableDns
+RootfsEnableProxy
+DownloadPkg
+RootfsBind $PIPDIR $(basename $PIPDIR)
+SetConstraint
+
+if [ -n "$DOWNLOAD_FROM" ]; then
+    for d in $DOWNLOAD_FROM; do
+        chroot $ROOTDIR /usr/bin/env XDG_CACHE_HOME=/PIPS sh -c "cd /PIPS/${d##*/} && $PIP $CMD $OPTIONS -r requirements.txt"
+        chroot $ROOTDIR /usr/bin/env XDG_CACHE_HOME=/PIPS sh -c "cd /PIPS/${d##*/} && python3 setup.py install"
+    done
+fi
+
+if [ -n "$*" ]; then
+    chroot $ROOTDIR /usr/bin/env XDG_CACHE_HOME=/PIPS sh -c "$PIP $CMD $OPTIONS $(for i in $*; do echo -n \"$i\"; echo -n " "; done)"
+fi
+
+exit 0

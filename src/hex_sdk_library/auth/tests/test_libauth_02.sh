@@ -1,0 +1,2 @@
+
+$TESTRUNNER ./authtest

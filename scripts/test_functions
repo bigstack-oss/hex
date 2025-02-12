@@ -1,0 +1,336 @@
+# HEX SDK
+# INTERRUPT is set to 1 by runtests if test is interrupted
+
+set +xv
+
+OVMF_PATH=/usr/share/edk2/ovmf
+OVMF_VARS=OVMF_VARS.fd
+
+# Usage: GetDaemon [ <daemon-name> ]
+GetDaemon()
+{
+    if [ -n "$1" ]; then
+        echo $1
+    elif [ -n "$daemon" ]; then
+        echo $daemon
+    else
+        # Missing $1 or $daemon
+        return 1
+    fi
+}
+
+# Usage: GetPid [ <daemon-name> ]
+# Reads daemon name from $daemon if not supplied as an argument.
+# Get the pid for a daemon (from its pidfile).  
+# Prints nothing if the file isn't there.
+GetPid()
+{
+    local name=$(GetDaemon $1)
+    case "$name" in
+    [0-9]*) 
+        echo $name 
+        ;;
+    *) 
+        local pidfile="/var/run/$name.pid"
+        cat $pidfile 2>/dev/null || true
+        ;;
+    esac
+}
+
+# Usage: WaitForStart [ <daemon-name> [ <timeout> ] ]
+# Wait for a daemon to be started
+# Process id of daemon is determined by its pidfile based on daemon name
+# Reads daemon name from $daemon if not supplied as an argument.
+# timeout defaults to 30 seconds if not specified.
+WaitForStart()
+{
+    local pid
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        sleep 1
+        local pid=$(GetPid $1)
+        if [ -n "$pid" ] ; then
+            # If kill -0 fails, pid is stale.  Keep waiting,
+            if kill -0 "$pid" 2>/dev/null ; then                
+                echo $pid
+                return 0
+            fi
+        fi
+        i=$(expr $i + 1)
+    done
+    # Pid file not found
+    return 1
+}
+
+# Set IGNORE_CRASHES=1 to ignore crash files during WaitFroStop
+IGNORE_CRASHES=0
+
+# Usage: WaitForStop [  ( <daemon-name> | <pid> ) [ timeout ] ]
+# Wait for a daemon to be stopped
+# If non-numeric daemon name is specified, process id of daemon is determined by its pidfile based on daemon name
+# Reads daemon name from $daemon if not supplied as an argument.
+# timeout defaults to 30 seconds if not specified.
+WaitForStop()
+{
+    local name=$(GetDaemon $1)
+    local pid=$(GetPid $name)
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    if [ -n "$pid" ]; then
+        # Try for $timeout seconds
+        local i=0
+        while [ $i -lt $timeout ]; do
+            [ "$INTERRUPT" -eq 1 ] && return 1
+            sleep 1
+            if ! kill -0 "$pid" 2>/dev/null ; then
+                if [ $IGNORE_CRASHES -eq 0 ]; then
+                    # Make sure it didn't crash
+                    [ ! -f "/var/support/crash_$name.$pid" ]
+                fi
+                return 0
+            fi
+            i=$(expr $i + 1)
+        done
+        # Process did not exit
+        return 1
+    fi
+    # No pid file; assume it's not running (therefore success)
+}
+
+# Usage: CrashInfo <daemon-name> <exe-name>
+# Checks for a hex-style crash file and decodes the stack if found
+CrashInfo()
+{
+    local crashinfo="${TOP_BLDDIR}/hex/bin/hex_crashinfo"
+    if [ -x "$crashinfo" ]; then
+        local name=$(GetDaemon $1)
+        local pid=$(GetPid $name)
+        local crashfile="/var/support/crash_$name.$pid"
+        if [ -f "$crashfile" ]; then
+            local tmpfile=crash_$name.$pid.tmp
+            $crashinfo $crashfile | tee $tmpfile
+            local stack="$(grep '^stack:' $tmpfile | cut -d: -f2)"
+            rm -f $tmpfile
+            local exe=${2:-$name}
+            local opts=""
+            local mapfile="/var/support/crashmap_$name.$pid"
+            if [ -f "$mapfile" ]; then
+                opts="-m $mapfile"
+            fi
+            python ${TOP_SRCDIR}/hex/scripts/stack2line.py -e $exe $opts $stack
+            return 1
+        fi
+    fi
+}
+
+# Usage: TerminateDaemon [ <daemon-name> [ <timeout> ] ]
+# Send SIGTERM to daemon and wait for it to stop
+# timeout defaults to 30 seconds if not specified.
+TerminateDaemon()
+{
+    local pid=$(GetPid $1)
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    if [ -n "$pid" ]; then
+        if kill -0 "$pid" 2>/dev/null ; then
+            kill $pid 2>/dev/null || true
+            WaitForStop "$1" $timeout || kill -9 $pid
+        fi
+    fi
+}
+
+# Usage: WaitForFile <file-name> [ <timeout> ]
+# Wait for a file (or unix domain socket) to get created
+# timeout defaults to 30 seconds if not specified.
+WaitForFile()
+{
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        # use -e to support any file type
+        if [ -e "$1" ] ; then
+            return 0
+        fi
+        sleep 1
+        i=$(expr $i + 1)
+    done
+    # File not found
+    return 1
+}
+
+# Usage: WaitForMessage <regex> <file-name> [ <timeout> ]
+# Wait for a message to appear in a file
+# timeout defaults to 30 seconds if not specified.
+WaitForMessage()
+{
+    local msg=$1
+    local file=$2
+    local timeout=60
+    [ -n "$3" ] && timeout="$3"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        sleep 1
+        if [ -e $file ] ; then
+            grep -q "$msg" $file && return 0
+        fi
+        i=$(expr $i + 1)
+    done
+    # Message not found
+    return 1
+}
+
+# Usage: WaitForProcessStart <process> [ <timeout> ]
+# Wait for a process to be started
+# Process id is determined by using 'pidof'
+# timeout defaults to 30 seconds if not specified.
+WaitForProcessStart()
+{
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        sleep 1
+        if [ -n "$(pidof $1 || true)" ] ; then
+            return 0
+        fi
+        i=$(expr $i + 1)
+    done
+    # Process not found
+    return 1
+}
+
+# Usage: WaitForProcessStop <process> [ <timeout> ]
+# Wait for a process to be stopped
+# Process id is determined by using 'pidof'
+# timeout defaults to 30 seconds if not specified.
+WaitForProcessStop()
+{
+    local timeout=30
+    [ -n "$2" ] && timeout="$2"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        sleep 1
+        if [ -z "$(pidof $1 || true)" ] ; then
+            return 0
+        fi
+        i=$(expr $i + 1)
+    done
+    # Process still running after timeout seconds
+    return 1
+}
+
+# Ping $1 once a second and stop as soon as you get a response
+Ping()
+{
+    local count=0
+    while [ $count -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        ping -c 1 -w 1 $1 >/dev/null && break
+        count=`expr $count + 1`
+    done
+}
+
+# Usage: WaitForLogEntry <regex> <db-file> <log-table> [ <timeout> ]
+# Wait for specified log entry to appear in the logdb.
+# A select '*' query is issued hence regex must take that into account.
+# timeout defaults to 30 seconds if not specified.
+WaitForLogEntry()
+{
+    local msg=$1
+    local db=$2
+    local logtable=$3
+    local timeout=30    
+    [ -n "$4" ] && timeout="$4"
+    local i=0
+    while [ $i -lt $timeout ]; do
+        [ "$INTERRUPT" -eq 1 ] && return 1
+        sleep 1
+        i=$(expr $i + 1)
+        log=`sqlite3 $db "select * from $logtable order by rowid desc limit 1" 2>&1` || true
+        [ -z "$log" ] && continue
+        echo $log | grep -E "$msg" && return 0   
+    done
+    
+    return 1
+}
+
+# Prepend a timestamp to each line read
+Tee()
+{
+    awk '{ printf "%s %s\n",strftime("%b %d %H:%M:%S"),$0; fflush() }' | tee $1
+}
+
+# Save VM as a tag at run time
+SaveVM()
+{
+    echo "savevm $1" | nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Load VM from a tag at run time
+LoadVM()
+{
+    echo "loadvm $1" | nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Delete device ID in KVM
+DeviceDel()
+{
+    echo "device_del $1" | nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Power down KVM
+SystemPowerdown()
+{
+    echo "system_powerdown" | timeout 3 nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Reset (reboot) KVM
+SystemReset()
+{
+    echo "system_reset" | timeout 3 nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Quit (terminate) KVM
+SystemQuit()
+{
+    echo "quit" | timeout 3 nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Save runtime VM in memory
+SaveVm()
+{
+    echo "delvm $TEST" | nc localhost $((TEST_PORT -1 )) >/dev/null
+    echo "savevm $TEST" | nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Create hdd snapshot
+SnapshotCreate()
+{
+    qemu-img snapshot -d $TEST $TEST_HDD 2>/dev/null || true
+    qemu-img snapshot -c $TEST $TEST_HDD
+}
+
+# Continue stopped VM
+Continue()
+{
+    echo "cont" | timeout 3 nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+# Stop running VM
+Stop()
+{
+    echo "stop" | timeout 3 nc localhost $((TEST_PORT -1 )) >/dev/null
+}
+
+#;;; Local Variables: ***
+#;;; mode:shell-script ***
+#;;; End: ***
+set -xv

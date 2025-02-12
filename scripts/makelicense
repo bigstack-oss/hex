@@ -1,0 +1,59 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG [ <options> ] <private-key> <passphrase> <license-file>"
+    echo "  -t                  trial license"
+    echo "  <license-file>      Output license file"
+    exit 1
+}
+
+TRIAL=0
+
+while getopts "t" OPT ; do
+    case $OPT in
+    t) TRIAL=1 ;;
+    *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 3 ] || Usage
+PRIVKEY=$1
+PASSPHRASE=$2
+LICENSE=$3
+
+LICENSE_DIR=$(dirname $LICENSE)
+LICENSE_NAME=$(basename $LICENSE)
+
+if [ ! -d $LICENSE_DIR ]; then
+    mkdir -p $LICENSE_DIR
+fi
+
+if [ $TRIAL -eq 1 ]; then
+cat <<EOF >${LICENSE_NAME}.dat
+license.type=trial
+issue.by=Bigstack Ltd.
+issue.to=Bigstack Ltd.
+issue.hardware=*
+issue.date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+expiry.date=$(date --date="30 days" -u +"%Y-%m-%d %H:%M:%S UTC")
+EOF
+fi
+
+openssl dgst -sha256 -sign $PRIVKEY -out ${LICENSE_NAME}.sig -passin pass:$PASSPHRASE ${LICENSE_NAME}.dat
+zip ${LICENSE}.license ${LICENSE_NAME}.dat ${LICENSE_NAME}.sig
+rm -f ${LICENSE_NAME}.dat ${LICENSE_NAME}.sig
+
+exit 0

@@ -1,0 +1,13 @@
+[Unit]
+Description=Hex System Service
+DefaultDependencies=no
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/etc/rc.sysinit
+TimeoutSec=infinity
+
+[Install]
+WantedBy=sysinit.target

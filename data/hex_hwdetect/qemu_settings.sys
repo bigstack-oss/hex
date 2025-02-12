@@ -1,0 +1,18 @@
+# QEMU
+
+# Should be overridden in project specific qemu_settings.sys with product name
+sys.model.name = QEMU
+
+# Live/Installer CDROM device
+sys.live.iso = /dev/cdrom
+
+# Installer settings
+sys.install.serial_console = 1
+
+# test out default settings with hex_install
+# sys.install.force.console = "console=tty0 console=ttyS0,115200n8"
+
+# Network interfaces
+sys.net.if.businfo.eth0 = 0000:00:03.0
+sys.net.if.label.eth0 = IF.1
+sys.net.if.description.eth0 = Interface 1

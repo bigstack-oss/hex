@@ -1,0 +1,3 @@
+FIXPACK_ID="FIX_002"
+FIXPACK_NAME="Success"
+FIXPACK_DESCRIPTION="A sample fixpack that touches a single file and backups hex_config"

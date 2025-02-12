@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# Utility script to get the uptime in seconds of the system or a process
+#
+PROG=$(basename $0)
+
+Usage()
+{
+    echo ""
+    echo "$PROG [ "system" | <pidFile> | <pid> ]"
+    echo ""
+    echo "  system : Get the uptime of the system, in seconds."
+    echo ""
+    echo "  pidFile: Get the uptime of the process identified by the pid in the pidFile, in seconds."
+    echo ""
+    echo "  pid    : Get the uptime of the process identified by the pid, in seconds."
+    echo ""
+    exit -1
+}
+
+###############################################################################
+#
+#                                   Main
+#
+###############################################################################
+if [ "$#" == "0" ]; then
+    proc="system"
+else
+    proc="$1"
+fi
+
+if [ $proc == "system" ]; then
+    # There are a few ways to get this, but basically we want the system
+    # uptime in seconds. Since we are going to use a certain style for 
+    # per-process uptime, we might as well use the same style for
+    # system uptime.
+    proc="1"
+fi
+
+if [ -f $proc ]; then
+    # we have a pidfile so use it to get the pid
+    pid=`cat $proc`
+else
+    # assume we have a pid
+    pid=$proc
+fi
+
+if [ -d /proc/$pid ]; then
+    # Get the process uptime in seconds by checking when the /proc/$pid
+    # was created
+    echo $(( $(date +'%s') - $(stat -c '%Y' /proc/$pid) ))
+    exit 0
+fi
+
+# if we get this far, we did not find anything
+Usage

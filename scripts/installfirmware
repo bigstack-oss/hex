@@ -1,0 +1,62 @@
+#!/bin/sh
+# HEX SDK
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ]; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+_T_="   "
+
+Usage()
+{
+    echo "Usage: $PROG <root-dir> <firmware-list> ..." >&2
+    exit 1
+}
+
+[ $# -ge 2 ] || Usage
+
+[ -d $1 ] || Usage
+
+if [[ "$1" = /* ]]; then
+    ROOTDIR=$1
+else
+    ROOTDIR=$(pwd)/$(basename $1)
+fi
+shift 1
+
+ORIGIN=hex
+ALL_COPIED=$ROOTDIR/$KERNEL_MODULE_DIR/.all
+TEMP=$(MakeTemp)
+for FWLIST in $* ; do
+    [ ! -e  $ALL_COPIED ] || break
+    set -o noglob
+    for pattern in $(cat $(readlink -fqn $FWLIST)); do
+        ptn=$(echo $pattern | sed 's/*/.*/g')
+        (cd /; rsync -aRKv $KERNEL_FIRMWARE_DIR $ROOTDIR/ >> $TEMP \;)
+        if [ "x$ptn" = "x.*" ]; then
+            touch $ALL_COPIED
+            break
+        fi
+    done
+    set +o noglob
+
+    # grep '^lib/firmware/.*' < $TEMP | while read FILE ; do
+    #     if [ -f $ROOTDIR/$FILE ]; then
+    #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
+    #         # FIRMWARE        ./lib/firmware/agere_sta_fw.bin 65046B
+    #         echo "FIRMWARE$_T_$_T_$FILE$_T_$SIZE" >> $ROOTDIR/package_files.tsv
+    #     fi
+    # done
+done
+
+# this script might be invoked multiple times
+# recompute size of all firmware after each invocation
+# [ -f $ROOTDIR/packages.tsv ] && sed -r -e '/.*FIRMWARE.*/d' -i $ROOTDIR/packages.tsv
+# echo "FIRMWARE$_T_$_T_$(du -sb $ROOTDIR/$KERNEL_FIRMWARE_DIR | awk '{print $1}')$_T_$ORIGIN" >> $ROOTDIR/packages.tsv
+
+exit 0
