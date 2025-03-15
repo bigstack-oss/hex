@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -44,141 +44,141 @@ SKIPNEWCGZ=0
 
 while getopts "iCrnlx:d:Ds" OPT ; do
     case $OPT in
-    i) INTERACTIVE=1 ;;
-    C) CHROOT=1 ;;
-    r) READONLY=1 ; SKIPDEBUG=1 ;;
-    l) LIST=1 ; READONLY=1 ;;
-    x) EXTRACT=1 ; EXTRACTLIST="$OPTARG" ; READONLY=1 ;;
-    d) NEWDEBUGIMG="$OPTARG" ;; 
-    D) SKIPDEBUG=1 ;;
-    s) SKIPNEWCGZ=1 ;;
-    *) Usage ;;
-    esac
-done
-shift $(($OPTIND - 1))
+	i) INTERACTIVE=1 ;;
+	C) CHROOT=1 ;;
+	r) READONLY=1 ; SKIPDEBUG=1 ;;
+	l) LIST=1 ; READONLY=1 ;;
+	x) EXTRACT=1 ; EXTRACTLIST="$OPTARG" ; READONLY=1 ;;
+	d) NEWDEBUGIMG="$OPTARG" ;; 
+	   D) SKIPDEBUG=1 ;;
+	      s) SKIPNEWCGZ=1 ;;
+	      *) Usage ;;
+	      esac
+	    done
+	      shift $(($OPTIND - 1))
 
-# Only one of -i, -C, -l, or -x should be specified at a time
-if [ $(( $INTERACTIVE + $CHROOT + $LIST + $EXTRACT )) -gt 1 ]; then
-    Usage 
-fi
+	      # Only one of -i, -C, -l, or -x should be specified at a time
+	      if [ $(( $INTERACTIVE + $CHROOT + $LIST + $EXTRACT )) -gt 1 ] ; then
+		  Usage 
+	      fi
 
-if [ $(( $INTERACTIVE + $CHROOT + $LIST + $EXTRACT )) -eq 0 ]; then
-    [ $# -ge 1 ] || Usage
-    INSTALL_CMD="$1"
-    shift 1
-fi
+	      if [ $(( $INTERACTIVE + $CHROOT + $LIST + $EXTRACT )) -eq 0 ] ; then
+		  [ $# -ge 1 ] || Usage
+		  INSTALL_CMD="$1"
+		  shift 1
+	      fi
 
-if [ $LIST -eq 1 ]; then
-    [ $# -eq 1 ] || Usage
-elif [ $EXTRACT -eq 1 ]; then
-    [ $# -eq 2 ] || Usage
-else
-    [ $# -eq 1 -o $# -eq 2 ] || Usage
-fi
+	      if [ $LIST -eq 1 ] ; then
+		  [ $# -eq 1 ] || Usage
+	      elif [ $EXTRACT -eq 1 ] ; then
+		  [ $# -eq 2 ] || Usage
+	      else
+		  [ $# -eq 1 -o $# -eq 2 ] || Usage
+	      fi
 
-[ -e $1 ] || Usage
-OLDIMG=$1
-[ -n "$OLDDEBUGIMG" ] || OLDDEBUGIMG="${OLDIMG%.*}_debug.cgz"
+	      [ -e $1 ] || Usage
+	      OLDIMG=$1
+	      [ -n "$OLDDEBUGIMG" ] || OLDDEBUGIMG="${OLDIMG%.*}_debug.cgz"
 
-if [ $# -eq 2 ]; then
-    NEWIMG=$2
-else
-    NEWIMG=$1
-fi
-[ -n "$NEWDEBUGIMG" ] || NEWDEBUGIMG="${NEWIMG%.*}_debug.cgz"
+	      if [ $# -eq 2 ] ; then
+		  NEWIMG=$2
+	      else
+		  NEWIMG=$1
+	      fi
+	      [ -n "$NEWDEBUGIMG" ] || NEWDEBUGIMG="${NEWIMG%.*}_debug.cgz"
 
-if [ $HEX_USETEMP -eq 1 ]; then
-    ROOTDIR=$(MakeTempDir)
-    chmod 755 $ROOTDIR
-    ExtractCgz $OLDIMG $ROOTDIR
-else
-    HEX_CLEANUP=0
-    ROOTDIR="${NEWIMG%.cgz}"
-    BASEDIR="${OLDIMG%.cgz}"
-    if [ ! -e $BASEDIR ]; then
-        mkdir -p $BASEDIR
-        chmod 755 $BASEDIR
-        ExtractCgz $OLDIMG $BASEDIR
-    fi
+	      if [ $HEX_USETEMP -eq 1 ] ; then
+		  ROOTDIR=$(MakeTempDir)
+		  chmod 755 $ROOTDIR
+		  ExtractCgz $OLDIMG $ROOTDIR
+	      else
+		  HEX_CLEANUP=0
+		  ROOTDIR="${NEWIMG%.cgz}"
+		  BASEDIR="${OLDIMG%.cgz}"
+		  if [ ! -e $BASEDIR ] ; then
+		      mkdir -p $BASEDIR
+		      chmod 755 $BASEDIR
+		      ExtractCgz $OLDIMG $BASEDIR
+		  fi
 
-    [ "x$(basename $BASEDIR)" = "x$ROOTDIR" ] || (rm -rf $ROOTDIR && mv $BASEDIR $ROOTDIR)
+		  [ "x$(basename $BASEDIR)" = "x$ROOTDIR" ] || (rm -rf $ROOTDIR && mv $BASEDIR $ROOTDIR)
 
-    # Remove half-baked static folders when interrupted by ctrl+c
-    trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
-fi
+		  # Remove half-baked static folders when interrupted by ctrl+c
+		  trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
+	      fi
 
 
-[ ! -f $OLDDEBUGIMG -o $SKIPDEBUG -eq 1 ] || ExtractCgz $OLDDEBUGIMG $ROOTDIR
+	      [ ! -f $OLDDEBUGIMG -o $SKIPDEBUG -eq 1 ] || ExtractCgz $OLDDEBUGIMG $ROOTDIR
 
-if [ $LIST -eq 1 ]; then
-    # Output sorted list of files followed by md5sum's
-    GenRootMd5 $ROOTDIR
-    exit 0
-elif [ $EXTRACT -eq 1 ]; then
-    TEMPDIR=$(MakeTempDir)
-    chmod 755 $TEMPDIR
-    # Copy listed files (ignoring mdsum's in 2nd column if present)
-    cat $EXTRACTLIST | awk '{ print $1 }' | (cd $ROOTDIR && cpio --quiet -pdum $TEMPDIR)
-    # Fix ownership of lmi directory
-    if [ -d $TEMPDIR/var/www/lmi ]; then
-        chown -R www-data:www-data $TEMPDIR/var/www/lmi
-    fi
-    CreateCgz $NEWIMG $TEMPDIR
-    exit 0
-elif [ $INTERACTIVE -eq 1 ]; then
-    if [ $READONLY -eq 1 ]; then
-        echo "Interactive mode (readonly)"
-    else
-        echo "Interactive mode"
-    fi
-    echo "Exit shell to umount rootfs image"
-    echo "Current directory: $(pwd)"
-    [ -n "$SHELL" ] || SHELL=/bin/sh
-    (cd $ROOTDIR && PS1="$PROG \$ " PS2="> " $SHELL)
-elif [ $CHROOT -eq 1 ]; then
-    if [ $READONLY -eq 1 ]; then
-        echo "Chroot mode (readonly)"
-    else
-        echo "Chroot mode"
-    fi
-    echo "Exit shell to umount rootfs image"
-    echo "Current directory: /"
-    SHELL=/bin/sh PS1="$PROG \$ " PS2="> " chroot $ROOTDIR
-else
-    eval $(echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g")
-fi
+	      if [ $LIST -eq 1 ] ; then
+		  # Output sorted list of files followed by md5sum's
+		  GenRootMd5 $ROOTDIR
+		  exit 0
+	      elif [ $EXTRACT -eq 1 ] ; then
+		  TEMPDIR=$(MakeTempDir)
+		  chmod 755 $TEMPDIR
+		  # Copy listed files (ignoring mdsum's in 2nd column if present)
+		  cat $EXTRACTLIST | awk '{ print $1 }' | (cd $ROOTDIR && cpio --quiet -pdum $TEMPDIR)
+		  # Fix ownership of lmi directory
+		  if [ -d $TEMPDIR/var/www/lmi ] ; then
+		      chown -R www-data:www-data $TEMPDIR/var/www/lmi
+		  fi
+		  CreateCgz $NEWIMG $TEMPDIR
+		  exit 0
+	      elif [ $INTERACTIVE -eq 1 ] ; then
+		  if [ $READONLY -eq 1 ] ; then
+		      echo "Interactive mode (readonly)"
+		  else
+		      echo "Interactive mode"
+		  fi
+		  echo "Exit shell to umount rootfs image"
+		  echo "Current directory: $(pwd)"
+		  [ -n "$SHELL" ] || SHELL=/bin/sh
+		  (cd $ROOTDIR && PS1="$PROG \$ " PS2="> " $SHELL)
+	      elif [ $CHROOT -eq 1 ] ; then
+		  if [ $READONLY -eq 1 ] ; then
+		      echo "Chroot mode (readonly)"
+		  else
+		      echo "Chroot mode"
+		  fi
+		  echo "Exit shell to umount rootfs image"
+		  echo "Current directory: /"
+		  SHELL=/bin/sh PS1="$PROG \$ " PS2="> " chroot $ROOTDIR
+	      else
+		  eval $(echo $INSTALL_CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g")
+	      fi
 
-[ $READONLY -eq 0 ] || exit 0
+	      [ $READONLY -eq 0 ] || exit 0
 
-# Update dynamic linker config
-# (Do not fail if /etc/ld.so.conf/ld.so.cache do not exist, we might be building a fixpack)
-ldconfig -r $ROOTDIR >/dev/null 2>&1 || true
+	      # Update dynamic linker config
+	      # (Do not fail if /etc/ld.so.conf/ld.so.cache do not exist, we might be building a fixpack)
+	      ldconfig -r $ROOTDIR >/dev/null 2>&1 || true
 
-# Create the debug Cgz
-[ $SKIPDEBUG -eq 1 ] || CreateCgz $NEWDEBUGIMG $ROOTDIR "-name *.debug"
-find $ROOTDIR -name \*.debug | xargs rm -rf
+	      # Create the debug Cgz
+	      [ $SKIPDEBUG -eq 1 ] || CreateCgz $NEWDEBUGIMG $ROOTDIR "-name *.debug"
+	      find $ROOTDIR -name \*.debug | xargs rm -rf
 
-if [ $SKIPNEWCGZ -eq 0 ]; then
-    ROOTFS_SIZE=$(du -sk $ROOTDIR | awk '{print $1}')
-    echo ${ROOTFS_SIZE}KB > $NEWIMG.size
+	      if [ $SKIPNEWCGZ -eq 0 ] ; then
+		  ROOTFS_SIZE=$(du -sk $ROOTDIR | awk '{print $1}')
+		  echo ${ROOTFS_SIZE}KB > $NEWIMG.size
 
-    FINDARGS=
-    # fat32 has file size limit of 4GB
-    if [ $ROOTFS_SIZE -gt 8388608 ]; then
-	# first level folders > 1GB under / are compressed into seperate .cgz
-	SPLITCNT=0
-	for BDIR in $(cd $ROOTDIR; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 1024 { print $2 }'); do
-	    (( SPLITCNT+=1 ))
-	    FINDARGS+=" -path $BDIR -prune -o"
-	    SPLITIMG=${ROOTDIR}_${SPLITCNT}.cgz
-	    CreateCgz $SPLITIMG $ROOTDIR "$BDIR"
-	done
-	if [ $SPLITCNT -gt 0 ]; then
-	    CreateCgz ${ROOTDIR}_0.cgz $ROOTDIR "$FINDARGS -print"
-	fi
-    fi
+		  FINDARGS=
+		  # fat32 has file size limit of 4GB
+		  if [ $ROOTFS_SIZE -gt 8388608 ] ; then
+		      # first level folders > 1GB under / are compressed into seperate .cgz
+		      SPLITCNT=0
+		      for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 1024 { print $2 }') ; do
+			  (( SPLITCNT+=1 ))
+			  FINDARGS+=" -path $BDIR -prune -o"
+			  SPLITIMG=${ROOTDIR}_${SPLITCNT}.cgz
+			  CreateCgz $SPLITIMG $ROOTDIR "$BDIR"
+		      done
+		      if [ $SPLITCNT -gt 0 ] ; then
+			  CreateCgz ${ROOTDIR}_0.cgz $ROOTDIR "$FINDARGS -print"
+		      fi
+		  fi
 
-    CreateCgz $NEWIMG $ROOTDIR
-fi
+		  CreateCgz $NEWIMG $ROOTDIR
+	      fi
 
-exit 0
+	      exit 0

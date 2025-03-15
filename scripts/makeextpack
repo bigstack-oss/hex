@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2

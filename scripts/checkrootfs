@@ -10,97 +10,97 @@
 FAILED=$0.failed
 rm -f $FAILED
 
-if [ ! -x /usr/bin/readelf ]; then
+if [ ! -x /usr/bin/readelf ] ; then
     echo "/usr/bin/readelf: missing"
     touch $FAILED
 fi
 
-if [ ! -f /usr/bin/ldd ]; then
+if [ ! -f /usr/bin/ldd ] ; then
     echo "/usr/bin/ldd: missing"
     touch $FAILED
 fi
 
 find . -print |
-while read i ; do
-    case "$i" in
-    *.a)
-        # Find static libraries
-        echo "$i: static library"
-        touch $FAILED
-        ;;
-    # Don't check if .ko files are stripped
-    *.ko) ;;
-    *)
-        # Find unstripped binaries/libraries
-        # Don't report more than once if symlinked
-        if [ ! -h "$i" ]; then
-            if /usr/bin/readelf -s $i 2>/dev/null | grep '\.symtab' >/dev/null 2>&1 ; then
-                true
-                #FIXME echo "$i: not stripped"
-                #FIXME touch $FAILED
-            fi
-        fi
-        ;;
-    esac
-
-    # Find broken symbolic links
-    if [ -h "$i" -a ! -e "$i" ]; then
-        ls -l $i | awk '{printf "%s -> %s: broken link\n", $9, $11}'
-        touch $FAILED
-    fi
-
-    # Find missing shared libraries
-    if [ -f "$i" -a -x "$i" ]; then
-        sh /usr/bin/ldd "$i" 2>/dev/null | grep 'not found' | awk '{print $1}' |
-        while read j ; do
-            true
-            echo "$i: $j: missing shared library"
-            touch $FAILED
-        done
-    fi
-
-    # Find bad owner and group
-    ls -ld "$i" | awk '{print $3, $4}' |
-    while read owner group ; do
-        OK=0
-        case "$owner:$group" in
-        root:root) OK=1 ;;
-        root:www-data) OK=1 ;;
-        www-data:www-data) OK=1 ;;
+    while read i ; do
+        case "$i" in
+            *.a)
+                # Find static libraries
+                echo "$i: static library"
+                touch $FAILED
+                ;;
+            # Don't check if .ko files are stripped
+            *.ko) ;;
+            *)
+                # Find unstripped binaries/libraries
+                # Don't report more than once if symlinked
+                if [ ! -h "$i" ] ; then
+                    if /usr/bin/readelf -s $i 2>/dev/null | grep '\.symtab' >/dev/null 2>&1 ; then
+                        true
+                        #FIXME echo "$i: not stripped"
+                        #FIXME touch $FAILED
+                    fi
+                fi
+                ;;
         esac
-        if [ $OK -eq 0 ]; then
-            echo "$i: bad owner/group: $owner:$group"
+
+        # Find broken symbolic links
+        if [ -h "$i" -a ! -e "$i" ] ; then
+            ls -l $i | awk '{printf "%s -> %s: broken link\n", $9, $11}'
             touch $FAILED
         fi
-    done
-done | sort | uniq
+
+        # Find missing shared libraries
+        if [ -f "$i" -a -x "$i" ] ; then
+            sh /usr/bin/ldd "$i" 2>/dev/null | grep 'not found' | awk '{print $1}' |
+                while read j ; do
+                    true
+                    echo "$i: $j: missing shared library"
+                    touch $FAILED
+                done
+        fi
+
+        # Find bad owner and group
+        ls -ld "$i" | awk '{print $3, $4}' |
+            while read owner group ; do
+                OK=0
+                case "$owner:$group" in
+                    root:root) OK=1 ;;
+                    root:www-data) OK=1 ;;
+                    www-data:www-data) OK=1 ;;
+                esac
+                if [ $OK -eq 0 ] ; then
+                    echo "$i: bad owner/group: $owner:$group"
+                    touch $FAILED
+                fi
+            done
+    done | sort | uniq
 
 cat /usr/share/busybox/busybox.links |
-while read i ; do
-    OK=0
-    if [ -h "$i" ]; then
-        case "$(readlink $i)" in
-        *busybox) OK=1 ;;
-        esac
-    fi
-    if [ $OK -eq 0 ]; then
-        true
-        #echo "$i: warning: busybox applet overwritten by: $(rpm -qf $i)"
-        #FIXME echo "$i: busybox applet overwritten by: $(rpm -qf $i)"
-        #FIXME touch $FAILED
-    fi
-done
+    while read i ; do
+        OK=0
+        if [ -h "$i" ] ; then
+            case "$(readlink $i)" in
+                *busybox) OK=1 ;;
+            esac
+        fi
+        if [ $OK -eq 0 ] ; then
+            true
+            #echo "$i: warning: busybox applet overwritten by: $(rpm -qf $i)"
+            #FIXME echo "$i: busybox applet overwritten by: $(rpm -qf $i)"
+            #FIXME touch $FAILED
+        fi
+    done
 
 # Check if the following directories exist and contain files
 for dir in /etc/sysconfig /etc/rc.d /usr/share/doc /usr/share/info /usr/share/man ; do
-    if [ -n "$(find $dir -type f 2>/dev/null)" ]; then
+    if [ -n "$(find $dir -type f 2>/dev/null)" ] ; then
         echo "$dir: unnecessary files, please update exclude files"
         find $dir -type f 2>/dev/null
         touch $FAILED
     fi
 done
 
-if [ -f $FAILED ]; then
+if [ -f $FAILED ] ; then
     exit 1
 else
     exit 0

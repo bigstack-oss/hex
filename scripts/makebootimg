@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -49,16 +49,16 @@ Usage() {
 
 while getopts "s:p:c:qnb:k:S:CT" OPT ; do
     case $OPT in
-    s) IMG_SIZE="$OPTARG" ;;
-    p) PADDING="$OPTARG" ;;
-    c) INSTALL_CMD="$OPTARG" ;;
-    q) QUIET=1 ;;
-    b) BUNDLE="$OPTARG" ;;
-    k) KARGS="$OPTARG " ;;
-    S) CONSOLE_SPEED="$OPTARG" ;;
-    C) SERIAL_CONSOLE=0 ; CONSOLE_ARGS="" ;;
-    T) TIMEOUT=1 ;;
-    *) Usage ;;
+	s) IMG_SIZE="$OPTARG" ;;
+	p) PADDING="$OPTARG" ;;
+	c) INSTALL_CMD="$OPTARG" ;;
+	q) QUIET=1 ;;
+	b) BUNDLE="$OPTARG" ;;
+	k) KARGS="$OPTARG " ;;
+	S) CONSOLE_SPEED="$OPTARG" ;;
+	C) SERIAL_CONSOLE=0 ; CONSOLE_ARGS="" ;;
+	T) TIMEOUT=1 ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -69,7 +69,7 @@ KERNEL=$2
 INITRD=$3
 IMG=$4
 
-if [ $QUIET -eq 1 ]; then
+if [ $QUIET -eq 1 ] ; then
     QUIET_FLAG="quiet"
 else
     QUIET_FLAG=""
@@ -85,22 +85,22 @@ else
     Error "Unsupported image type"
 fi
 
-if [ -f /usr/bin/syslinux ]; then
+if [ -f /usr/bin/syslinux ] ; then
     SYSLINUX_BIN=/usr/bin/syslinux
 else
     Error "Could not find syslinux binary"
 fi
-if [ -f /usr/share/syslinux/mbr.bin ]; then
+if [ -f /usr/share/syslinux/mbr.bin ] ; then
     MBR_BIN=/usr/share/syslinux/mbr.bin
 else
     Error "Could not find mbr.bin"
 fi
-if [ -f /usr/share/syslinux/isolinux.bin ]; then
+if [ -f /usr/share/syslinux/isolinux.bin ] ; then
     ISO_BIN=/usr/share/syslinux/isolinux.bin
 else
     Error "Could not find isolinux.bin"
 fi
-if [ -f /usr/share/syslinux/ldlinux.c32 ]; then
+if [ -f /usr/share/syslinux/ldlinux.c32 ] ; then
     LDLINUX_C32=/usr/share/syslinux/ldlinux.c32
 else
     Error "Could not find ldlinux.c32"
@@ -134,8 +134,8 @@ INITRD_SIZE=$(( ( $(GetFileSize $INITRD) + 1023 ) / 1024 ))
 
 # mkisofs will create the image for us from a temp directory
 if [ "$BOOTLOADER" != "isolinux" ] ; then
-    if [ -z "$IMG_SIZE" ]; then
-        if [ -z "$BUNDLE" ]; then
+    if [ -z "$IMG_SIZE" ] ; then
+        if [ -z "$BUNDLE" ] ; then
             BUNDLE_SIZE=0
         else
             BUNDLE_SIZE=0
@@ -213,7 +213,7 @@ Type "boothdd" to boot from hard drive.
 EOF
 
     touch $TEMPDIR/isolinux/isolinux.cfg
-    if [ $SERIAL_CONSOLE -eq 1 ]; then
+    if [ $SERIAL_CONSOLE -eq 1 ] ; then
         cat >>$TEMPDIR/isolinux/isolinux.cfg <<EOF
 SERIAL 0 $CONSOLE_SPEED 0x003
 EOF
@@ -255,7 +255,7 @@ Type "boothdd" to boot from hard drive.
 EOF
 
     touch $TEMPDIR/syslinux.cfg
-    if [ $SERIAL_CONSOLE -eq 1 ]; then
+    if [ $SERIAL_CONSOLE -eq 1 ] ; then
         cat >>$TEMPDIR/syslinux.cfg <<EOF
 SERIAL 0 $CONSOLE_SPEED 0x003
 EOF
@@ -301,7 +301,7 @@ else
 default=0
 EOF
 
-    if [ $QUIET -eq 1 ]; then
+    if [ $QUIET -eq 1 ] ; then
         cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
 timeout=0
 EOF
@@ -309,7 +309,7 @@ EOF
         cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
 timeout=1
 EOF
-        if [ $SERIAL_CONSOLE -eq 1 ]; then
+        if [ $SERIAL_CONSOLE -eq 1 ] ; then
             cat <<EOF >>$TEMPDIR/boot/grub2/grub.cfg
 serial --unit=0 --speed=$CONSOLE_SPEED
 terminal --timeout=1 serial console

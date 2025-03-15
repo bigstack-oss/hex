@@ -3,7 +3,7 @@
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -22,7 +22,7 @@ Usage()
 
 [ -d $1 ] || Usage
 
-if [[ "$1" = /* ]]; then
+if [[ "$1" = /* ]] ; then
     ROOTDIR=$1
 else
     ROOTDIR=$(pwd)/$(basename $1)
@@ -35,10 +35,10 @@ TEMP=$(MakeTemp)
 for FWLIST in $* ; do
     [ ! -e  $ALL_COPIED ] || break
     set -o noglob
-    for pattern in $(cat $(readlink -fqn $FWLIST)); do
+    for pattern in $(cat $(readlink -fqn $FWLIST)) ; do
         ptn=$(echo $pattern | sed 's/*/.*/g')
-        (cd /; rsync -aRKv $KERNEL_FIRMWARE_DIR $ROOTDIR/ >> $TEMP \;)
-        if [ "x$ptn" = "x.*" ]; then
+        (cd / ; rsync -aRKv $KERNEL_FIRMWARE_DIR $ROOTDIR/ >> $TEMP \;)
+        if [ "x$ptn" = "x.*" ] ; then
             touch $ALL_COPIED
             break
         fi
@@ -46,7 +46,7 @@ for FWLIST in $* ; do
     set +o noglob
 
     # grep '^lib/firmware/.*' < $TEMP | while read FILE ; do
-    #     if [ -f $ROOTDIR/$FILE ]; then
+    #     if [ -f $ROOTDIR/$FILE ] ; then
     #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
     #         # FIRMWARE        ./lib/firmware/agere_sta_fw.bin 65046B
     #         echo "FIRMWARE$_T_$_T_$FILE$_T_$SIZE" >> $ROOTDIR/package_files.tsv

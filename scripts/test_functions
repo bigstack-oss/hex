@@ -9,9 +9,9 @@ OVMF_VARS=OVMF_VARS.fd
 # Usage: GetDaemon [ <daemon-name> ]
 GetDaemon()
 {
-    if [ -n "$1" ]; then
+    if [ -n "$1" ] ; then
         echo $1
-    elif [ -n "$daemon" ]; then
+    elif [ -n "$daemon" ] ; then
         echo $daemon
     else
         # Missing $1 or $daemon
@@ -27,13 +27,13 @@ GetPid()
 {
     local name=$(GetDaemon $1)
     case "$name" in
-    [0-9]*) 
-        echo $name 
-        ;;
-    *) 
-        local pidfile="/var/run/$name.pid"
-        cat $pidfile 2>/dev/null || true
-        ;;
+	[0-9]*) 
+            echo $name 
+            ;;
+	*) 
+            local pidfile="/var/run/$name.pid"
+            cat $pidfile 2>/dev/null || true
+            ;;
     esac
 }
 
@@ -48,7 +48,7 @@ WaitForStart()
     local timeout=30
     [ -n "$2" ] && timeout="$2"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         sleep 1
         local pid=$(GetPid $1)
@@ -79,14 +79,14 @@ WaitForStop()
     local pid=$(GetPid $name)
     local timeout=30
     [ -n "$2" ] && timeout="$2"
-    if [ -n "$pid" ]; then
+    if [ -n "$pid" ] ; then
         # Try for $timeout seconds
         local i=0
-        while [ $i -lt $timeout ]; do
+        while [ $i -lt $timeout ] ; do
             [ "$INTERRUPT" -eq 1 ] && return 1
             sleep 1
             if ! kill -0 "$pid" 2>/dev/null ; then
-                if [ $IGNORE_CRASHES -eq 0 ]; then
+                if [ $IGNORE_CRASHES -eq 0 ] ; then
                     # Make sure it didn't crash
                     [ ! -f "/var/support/crash_$name.$pid" ]
                 fi
@@ -97,7 +97,7 @@ WaitForStop()
         # Process did not exit
         return 1
     fi
-    # No pid file; assume it's not running (therefore success)
+    # No pid file ; assume it's not running (therefore success)
 }
 
 # Usage: CrashInfo <daemon-name> <exe-name>
@@ -105,11 +105,11 @@ WaitForStop()
 CrashInfo()
 {
     local crashinfo="${TOP_BLDDIR}/hex/bin/hex_crashinfo"
-    if [ -x "$crashinfo" ]; then
+    if [ -x "$crashinfo" ] ; then
         local name=$(GetDaemon $1)
         local pid=$(GetPid $name)
         local crashfile="/var/support/crash_$name.$pid"
-        if [ -f "$crashfile" ]; then
+        if [ -f "$crashfile" ] ; then
             local tmpfile=crash_$name.$pid.tmp
             $crashinfo $crashfile | tee $tmpfile
             local stack="$(grep '^stack:' $tmpfile | cut -d: -f2)"
@@ -117,7 +117,7 @@ CrashInfo()
             local exe=${2:-$name}
             local opts=""
             local mapfile="/var/support/crashmap_$name.$pid"
-            if [ -f "$mapfile" ]; then
+            if [ -f "$mapfile" ] ; then
                 opts="-m $mapfile"
             fi
             python ${TOP_SRCDIR}/hex/scripts/stack2line.py -e $exe $opts $stack
@@ -134,7 +134,7 @@ TerminateDaemon()
     local pid=$(GetPid $1)
     local timeout=30
     [ -n "$2" ] && timeout="$2"
-    if [ -n "$pid" ]; then
+    if [ -n "$pid" ] ; then
         if kill -0 "$pid" 2>/dev/null ; then
             kill $pid 2>/dev/null || true
             WaitForStop "$1" $timeout || kill -9 $pid
@@ -150,7 +150,7 @@ WaitForFile()
     local timeout=30
     [ -n "$2" ] && timeout="$2"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         # use -e to support any file type
         if [ -e "$1" ] ; then
@@ -173,7 +173,7 @@ WaitForMessage()
     local timeout=60
     [ -n "$3" ] && timeout="$3"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         sleep 1
         if [ -e $file ] ; then
@@ -194,7 +194,7 @@ WaitForProcessStart()
     local timeout=30
     [ -n "$2" ] && timeout="$2"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         sleep 1
         if [ -n "$(pidof $1 || true)" ] ; then
@@ -215,7 +215,7 @@ WaitForProcessStop()
     local timeout=30
     [ -n "$2" ] && timeout="$2"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         sleep 1
         if [ -z "$(pidof $1 || true)" ] ; then
@@ -231,7 +231,7 @@ WaitForProcessStop()
 Ping()
 {
     local count=0
-    while [ $count -lt $timeout ]; do
+    while [ $count -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         ping -c 1 -w 1 $1 >/dev/null && break
         count=`expr $count + 1`
@@ -250,7 +250,7 @@ WaitForLogEntry()
     local timeout=30    
     [ -n "$4" ] && timeout="$4"
     local i=0
-    while [ $i -lt $timeout ]; do
+    while [ $i -lt $timeout ] ; do
         [ "$INTERRUPT" -eq 1 ] && return 1
         sleep 1
         i=$(expr $i + 1)
@@ -265,7 +265,7 @@ WaitForLogEntry()
 # Prepend a timestamp to each line read
 Tee()
 {
-    awk '{ printf "%s %s\n",strftime("%b %d %H:%M:%S"),$0; fflush() }' | tee $1
+    awk '{ printf "%s %s\n",strftime("%b %d %H:%M:%S"),$0 ; fflush() }' | tee $1
 }
 
 # Save VM as a tag at run time

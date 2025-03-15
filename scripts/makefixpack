@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -40,15 +40,15 @@ FIXPACKNAME=
 
 while getopts "p:nub:a:d:i:l:" OPT ; do
     case $OPT in
-    n) NOSIGN=1 ;;
-    u) NOREMOVE=1 ;;
-    p) PADDING="$OPTARG" ;;
-    b) PRE_INSTALL_SCRIPT="$OPTARG" ;;
-    a) POST_INSTALL_SCRIPT="$OPTARG" ;;
-    d) FIXPACKDESCRIPTION="$OPTARG" ;;
-    l) FIXPACKNAME="$OPTARG" ;;
-    i) FIXPACKID="$OPTARG" ;;
-    *) Usage ;;
+	n) NOSIGN=1 ;;
+	u) NOREMOVE=1 ;;
+	p) PADDING="$OPTARG" ;;
+	b) PRE_INSTALL_SCRIPT="$OPTARG" ;;
+	a) POST_INSTALL_SCRIPT="$OPTARG" ;;
+	d) FIXPACKDESCRIPTION="$OPTARG" ;;
+	l) FIXPACKNAME="$OPTARG" ;;
+	i) FIXPACKID="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -77,9 +77,9 @@ set +xe
 list=$(cd $OLDTEMPDIR ; find etc/policies usr/lib/hex_sdk usr/lib64 var/www -type f ; find usr/sbin -type f -name 'hex_*')
 
 # look for any update and removed files
-for file in $list; do
-   diff -q $OLDTEMPDIR/$file $NEWTEMPDIR/$file >/dev/null 2>&1
-   case $? in
+for file in $list ; do
+    diff -q $OLDTEMPDIR/$file $NEWTEMPDIR/$file >/dev/null 2>&1
+    case $? in
         1) echo "$file" >> $backup
            echo "$file" >> $changed;;
         2) echo "$file" >> $backup
@@ -89,8 +89,8 @@ done
 
 # look for any new files
 list=$(cd $NEWTEMPDIR ; find etc/policies usr/lib/hex_sdk usr/lib64 var/www -type f ; find usr/sbin -type f -name 'hex_*')
-for file in $list; do
-    if [ ! -e $OLDTEMPDIR/$file ]; then
+for file in $list ; do
+    if [ ! -e $OLDTEMPDIR/$file ] ; then
         echo $file >> $new
     fi
 done
@@ -118,7 +118,7 @@ do
 done <$new
 
 #create manifest for fixpack
-(cd $TEMPROOTFSDIR; find . -type f > $FIXPACKTEMPDIR/manifest)
+(cd $TEMPROOTFSDIR ; find . -type f > $FIXPACKTEMPDIR/manifest)
 
 #now create and rootfs.cgz
 CreateCgz $FIXPACKTEMPDIR/rootfs.cgz $TEMPROOTFSDIR

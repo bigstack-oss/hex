@@ -5,7 +5,7 @@
 
 PROG=`basename $0`
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f ${HEX_SCRIPTSDIR}/functions ]; then
+if [ -f ${HEX_SCRIPTSDIR}/functions ] ; then
     . ${HEX_SCRIPTSDIR}/functions 
 else
     echo "${PROG}: functions not found" >&2
@@ -25,32 +25,32 @@ INTERACTIVE=0
 
 while getopts "vi" OPT ; do
     case $OPT in
-    v) VERBOSE=1 ;;
-    i) INTERACTIVE=1 ;;
-    *) Usage ;;
+        v) VERBOSE=1 ;;
+        i) INTERACTIVE=1 ;;
+        *) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
 
-if [ -z "$SRCDIR" ]; then
+if [ -z "$SRCDIR" ] ; then
     echo "Error: $PROG: SRCDIR not set" >&2
     exit 1
 fi
 TRAP_ERR=1
 
 # Must be run inside qemu...
-if dmesg | grep 'QEMU HARDDISK' >/dev/null 2>&1; then 
+if dmesg | grep 'QEMU HARDDISK' >/dev/null 2>&1 ; then 
     # Busybox ash doesn't support trap on ERR
     TRAP_ERR=0
 else
     # or as root inside build jail
-    if [ "$EUID" != 0 ]; then
+    if [ "$EUID" != 0 ] ; then
         echo
         echo "Error: Must be run as root" >&2
         exit 1
     fi
 
-    if [ x$(printenv DEVOPS_ENV) != 'x__JAIL__' ]; then
+    if [ x$(printenv DEVOPS_ENV) != 'x__JAIL__' ] ; then
         echo
         echo "Error: Must be run in QEMU or build jail" >&2
         exit 1
@@ -71,11 +71,11 @@ set -o pipefail
 
 EmitError()
 {
-    if [ -f $SRCDIR/$TEST.sh ]; then 
+    if [ -f $SRCDIR/$TEST.sh ] ; then 
         echo "$SRCDIR/$TEST.sh:1: error: $*"
-    elif [ -f $SRCDIR/$TEST.c ]; then 
+    elif [ -f $SRCDIR/$TEST.c ] ; then 
         echo "$SRCDIR/$TEST.c:1: error: $*"
-    elif [ -f $SRCDIR/$TEST.cpp ]; then 
+    elif [ -f $SRCDIR/$TEST.cpp ] ; then 
         echo "$SRCDIR/$TEST.cpp:1: error: $*"
     fi
 }
@@ -89,155 +89,155 @@ RunTest()
         set -xv
         rm -f /var/support/crash_* /var/support/crashmap_* /var/support/map_* /var/support/core*
 
-	source ${HEX_SCRIPTSDIR}/test_functions
-        if [ -f $SRCDIR/testprep.sh ]; then source $SRCDIR/testprep.sh ; fi
+        source ${HEX_SCRIPTSDIR}/test_functions
+        if [ -f $SRCDIR/testprep.sh ] ; then source $SRCDIR/testprep.sh ; fi
 
-	TNET_PORT=1100
-	# When TEST_REUSE is set, connect directly to telnet port of the existing process
-	if [ -n "$TEST_REUSE" ] ; then
-	    export TEST_PORT="$(($TNET_PORT + $(echo ${TEST_REUSE/_0/_} | cut -d '_' -f2)))1"
-	else
-	    export TEST_PORT="$(($TNET_PORT + $(echo ${TEST/_0/_} | cut -d '_' -f2)))1"
-	fi
+        TNET_PORT=1100
+        # When TEST_REUSE is set, connect directly to telnet port of the existing process
+        if [ -n "$TEST_REUSE" ] ; then
+            export TEST_PORT="$(($TNET_PORT + $(echo ${TEST_REUSE/_0/_} | cut -d '_' -f2)))1"
+        else
+            export TEST_PORT="$(($TNET_PORT + $(echo ${TEST/_0/_} | cut -d '_' -f2)))1"
+        fi
 
-	FMT="raw"
-	if [ -n "$TEST_HDD" ] ; then
-	    if [[ $TEST_HDD =~ qcow2 ]]; then FMT="qcow2" ; fi
-	    [ -e ${TEST_HDD%/*} ] || mkdir -p ${TEST_HDD%/*}
-	    [ -e $TEST_HDD ] || qemu-img create -f $FMT $TEST_HDD 200G
-	    if [[ ${TEST_HDD%/hdd/*} =~ uefi ]]; then [ -e ${TEST_HDD%/*}/$OVMF_VARS ] || cp -f $OVMF_PATH/$OVMF_VARS ${TEST_HDD%/*}/ ; fi
-	fi
+        FMT="raw"
+        if [ -n "$TEST_HDD" ] ; then
+            if [[ $TEST_HDD =~ qcow2 ]] ; then FMT="qcow2" ; fi
+            [ -e ${TEST_HDD%/*} ] || mkdir -p ${TEST_HDD%/*}
+            [ -e $TEST_HDD ] || qemu-img create -f $FMT $TEST_HDD 200G
+            if [[ ${TEST_HDD%/hdd/*} =~ uefi ]] ; then [ -e ${TEST_HDD%/*}/$OVMF_VARS ] || cp -f $OVMF_PATH/$OVMF_VARS ${TEST_HDD%/*}/ ; fi
+        fi
 
-	local CNT=0
-	while [ $((CNT)) -lt ${TEST_DATA_HDD_N:-0} ]; do
-	    ((CNT++))
-	    DATA_HDD_DST=${TEST}.hdd${CNT}
-	    DATA_HDD_SRC=${TEST_HDD%.*}.hdd${CNT}
-	    if [ -n "$TEST_REUSE" ]; then
-		:
-	    elif [ -e $DATA_HDD_SRC ]; then
-		[ -e $DATA_HDD_DST ] || cp $DATA_HDD_SRC $DATA_HDD_DST
-	    else
-		qemu-img create -f $FMT $DATA_HDD_SRC 100G
-		ln -sf $DATA_HDD_SRC $DATA_HDD_DST
-	    fi
-	done
+        local CNT=0
+        while [ $((CNT)) -lt ${TEST_DATA_HDD_N:-0} ] ; do
+            ((CNT++))
+            DATA_HDD_DST=${TEST}.hdd${CNT}
+            DATA_HDD_SRC=${TEST_HDD%.*}.hdd${CNT}
+            if [ -n "$TEST_REUSE" ] ; then
+                :
+            elif [ -e $DATA_HDD_SRC ] ; then
+                [ -e $DATA_HDD_DST ] || cp $DATA_HDD_SRC $DATA_HDD_DST
+            else
+                qemu-img create -f $FMT $DATA_HDD_SRC 100G
+                ln -sf $DATA_HDD_SRC $DATA_HDD_DST
+            fi
+        done
         [ "x$BMC_IP" != "x" ] || export CONSOLE="telnet 127.0.0.1 $TEST_PORT"
-        if [ -f $SRCDIR/$TEST.xp ]; then
+        if [ -f $SRCDIR/$TEST.xp ] ; then
 
             (   set -e
-                [ $TRAP_ERR -eq 0 ] || trap 'set +x; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
+                [ $TRAP_ERR -eq 0 ] || trap 'set +x ; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
 
-		if [ -n "$TEST_REUSE" ] ; then
-		    echo "$0: reuse existing qemu process on port: ${TEST_PORT:-NOPORTGIVEN}"
-		else
-		    # terminate processes that occupy targeted ports
-		    if ss -tnplH | grep -q ":${TEST_PORT:-NOPORTGIVEN}" ; then
-			ss -tunplH  | grep ":${TEST_PORT:-NOPORTGIVEN}" | egrep -o "pid=[0-9]+" | cut -d'=' -f2 | xargs -i kill -9 {}
-		    fi
+                if [ -n "$TEST_REUSE" ] ; then
+                    echo "$0: reuse existing qemu process on port: ${TEST_PORT:-NOPORTGIVEN}"
+                else
+                    # terminate processes that occupy targeted ports
+                    if ss -tnplH | grep -q ":${TEST_PORT:-NOPORTGIVEN}" ; then
+                        ss -tunplH  | grep ":${TEST_PORT:-NOPORTGIVEN}" | egrep -o "pid=[0-9]+" | cut -d'=' -f2 | xargs -i kill -9 {}
+                    fi
 
-		    # TEST_ISO and TEST_USB are needed for upgrade tests
-		    # Note: proj.img cannot be used concurrently by test VM instances
-		    [ -z $TEST_ISO ] || export TEST_ISO=$TEST_ISO
-                    if [[ "$TEST_IMG" =~ proj.img  ]]; then
-			[ -e hdd/proj.img ] || cp $TEST_IMG hdd/proj.img
-			TEST_IMG="hdd/proj.img"
-		    fi
-		    export TEST_IMG
-                    if [[ "$TEST_USB" =~ proj.img  ]]; then
-			[ -e hdd/proj.img ] || cp $TEST_USB hdd/proj.img
-			TEST_USB="hdd/proj.img"
-		    fi
-		    export TEST_USB
+                    # TEST_ISO and TEST_USB are needed for upgrade tests
+                    # Note: proj.img cannot be used concurrently by test VM instances
+                    [ -z $TEST_ISO ] || export TEST_ISO=$TEST_ISO
+                    if [[ "$TEST_IMG" =~ proj.img  ]] ; then
+                        [ -e hdd/proj.img ] || cp $TEST_IMG hdd/proj.img
+                        TEST_IMG="hdd/proj.img"
+                    fi
+                    export TEST_IMG
+                    if [[ "$TEST_USB" =~ proj.img  ]] ; then
+                        [ -e hdd/proj.img ] || cp $TEST_USB hdd/proj.img
+                        TEST_USB="hdd/proj.img"
+                    fi
+                    export TEST_USB
 
-		    ${TRIANGLE_SCRIPTSDIR}/runkvm -m ${TEST_MEM:-2048} -c ${TEST_CPU:-4} ${TEST_ARG} $TEST_IMG $TEST_HDD $(ls ${TEST}.hdd* 2>/dev/null) 2>/dev/null || exit 1
-		fi
+                    ${TRIANGLE_SCRIPTSDIR}/runkvm -m ${TEST_MEM:-2048} -c ${TEST_CPU:-4} ${TEST_ARG} $TEST_IMG $TEST_HDD $(ls ${TEST}.hdd* 2>/dev/null) 2>/dev/null || exit 1
+                fi
 
-		if grep '#!.*expect -f' $SRCDIR/$TEST.xp ; then
-		    chmod 0755 ./$TEST && ./$TEST
-		else
+                if grep '#!.*expect -f' $SRCDIR/$TEST.xp ; then
+                    chmod 0755 ./$TEST && ./$TEST
+                else
                     INTERACTIVE=$INTERACTIVE ${TRIANGLE_SCRIPTSDIR}/telnetxp ./$TEST
-		fi
+                fi
             )
             STATUS=$?
-        elif [ -f $SRCDIR/$TEST.sh ]; then
+        elif [ -f $SRCDIR/$TEST.sh ] ; then
             (   set -e
-                [ $TRAP_ERR -eq 0 ] || trap 'set +x; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
+                [ $TRAP_ERR -eq 0 ] || trap 'set +x ; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
                 source $SRCDIR/$TEST.sh
             ) 
             STATUS=$?
         else
             (   set -e
-                [ $TRAP_ERR -eq 0 ] || trap 'set +x; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
+                [ $TRAP_ERR -eq 0 ] || trap 'set +x ; echo ${BASH_SOURCE}:${LINENO}: $BASH_COMMAND' ERR
                 [ $TRAP_ERR -eq 0 ] || trap '' ERR
                 ./$TEST
             ) 
             STATUS=$?
         fi
 
-	set +xv
-        if [ $INTERACTIVE -eq 0 ]; then [ ! -f $SRCDIR/testpost.sh ] || ( source $SRCDIR/testpost.sh ) ; fi
+        set +xv
+        if [ $INTERACTIVE -eq 0 ] ; then [ ! -f $SRCDIR/testpost.sh ] || ( source $SRCDIR/testpost.sh ) ; fi
 
-        if [ ! -f $SRCDIR/$TEST.ignore_core_files -a -n "$(ls core* /var/support/core* 2>/dev/null)" ]; then
+        if [ ! -f $SRCDIR/$TEST.ignore_core_files -a -n "$(ls core* /var/support/core* 2>/dev/null)" ] ; then
             # special case for corefiles from memcheck
-            for cf in $(ls core.*); do
+            for cf in $(ls core.*) ; do
                 exe=`echo $cf | sed 's/core\.\(.*\)/\1/'`
                 [ ! -x $exe ] && exe=`file $cf | cut -d\' -f2 | awk '{print $1}'`
                 corefile=`echo $cf | sed 's/core\.\(.*\)/\1.core/'`
                 echo "Renaming $cf to $corefile (exe=$exe)"
                 mv $cf $corefile
-                if [ -x ./$exe ]; then
+                if [ -x ./$exe ] ; then
                     echo "bt" > ./gdb.cmd # In case of threads error
                     echo "thread apply all bt" >> ./gdb.cmd # Get all other threads' stacks
                     gdb -batch -x ./memcheck-gdb.cmd $exe $corefile #> $TEST.backtrace
                 fi
             done
             # Rename other core files to include testname
-            for cf in $(ls core* /var/support/core*); do
+            for cf in $(ls core* /var/support/core*) ; do
                 echo "Renaming $cf to $(basename $TEST)_$(basename $cf)"
                 mv $cf $(basename $TEST)_$(basename $cf)
             done
             EmitError "core files detected"
             STATUS=1
-        elif [ -n "$TESTRUNNER" -a -f runtests_failed ]; then
+        elif [ -n "$TESTRUNNER" -a -f runtests_failed ] ; then
             EmitError "memcheck failed"
             rm -f runtests_failed
             STATUS=1
-        elif [ $STATUS -eq 1 ]; then
+        elif [ $STATUS -eq 1 ] ; then
             # Just in case TRAP_ERR did not work
             EmitError "test failed"
         fi
 
-	if [ $INTERACTIVE -ne 0 -a -e $SRCDIR/$TEST.xp ]; then
-	    set +xv
-	    if [ -s $SRCDIR/$TEST.xp ]; then
-		echo -e "\n===== QUIT TELNET WITH: ^]+q =====\n" && telnet 127.0.0.1 $TEST_PORT
-	    else
-		echo -e "\n===== FINISH AUTOEXPECT WITH: ^]+q =====\n" && autoexpect -f $SRCDIR/$TEST.xp telnet 127.0.0.1 $TEST_PORT
-	    fi
-	fi
+        if [ $INTERACTIVE -ne 0 -a -e $SRCDIR/$TEST.xp ] ; then
+            set +xv
+            if [ -s $SRCDIR/$TEST.xp ] ; then
+                echo -e "\n===== QUIT TELNET WITH: ^]+q =====\n" && telnet 127.0.0.1 $TEST_PORT
+            else
+                echo -e "\n===== FINISH AUTOEXPECT WITH: ^]+q =====\n" && autoexpect -f $SRCDIR/$TEST.xp telnet 127.0.0.1 $TEST_PORT
+            fi
+        fi
 
-	if [ -e ${TEST}.pid ]; then
-	    if [[ -z $TEST_HDD ]]; then
-		echo "quit" | nc localhost ${TNET_PORT}0 >/dev/null 2>&1 || true # terminate pxeserver
-		SystemPowerdown # shutdown SUT
+        if [ -e ${TEST}.pid ] ; then
+            if [[ -z $TEST_HDD ]] ; then
+                echo "quit" | nc localhost ${TNET_PORT}0 >/dev/null 2>&1 || true # terminate pxeserver
+                SystemPowerdown # shutdown SUT
 
-		local cnt=0
-		local max=5
-		while [ $((cnt++)) -lt $max ]; do
-		    sleep 1
-		    if netstat -tnpl | grep $TEST_PORT -q ; then
-			echo "$0: VM running"
-		    else
-			echo "$0: VM off" && break
-		    fi
-		done
+                local cnt=0
+                local max=5
+                while [ $((cnt++)) -lt $max ] ; do
+                    sleep 1
+                    if netstat -tnpl | grep $TEST_PORT -q ; then
+                        echo "$0: VM running"
+                    else
+                        echo "$0: VM off" && break
+                    fi
+                done
 
-		while ps -p $(cat ${TEST}.pid 2>/dev/null) >/dev/null 2>&1 ; do kill -9 $(cat ${TEST}.pid) ; sleep 1 ; done
-		rm -f ${TEST}.pid
-	    fi
+                while ps -p $(cat ${TEST}.pid 2>/dev/null) >/dev/null 2>&1 ; do kill -9 $(cat ${TEST}.pid) ; sleep 1 ; done
+                rm -f ${TEST}.pid
+            fi
 
-	fi
+        fi
 
         exit $STATUS
     )
@@ -246,8 +246,8 @@ RunTest()
 # Set corefile name pattern to include exe name
 echo "core.%e" > /proc/sys/kernel/core_pattern
 
-if [ $# -gt 0 ]; then
-    while [ $# -gt 0 ]; do
+if [ $# -gt 0 ] ; then
+    while [ $# -gt 0 ] ; do
         # Test output if test succeeded (with .test, .vtest, or .ntest extension)
         # Used as a timestamp marker by make to know when to rerun test
         TEST_OUTPUT=$1
@@ -262,7 +262,7 @@ if [ $# -gt 0 ]; then
         RESTORE_TEST=0
         # Temporarily rename test executable with .bin extension
 
-        if [ ! -f $SRCDIR/$TEST.disable_testrunner -a -f $TEST -a -n "$TESTRUNNER" -a ! $SRCDIR/$TEST.xp ]; then
+        if [ ! -f $SRCDIR/$TEST.disable_testrunner -a -f $TEST -a -n "$TESTRUNNER" -a ! $SRCDIR/$TEST.xp ] ; then
             # Don't rename shell scripts that are copied by GNU make
             if cmp $TEST $SRCDIR/$TEST.sh >/dev/null 2>&1 ; then
                 :
@@ -279,12 +279,12 @@ EOF
             fi
         fi
         EXITCODE=0
-        if [ $VERBOSE -eq 0 ]; then
+        if [ $VERBOSE -eq 0 ] ; then
             BEFORE=$(date +%s)
             RunTest >$TEST_LOG 2>&1 
             EXITCODE=$?
             AFTER=$(date +%s)
-            if [ $EXITCODE -eq 0 ]; then
+            if [ $EXITCODE -eq 0 ] ; then
                 ELAPSED=$(expr $AFTER - $BEFORE)
                 echo " (${ELAPSED}s)"
             else
@@ -295,21 +295,21 @@ EOF
             BEFORE=$(date +%s)
             RunTest 2>&1 | tee $TEST_LOG 
             EXITCODE=$?
-            if [ $EXITCODE -eq 0 ]; then
+            if [ $EXITCODE -eq 0 ] ; then
                 AFTER=$(date +%s)
                 ELAPSED=$(expr $AFTER - $BEFORE)
                 echo "$TEST: elapsed time: ${ELAPSED}s"
             fi
         fi
 
-	# Get rid of unwanted carriage return characters
-	sed -i "s/\r//g" $TEST_LOG
+        # Get rid of unwanted carriage return characters
+        sed -i "s/\r//g" $TEST_LOG
 
-        if [ $RESTORE_TEST -ne 0 ]; then
+        if [ $RESTORE_TEST -ne 0 ] ; then
             [ $VERBOSE -eq 0 ] || echo mv -f $TEST.bin $TEST
             mv -f $TEST.bin $TEST
         fi
-        if [ $EXITCODE -eq 0 ]; then
+        if [ $EXITCODE -eq 0 ] ; then
             mv $TEST_LOG $TEST_OUTPUT
         else
             RESULT=1

@@ -4,7 +4,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -25,14 +25,14 @@ OUTPUT=$(pwd)/${1}.out
 HEX_SINCE=${1%_*}
 SINCE_TIME="$(cd $TOP_SRCDIR && git show -s --format=%ci $HEX_SINCE)"
 HEX_UNTIL=${1#*_}
-if [ "$HEX_UNTIL" = $(date "+%Y%m%d") ]; then
+if [ "$HEX_UNTIL" = $(date "+%Y%m%d") ] ; then
     HEX_UNTIL=
     UNTIL_TIME="$(date)"
 else
     UNTIL_TIME="$(cd $TOP_SRCDIR && git show -s --format=%ci $HEX_UNTIL)"
 fi
 
-if [ -d $SRCDIR/$1 ]; then
+if [ -d $SRCDIR/$1 ] ; then
     cp -rf $SRCDIR/$1 ./
 fi
 mkdir -p $NEW_ROOTFS
@@ -40,17 +40,17 @@ rm -f $INPUT $OUTPUT
 touch $OUTPUT
 
 (cd $TOP_SRCDIR && git -P diff $HEX_SINCE $HEX_UNTIL --name-only) >$INPUT
-if [ ! -e $HOTFIXDIR/commit.txt ]; then
+if [ ! -e $HOTFIXDIR/commit.txt ] ; then
     (cd $TOP_SRCDIR && git -P log --decorate --since="$SINCE_TIME" --until="$UNTIL_TIME") >$HOTFIXDIR/commit.txt
-    if grep -q "^hex$" $INPUT; then
+    if grep -q "^hex$" $INPUT ; then
         (cd $TOP_SRCDIR/hex && git -P log --decorate --since="$SINCE_TIME" --until="$UNTIL_TIME") >>$HOTFIXDIR/commit.txt
     fi
 fi
-if grep -q "^hex$" $INPUT; then
+if grep -q "^hex$" $INPUT ; then
     HEX_SINCE=$(cd $TOP_SRCDIR/hex && git -P log --since="$SINCE_TIME" --until="$UNTIL_TIME" --pretty=format:"%h" | tail -1)
     HEX_UNTIL=$(cd $TOP_SRCDIR/hex && git -P log --since="$SINCE_TIME" --until="$UNTIL_TIME" --pretty=format:"%h" | head -1)
 
-    if [ "$HEX_SINCE" = "$HEX_UNTIL" ]; then
+    if [ "$HEX_SINCE" = "$HEX_UNTIL" ] ; then
         (cd $TOP_SRCDIR/hex && git -P show $HEX_SINCE --name-status --oneline | grep "^M.*" | awk '{print $2}' | xargs -i echo hex/{}) >>$INPUT
     else
         (cd $TOP_SRCDIR/hex && git -P diff $HEX_SINCE $HEX_UNTIL --name-only | xargs -i echo hex/{}) >> $INPUT
@@ -58,7 +58,7 @@ if grep -q "^hex$" $INPUT; then
 fi
 
 CNT=0
-while read L; do
+while read L ; do
     ((CNT=CNT+1))
     printf "%0.s-" {1..80} | tee -a $OUTPUT
     printf "\nFILE %04i: %s\n" $CNT $L | tee -a $OUTPUT
@@ -83,18 +83,18 @@ while read L; do
             ;;
     esac
 
-    if [ "$INTERESTED" = "yes" ]; then
-        if [[ -n "$PATTERN" && -n "$FINDPTH" ]]; then
+    if [ "$INTERESTED" = "yes" ] ; then
+        if [[ -n "$PATTERN" && -n "$FINDPTH" ]] ; then
             pushd ${ROOTFS}
-            if [ -e $HOTFIXDIR/backup.lst ]; then
+            if [ -e $HOTFIXDIR/backup.lst ] ; then
                 grep ".*$PATTERN" $HOTFIXDIR/backup.lst | xargs -i rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ | tee -a $OUTPUT
             else
-                find $FINDPTH $FINDFLG -regex ".*$PATTERN" -exec rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ \; | tee -a $OUTPUT
+                find $FINDPTH $FINDFLG -regex ".*$PATTERN" -exec rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ \ ; | tee -a $OUTPUT
             fi
             popd
         fi
         echo
-        if echo "$L" | grep -q "^hex/"; then
+        if echo "$L" | grep -q "^hex/" ; then
             (cd $TOP_SRCDIR/hex && git -P diff $HEX_SINCE HEAD ${L#hex/}) || true
         else
             (cd $TOP_SRCDIR && git -P diff $HEX_SINCE HEAD $L) || true
@@ -104,11 +104,11 @@ while read L; do
 done <$INPUT
 
 pushd ${ROOTFS}
-if [ -e $HOTFIXDIR/backup.lst ]; then
+if [ -e $HOTFIXDIR/backup.lst ] ; then
     cat $HOTFIXDIR/backup.lst | xargs -i rsync -aRI --out-format="HAND-PICKED: %f" {} $NEW_ROOTFS/ | tee -a $OUTPUT
 else
     (cd $NEW_ROOTFS && find ./ -type f | sed 's|^./||') | sort > $HOTFIXDIR/backup.lst
-    for DIR in opt usr; do
+    for DIR in opt usr ; do
 	echo "RECOMMAND: $DIR"
 	rsync -aRI $DIR $NEW_ROOTFS/
 	echo $DIR >> $HOTFIXDIR/backup.lst

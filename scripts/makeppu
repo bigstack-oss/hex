@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -33,12 +33,12 @@ ROOTFS_INSTALL_CMD=
 
 while getopts "p:c:C:s:b:k:f:" OPT ; do
     case $OPT in
-    p) PADDING="$OPTARG" ;;
-    c) INSTALL_CMD="$OPTARG" ;;
-    C) ROOTFS_INSTALL_CMD="$OPTARG" ;;
-    k) DIAG_KERN="$OPTARG" ;;
-    f) DIAG_RD="$OPTARG" ;;
-    *) Usage ;;
+	p) PADDING="$OPTARG" ;;
+	c) INSTALL_CMD="$OPTARG" ;;
+	C) ROOTFS_INSTALL_CMD="$OPTARG" ;;
+	k) DIAG_KERN="$OPTARG" ;;
+	f) DIAG_RD="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -103,7 +103,7 @@ mv $TEMPPKGFILE $PKGFILE
     cp $INITRD.size $TEMPDIR/initramfs.cgz.size
     cp $FIRMWARE $TEMPDIR/
 
-    if [ -n "$ROOTFS_INSTALL_CMD" ]; then
+    if [ -n "$ROOTFS_INSTALL_CMD" ] ; then
         ROOTDIR=$(MakeTempDir)
         chmod 755 $ROOTDIR
         ExtractCgz $ROOTFS $ROOTDIR
@@ -121,7 +121,7 @@ mv $TEMPPKGFILE $PKGFILE
         CreateCgz $TEMPDIR/rootfs.cgz $ROOTDIR
     else
         cp $ROOTFS $TEMPDIR/rootfs.cgz && sync
-	    [ "$(sha256sum $ROOTFS | cut -d ' ' -f 1)" = "$(sha256sum $TEMPDIR/rootfs.cgz | cut -d ' ' -f 1)" ]
+	[ "$(sha256sum $ROOTFS | cut -d ' ' -f 1)" = "$(sha256sum $TEMPDIR/rootfs.cgz | cut -d ' ' -f 1)" ]
     fi
 
     # Perform extra install actions into pkg file
@@ -140,14 +140,14 @@ for ROOTFS_SPLIT in ${ROOTFS%.cgz}_*.cgz ; do
     SPKGFILE=$(dirname $PKGFILE)/$(basename $PKGFILE .pkg)_${PKGCNT}.pkg
     ROOTFS_SPLIT_SIZE=$(( ( $(GetFileSize $ROOTFS_SPLIT) + 1023 ) / 1024 ))
 
-    if [ $PKGCNT -eq 0 ]; then
+    if [ $PKGCNT -eq 0 ] ; then
         KERNEL_SIZE=$(( ( $(GetFileSize $KERNEL) + 1023 ) / 1024 ))
         INITRD_SIZE=$(( ( $(GetFileSize $INITRD) + 1023 ) / 1024 ))
         FIRMWARE_SIZE=$(( ( $(GetFileSize $FIRMWARE) + 1023 ) / 1024 ))
 
         SPKGFILE_SIZE=$(( $KERNEL_SIZE + $INITRD_SIZE + $FIRMWARE_SIZE + $ROOTFS_SPLIT_SIZE + $(ConvertImageSize $PADDING) ))
     else
-	    SPKGFILE_SIZE=$(( $ROOTFS_SPLIT_SIZE + $(ConvertImageSize $PADDING) ))
+	SPKGFILE_SIZE=$(( $ROOTFS_SPLIT_SIZE + $(ConvertImageSize $PADDING) ))
     fi
 
     TEMPSPKGFILE=$(MakeTemp)
@@ -158,32 +158,32 @@ for ROOTFS_SPLIT in ${ROOTFS%.cgz}_*.cgz ; do
 	LOOPDEV=$(SetupLoop $SPKGFILE)
 	mount -t ext4 $LOOPDEV $TEMPDIR
 
-	if [ $PKGCNT -eq 0 ]; then
+	if [ $PKGCNT -eq 0 ] ; then
 	    cp $KERNEL $TEMPDIR/bzImage
 	    cp $INITRD $TEMPDIR/initramfs.cgz
 	    # Save size for use by hex_install
 	    cp $INITRD.size $TEMPDIR/initramfs.cgz.size
 	    cp $FIRMWARE $TEMPDIR/
 
-	    if [ -n "$ROOTFS_INSTALL_CMD" ]; then
-            ROOTDIR=$(MakeTempDir)
-            chmod 755 $ROOTDIR
-            ExtractCgz $ROOTFS $ROOTDIR
+	    if [ -n "$ROOTFS_INSTALL_CMD" ] ; then
+		ROOTDIR=$(MakeTempDir)
+		chmod 755 $ROOTDIR
+		ExtractCgz $ROOTFS $ROOTDIR
 
-            # Perform extra install actions into pkg file's rootfs
-            eval `echo $ROOTFS_INSTALL_CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g"`
+		# Perform extra install actions into pkg file's rootfs
+		eval `echo $ROOTFS_INSTALL_CMD | sed -e "s,@ROOTDIR@,$ROOTDIR,g"`
 
-            # Remove list of installed packages and files
-            rm -f $ROOTDIR/*.tsv $ROOTDIR/*_rpms.txt
+		# Remove list of installed packages and files
+		rm -f $ROOTDIR/*.tsv $ROOTDIR/*_rpms.txt
 
-            # Generate m5sum's for all files in rootfs for use by fix pack build process
-            # FIXME: This is going to be time consuming. do it only if production build or specified
-            # GenRootMd5 $ROOTDIR > $ROOTFSMD5FILE
+		# Generate m5sum's for all files in rootfs for use by fix pack build process
+		# FIXME: This is going to be time consuming. do it only if production build or specified
+		# GenRootMd5 $ROOTDIR > $ROOTFSMD5FILE
 
-            CreateCgz $TEMPDIR/rootfs.cgz $ROOTDIR
+		CreateCgz $TEMPDIR/rootfs.cgz $ROOTDIR
 	    else
-            cp $ROOTFS_SPLIT $TEMPDIR/rootfs.cgz && sync
-            [ "$(sha256sum $ROOTFS_SPLIT | cut -d ' ' -f 1)" = "$(sha256sum $TEMPDIR/rootfs.cgz | cut -d ' ' -f 1)" ]
+		cp $ROOTFS_SPLIT $TEMPDIR/rootfs.cgz && sync
+		[ "$(sha256sum $ROOTFS_SPLIT | cut -d ' ' -f 1)" = "$(sha256sum $TEMPDIR/rootfs.cgz | cut -d ' ' -f 1)" ]
 	    fi
 
 	    # Perform extra install actions into pkg file

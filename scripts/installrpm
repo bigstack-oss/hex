@@ -7,7 +7,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -36,15 +36,15 @@ for RPM in $* ; do
 
     # Run pre install script (if exists and non-empty)
     PRE="${BASE}.pre"
-    if [ -f "$PRE" ]; then
-        if [ $(GetFileSize $PRE) -gt 0 ]; then
+    if [ -f "$PRE" ] ; then
+        if [ $(GetFileSize $PRE) -gt 0 ] ; then
             cp $PRE $ROOTDIR/tmp/preinstall
             Quiet chroot $ROOTDIR /bin/sh /tmp/preinstall
             rm -f $ROOTDIR/tmp/preinstall
         fi
-    elif [ "$(rpm -qp --qf '%{prein}' $RPM)" != "(none)" ]; then
+    elif [ "$(rpm -qp --qf '%{prein}' $RPM)" != "(none)" ] ; then
         echo "$(basename $RPM .rpm): unaudited pre-install script"
-        if [ -n "$DUMP_RPM_INFO" ]; then
+        if [ -n "$DUMP_RPM_INFO" ] ; then
             rpm -qp --qf '%{prein}\n' $RPM > $BASE.pre-new
             echo $PROG: pre-install script dumped to $BASE.pre-new
         fi
@@ -53,8 +53,8 @@ for RPM in $* ; do
     # Install files with rpm2cpio into temp location
     TEMPDIR=$(MakeTempDir)
     PATTERN=
-    if [ "$ROOTFS_RPM" = "true" ]; then
-        if [ -f "${BASE}.include" ]; then
+    if [ "$ROOTFS_RPM" = "true" ] ; then
+        if [ -f "${BASE}.include" ] ; then
             PATTERN=$(sed 's;^/;./;' "${BASE}.include")
         else
             Error "${BASE}.rpm: unaudited rpm package (missing include file)"
@@ -71,7 +71,7 @@ for RPM in $* ; do
     OWD=$PWD
 
     cd $TEMPDIR
-    for dir in $(find . -path ./$BLDID_PATH -prune -false -o -type d); do
+    for dir in $(find . -path ./$BLDID_PATH -prune -false -o -type d) ; do
         if [ ! -d $ROOTDIR/$dir -a ! -L $ROOTDIR/$dir ] ; then
             mkdir -p $ROOTDIR/$dir
             chmod $(stat -c %a $dir) $ROOTDIR/$dir
@@ -87,15 +87,15 @@ for RPM in $* ; do
 
     # Run post install script (if exists and non-empty)
     POST="${BASE}.post"
-    if [ -f "$POST" ]; then
-        if [ $(GetFileSize $POST) -gt 0 ]; then
+    if [ -f "$POST" ] ; then
+        if [ $(GetFileSize $POST) -gt 0 ] ; then
             cp $POST $ROOTDIR/tmp/postinstall
             Quiet chroot $ROOTDIR /bin/sh /tmp/postinstall
             rm -f $ROOTDIR/tmp/postinstall
         fi
-    elif [ "$(rpm -qp --qf '%{postin}' $RPM)" != "(none)" ]; then
+    elif [ "$(rpm -qp --qf '%{postin}' $RPM)" != "(none)" ] ; then
         echo "$(basename $RPM .rpm): unaudited post-install script"
-        if [ -n "$DUMP_RPM_INFO" ]; then
+        if [ -n "$DUMP_RPM_INFO" ] ; then
             rpm -qp --qf '%{postin}\n' $RPM > $BASE.post-new
             echo $PROG: post-install script dumped to $BASE.post-new
         fi
@@ -103,14 +103,14 @@ for RPM in $* ; do
 
     # Save siglst files to be used for signing
     SIGLST="${BASE}.siglst"
-    if [ -f $SIGLST ]; then
+    if [ -f $SIGLST ] ; then
         mkdir -p $ROOTDIR/etc/signing
         cp $SIGLST $ROOTDIR/etc/signing
     fi
 
     # Check open source components for required documentation
     ORIGIN=$(basename $(dirname $RPM))
-    if [ "$ORIGIN" = "oss" ]; then
+    if [ "$ORIGIN" = "oss" ] ; then
         SRPM=$(dirname $RPM)/$(rpm -qp --qf '%{sourcerpm}' $RPM)
         [ -f $SRPM -o -f ${BASE}.srpm ] || echo "$(basename $RPM .rpm): missing source rpm: $SRPM"
         #[ -f ${BASE}.ossc ] || echo "$(basename $RPM .rpm): missing ossc manifest" #FIXME: format not yet finalized
@@ -122,7 +122,7 @@ for RPM in $* ; do
     # TEMP=$(MakeTemp)
     # rpm -qlp $RPM | grep -v "$BLDID_PATH" > $TEMP
     # while read FILE ; do
-    #     if [ -f "$ROOTDIR/$FILE" ]; then
+    #     if [ -f "$ROOTDIR/$FILE" ] ; then
     #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
     #         echo "RPM_FILE$_T_$FILE$_T_$SIZE$_T_$RPM" >> $ROOTDIR/package_files.tsv
     #         TOTAL=$(( $TOTAL + $SIZE ))

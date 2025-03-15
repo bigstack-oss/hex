@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -37,11 +37,11 @@ INIT_RD_NAME=initrd.img
 
 while getopts "c:qi:S:" OPT ; do
     case $OPT in
-    c) INSTALL_CMD="$OPTARG" ;;
-    q) QUIET=1 ;;
-    i) INITSCRIPT="$OPTARG" ;;
-    S) CONSOLE_SPEED="$OPTARG" ;;
-    *) Usage ;;
+	c) INSTALL_CMD="$OPTARG" ;;
+	q) QUIET=1 ;;
+	i) INITSCRIPT="$OPTARG" ;;
+	S) CONSOLE_SPEED="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -56,7 +56,7 @@ IMG=$5
 
 QUIET_KERNEL_ARG=""
 
-if [ $QUIET -eq 1 ]; then
+if [ $QUIET -eq 1 ] ; then
     QUIET_KERNEL_ARG="quiet"
 fi
 
@@ -88,7 +88,7 @@ cp  $PPU ${TEMPDIR}/$NAME
 
 KERNEL=$(basename $KERNEL)
 
-if [ -z "$INITSCRIPT" ]; then
+if [ -z "$INITSCRIPT" ] ; then
     cat >$TEMPDIR/${NAME}_netboot.msg <<EOF
 
 Hex Appliance PXE Installer

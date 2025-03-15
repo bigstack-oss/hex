@@ -6,22 +6,22 @@ HEX_SCRIPTSDIR=$(dirname $(readlink -f $0))
 HEX_SHMODDIR=$HEX_SCRIPTSDIR/../src/sdk_sh
 PROJ_MAINDIR=$HEX_SCRIPTSDIR/../../core/main
 PROJ_SHMODDIR=$HEX_SCRIPTSDIR/../../core/sdk_sh
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     source $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
     exit 1
 fi
 
-if [ -f "$PROJ_MAINDIR/proj_functions" ]; then
+if [ -f "$PROJ_MAINDIR/proj_functions" ] ; then
     . $PROJ_MAINDIR/proj_functions
 fi
 
-for sdk_sh in $HEX_SHMODDIR/*.sh; do
+for sdk_sh in $HEX_SHMODDIR/*.sh ; do
     . $sdk_sh
 done 2>/dev/null
 
-for sdk_sh in $PROJ_SHMODDIR/*.sh; do
+for sdk_sh in $PROJ_SHMODDIR/*.sh ; do
     . $sdk_sh
 done 2>/dev/null
 
@@ -50,7 +50,7 @@ EOF
 
 Cleanup()
 {
-    if [ -n "$TEMPDIR" ]; then
+    if [ -n "$TEMPDIR" ] ; then
         sleep 1
         umount -l $TEMPDIR 2>/dev/null
         RemoveTempFiles
@@ -65,7 +65,7 @@ PkgList()
 
     cd $1
     deblist=$(ls *.deb 2>/dev/null)
-    if [ -n "$deblist" ]; then
+    if [ -n "$deblist" ] ; then
         pkgs=$(ls *.deb | awk -F'_' '{print "#"$1"#"}')
     fi
     cd - >/dev/null
@@ -126,7 +126,7 @@ SshCopyId()
 {
     local HOST=$1
 
-    if [ ! -f /root/.ssh/id_rsa.pub ]; then
+    if [ ! -f /root/.ssh/id_rsa.pub ] ; then
         ssh-keygen
     fi
 
@@ -184,7 +184,7 @@ LicenseGenerate1()
     read -p 'valid days: ' days
     read -p 'license name: ' name
 
-cat <<EOF >$name.dat
+    cat <<EOF >$name.dat
 license.type=$licensenType
 issue.by=Bigstack Ltd.
 issue.to=$issueTo
@@ -217,7 +217,7 @@ LicenseGenerate2()
     read -p 'valid days: ' days
     read -p 'license name: ' name
 
-cat <<EOF >$name.dat
+    cat <<EOF >$name.dat
 license.type=$licensenType
 issue.by=Bigstack Ltd.
 issue.to=$issueTo
@@ -254,44 +254,44 @@ UsbImgCreate()
 CMD="$1"
 shift 1
 case "$CMD" in
-deb)
-    [ $# -eq 1 ] || Usage
-    DownloadDeb $1
-    ;;
-rpm)
-    [ $# -eq 1 ] || Usage
-    DownloadRpm $1
-    ;;
-npm)
-    [ $# -eq 1 ] || Usage
-    BuildNpmBundle $1
-    ;;
-ssh-copy-id)
-    [ $# -eq 1 ] || Usage
-    SshCopyId $1
-    ;;
-pxe-delete)
-    [ $# -eq 1 ] || Usage
-    PxeDelete $1
-    ;;
-nfs-snap-list)
-    NfsSnapshotList $1
-    ;;
-nfs-snap-delete)
-    [ $# -eq 1 ] || Usage
-    NfsSnapshotDelete $1
-    ;;
-license-generate)
-    LicenseGenerate2
-    ;;
-license-generate-v1)
-    LicenseGenerate1
-    ;;
-usbimg-create)
-    [ $# -eq 2 -o $# -eq 3 ] || Usage
-    UsbImgCreate $1 $2 $3
-    ;;
-*)
-    $CMD $@
-    ;;
+    deb)
+	[ $# -eq 1 ] || Usage
+	DownloadDeb $1
+	;;
+    rpm)
+	[ $# -eq 1 ] || Usage
+	DownloadRpm $1
+	;;
+    npm)
+	[ $# -eq 1 ] || Usage
+	BuildNpmBundle $1
+	;;
+    ssh-copy-id)
+	[ $# -eq 1 ] || Usage
+	SshCopyId $1
+	;;
+    pxe-delete)
+	[ $# -eq 1 ] || Usage
+	PxeDelete $1
+	;;
+    nfs-snap-list)
+	NfsSnapshotList $1
+	;;
+    nfs-snap-delete)
+	[ $# -eq 1 ] || Usage
+	NfsSnapshotDelete $1
+	;;
+    license-generate)
+	LicenseGenerate2
+	;;
+    license-generate-v1)
+	LicenseGenerate1
+	;;
+    usbimg-create)
+	[ $# -eq 2 -o $# -eq 3 ] || Usage
+	UsbImgCreate $1 $2 $3
+	;;
+    *)
+	$CMD $@
+	;;
 esac

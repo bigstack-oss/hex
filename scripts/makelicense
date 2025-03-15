@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -23,8 +23,8 @@ TRIAL=0
 
 while getopts "t" OPT ; do
     case $OPT in
-    t) TRIAL=1 ;;
-    *) Usage ;;
+	t) TRIAL=1 ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -37,12 +37,12 @@ LICENSE=$3
 LICENSE_DIR=$(dirname $LICENSE)
 LICENSE_NAME=$(basename $LICENSE)
 
-if [ ! -d $LICENSE_DIR ]; then
+if [ ! -d $LICENSE_DIR ] ; then
     mkdir -p $LICENSE_DIR
 fi
 
-if [ $TRIAL -eq 1 ]; then
-cat <<EOF >${LICENSE_NAME}.dat
+if [ $TRIAL -eq 1 ] ; then
+    cat <<EOF >${LICENSE_NAME}.dat
 license.type=trial
 issue.by=Bigstack Ltd.
 issue.to=Bigstack Ltd.

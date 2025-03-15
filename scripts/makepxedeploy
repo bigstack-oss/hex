@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -31,10 +31,10 @@ SRVDIR="/volume1/pxe-server"
 
 while getopts "qs:p:c:" OPT ; do
     case $OPT in
-    q) QUIET=1 ;;
-    s) SERVER="$OPTARG" ;;
-    p) SRVDIR="$OPTARG" ;;
-    *) Usage ;;
+	q) QUIET=1 ;;
+	s) SERVER="$OPTARG" ;;
+	p) SRVDIR="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -49,7 +49,7 @@ PROFILE=$5
 
 QUIET_KERNEL_ARG=""
 
-if [ $QUIET -eq 1 ]; then
+if [ $QUIET -eq 1 ] ; then
     QUIET_KERNEL_ARG="quiet"
 fi
 
@@ -91,7 +91,7 @@ EOF
 # BIOS configurations
 sed -i "/label $NAME\$/d" $TEMPDIR/pxelinux.cfg/default
 sed -i "/\/$NAME\//d" $TEMPDIR/pxelinux.cfg/default
-if [ -n "$PXE_NET_BUSID" ]; then
+if [ -n "$PXE_NET_BUSID" ] ; then
     cat >>$TEMPDIR/pxelinux.cfg/default <<EOF
 label $NAME
 KERNEL /$NAME/$KERNEL
@@ -107,7 +107,7 @@ fi
 
 # UEFI configurations
 sed -i "/linuxefi \/$NAME\//d" $TEMPDIR/grub.cfg
-if [ -n "$PXE_NET_BUSID" ]; then
+if [ -n "$PXE_NET_BUSID" ] ; then
     cat >>$TEMPDIR/grub.cfg <<EOF
 menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD}
 EOF
@@ -120,8 +120,8 @@ fi
 cat >$TEMPDIR/${NAME}/pxe.cfg <<EOF
 PKG_SERVER=nfs://${SERVER}${SRVDIR}/$NAME
 EOF
-if [ -n "$INSTALL_DRIVE" ]; then
-cat >>$TEMPDIR/${NAME}/pxe.cfg <<EOF
+if [ -n "$INSTALL_DRIVE" ] ; then
+    cat >>$TEMPDIR/${NAME}/pxe.cfg <<EOF
 INSTALL_DRIVE=$INSTALL_DRIVE
 EOF
 fi

@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -37,14 +37,14 @@ DOWNLOAD_FROM=
 
 while getopts "aru:t:d:wn" OPT ; do
     case $OPT in
-    a) AUTOSTART=1 ;;
-    r) CMD=reinstall ;;
-    u) PROXY_URL="$OPTARG" ;;
-    t) RPMDIR="$RPMDIR-$OPTARG" ;;
-    d) DOWNLOAD_FROM="$OPTARG" ;;
-    w) WEAK_DEP=1 ;;
-    n) NO_RESOLVE=1 ;;
-    *) Usage ;;
+	a) AUTOSTART=1 ;;
+	r) CMD=reinstall ;;
+	u) PROXY_URL="$OPTARG" ;;
+	t) RPMDIR="$RPMDIR-$OPTARG" ;;
+	d) DOWNLOAD_FROM="$OPTARG" ;;
+	w) WEAK_DEP=1 ;;
+	n) NO_RESOLVE=1 ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -71,7 +71,7 @@ SetAutostart()
 {
     local NULL_DIR=$ROOTDIR/root/null
 
-    if [ $AUTOSTART -eq 0 ]; then
+    if [ $AUTOSTART -eq 0 ] ; then
         mkdir -p $NULL_DIR
         # auto start after install
         #ln -sf /bin/true $NULL_DIR/service
@@ -88,9 +88,8 @@ DownloadPkg()
     cd $RPMDIR
 
     # download the latest pkgs
-    if [ -n "$DOWNLOAD_FROM" ]; then
-        for D in $DOWNLOAD_FROM
-        do
+    if [ -n "$DOWNLOAD_FROM" ] ; then
+        for D in $DOWNLOAD_FROM ; do
             [ -e ${D##*/} ] || $WGET $D
         done
     fi
@@ -101,7 +100,7 @@ DownloadPkg()
     for pkg in $pkgs ; do
         [ -e ${pkg}.rpm ] || missing_pkgs+="$pkg "
     done
-    if [ "x$missing_pkgs" != "x" ]; then
+    if [ "x$missing_pkgs" != "x" ] ; then
         # downloading from elrepo tends to be time consuming. Skip it if no rpms from elrepo are needed
         echo $missing_pkgs | grep -q -i elrepo || chroot $ROOTDIR dnf config-manager --set-disabled elrepo elrepo-kernel 2>/dev/null || true
 
@@ -117,21 +116,21 @@ DownloadPkg()
         pkgname=$(rpm -q --qf '%{N}' $pkg 2>/dev/null) || continue
         pkgver=$(rpm -q --qf '%{V}-%{R}' $pkg)
         dups=
-        for dup in $(ls ${pkgname}*.{x86_64,noarch}.rpm 2>/dev/null); do
+        for dup in $(ls ${pkgname}*.{x86_64,noarch}.rpm 2>/dev/null) ; do
             dupname=$(rpm -q --qf '%{N}' $dup 2>/dev/null)
             [ "x$dupname" != "x$pkgname" ] || dups+="$dup "
         done
         dups=${dups% }
 
-        if [ $(echo $dups | wc -w) -eq 2 ]; then
+        if [ $(echo $dups | wc -w) -eq 2 ] ; then
             rpmdev-vercmp $dups >/dev/null 2>&1 || retcmp=$?
-            if [ ${retcmp:-0} -eq 11 ]; then
+            if [ ${retcmp:-0} -eq 11 ] ; then
                 toremove=$(echo $dups | cut -d" " -f2)
                 locked=$(echo ${toremove%.rpm} | sed -e 's/.noarch$//' -e 's/.x86_64$//')
                 if grep -q ${locked:-NOLOCKED} $ROOTDIR/locked_rpms.txt ; then
                     toremove=$(echo $dups | cut -d" " -f1)
                 fi
-            elif [ ${retcmp:-0} -eq 12 ]; then
+            elif [ ${retcmp:-0} -eq 12 ] ; then
                 toremove=$(echo $dups | cut -d" " -f1)
                 locked=$(echo ${toremove%.rpm} | sed -e 's/.noarch$//' -e 's/.x86_64$//')
                 if grep -q ${locked:-NOLOCKED} $ROOTDIR/locked_rpms.txt ; then
@@ -140,7 +139,7 @@ DownloadPkg()
             fi
             echo $toremove >> $ROOTDIR/removed_rpms.txt
             rm -f $toremove
-        elif [ $(echo $dups | wc -w) -gt 2 ]; then
+        elif [ $(echo $dups | wc -w) -gt 2 ] ; then
             Error "Unhandled pkg duplicates: $dups"
         fi
     done

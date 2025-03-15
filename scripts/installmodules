@@ -3,7 +3,7 @@
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -22,7 +22,7 @@ Usage()
 
 [ -d $1 ] || Usage
 
-if [[ "$1" = /* ]]; then
+if [[ "$1" = /* ]] ; then
     ROOTDIR=$1
 else
     ROOTDIR=$(pwd)/$(basename $1)
@@ -37,10 +37,10 @@ TEMP=$(MakeTemp)
 for MODLIST in $* ; do
     [ ! -e  $ALL_COPIED ] || break
     set -o noglob
-    for pattern in $(cat $(readlink -fqn $MODLIST)); do
+    for pattern in $(cat $(readlink -fqn $MODLIST)) ; do
         ptn=$(echo $pattern | sed 's/*/.*/g')
-        (cd /; find $KERNEL_MODULE_DIR -type f -iregex "$ptn" -exec rsync -aRKv {} $ROOTDIR/ >> $TEMP \;)
-        if [ "x$ptn" = "x.*.ko.xz" ]; then
+        (cd / ; find $KERNEL_MODULE_DIR -type f -iregex "$ptn" -exec rsync -aRKv {} $ROOTDIR/ >> $TEMP \;)
+        if [ "x$ptn" = "x.*.ko.xz" ] ; then
             touch $ALL_COPIED
             break
         fi
@@ -48,7 +48,7 @@ for MODLIST in $* ; do
     set +o noglob
 
     # grep '^lib/modules/.*' < $TEMP | while read FILE ; do
-    #     if [ -f $ROOTDIR/$FILE ]; then
+    #     if [ -f $ROOTDIR/$FILE ] ; then
     #         SIZE=$(GetFileSize $ROOTDIR/$FILE)
     #         # MODULES     ./lib/modules/4.2.0-19-generic/kernel/drivers/video/fbdev/uvesafb.ko    49113B
     #         echo "MODULES$_T_$_T_$FILE$_T_$SIZE" >> $ROOTDIR/package_files.tsv
@@ -62,7 +62,7 @@ done
 # echo "MODULES$_T_$_T_$(du -sb $ROOTDIR/$KERNEL_MODULE_DIR | awk '{print $1}')$_T_$ORIGIN" >> $ROOTDIR/packages.tsv
 
 # install modules.order and modules.builtin for depmod
-(cd /; find $KERNEL_MODULE_DIR -name "*modules.builtin" -o -name "*modules.order" | xargs -i rsync -aRKv {} $ROOTDIR/)
+(cd / ; find $KERNEL_MODULE_DIR -name "*modules.builtin" -o -name "*modules.order" | xargs -i rsync -aRKv {} $ROOTDIR/)
 
 chroot $ROOTDIR depmod -a $KERNEL_VERS
 exit 0

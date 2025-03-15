@@ -3,7 +3,7 @@
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -25,9 +25,9 @@ DIR=
 STRIP=0
 while getopts "d:s:" OPT ; do
     case $OPT in
-    d) DIR="$OPTARG" ;;
-    s) STRIP="$OPTARG" ;;
-    *) Usage ;;
+	d) DIR="$OPTARG" ;;
+	s) STRIP="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -46,8 +46,8 @@ for ARC in $* ; do
 
     # Run pre install script (if exists and non-empty)
     PRE="${BASE}.pre"
-    if [ -f "$PRE" ]; then
-        if [ $(GetFileSize $PRE) -gt 0 ]; then
+    if [ -f "$PRE" ] ; then
+        if [ $(GetFileSize $PRE) -gt 0 ] ; then
             cp $PRE $ROOTDIR/tmp/preinstall
             Quiet chroot $ROOTDIR /bin/sh /tmp/preinstall
             rm -f $ROOTDIR/tmp/preinstall
@@ -65,7 +65,7 @@ for ARC in $* ; do
 
     # Remove excluded files
     EXCL=${BASE}.exclude
-    if [ -f "$EXCL" ]; then
+    if [ -f "$EXCL" ] ; then
         cat $EXCL | sed 's%^/%./%' | ( cd $TEMPDIR && xargs rm -rf )
     fi
 
@@ -82,13 +82,13 @@ for ARC in $* ; do
     # care only new line
     OLDIFS=$IFS
     IFS=$'\n'
-    for dir in $(find . -type d); do
-    if [ ! -d $ROOTDIR/$DIR/$dir -a ! -L $ROOTDIR/$DIR/$dir ] ; then
-        mkdir -p $ROOTDIR/$DIR/$dir
-        chmod $(stat -c %a $dir) $ROOTDIR/$DIR/$dir
-        [ "$(stat -c %U $dir)" != 'UNKNOWN' ] && chown $(stat -c %U $dir) $ROOTDIR/$DIR/$dir
-        [ "$(stat -c %G $dir)" != 'UNKNOWN' ] && chgrp $(stat -c %G $dir) $ROOTDIR/$DIR/$dir
-    fi
+    for dir in $(find . -type d) ; do
+	if [ ! -d $ROOTDIR/$DIR/$dir -a ! -L $ROOTDIR/$DIR/$dir ] ; then
+            mkdir -p $ROOTDIR/$DIR/$dir
+            chmod $(stat -c %a $dir) $ROOTDIR/$DIR/$dir
+            [ "$(stat -c %U $dir)" != 'UNKNOWN' ] && chown $(stat -c %U $dir) $ROOTDIR/$DIR/$dir
+            [ "$(stat -c %G $dir)" != 'UNKNOWN' ] && chgrp $(stat -c %G $dir) $ROOTDIR/$DIR/$dir
+	fi
     done
     # restore it
     IFS=$OLDIFS
@@ -100,8 +100,8 @@ for ARC in $* ; do
 
     # Run post install script (if exists and non-empty)
     POST="${BASE}.post"
-    if [ -f "$POST" ]; then
-        if [ $(GetFileSize $POST) -gt 0 ]; then
+    if [ -f "$POST" ] ; then
+        if [ $(GetFileSize $POST) -gt 0 ] ; then
             cp $POST $ROOTDIR/tmp/postinstall
             Quiet chroot $ROOTDIR /bin/sh /tmp/postinstall
             rm -f $ROOTDIR/tmp/postinstall
@@ -110,7 +110,7 @@ for ARC in $* ; do
 
     # ORIGIN=$(basename $(dirname $ARC))
     # while read FILE ; do
-    #     if [ -f "$ROOTDIR/$DIR/$FILE" ]; then
+    #     if [ -f "$ROOTDIR/$DIR/$FILE" ] ; then
     #         SIZE=$(GetFileSize $ROOTDIR/$DIR/$FILE)
     #         echo "ARC_FILE$_T_$DIR/$FILE$_T_$SIZE$_T_$ARC" >> $ROOTDIR/package_files.tsv
     #         TOTAL=$(( $TOTAL + $SIZE ))

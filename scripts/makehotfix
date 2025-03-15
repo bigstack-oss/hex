@@ -4,7 +4,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -42,17 +42,17 @@ NOSIGN=0
 
 while getopts "CRp:ns:" OPT ; do
     case $OPT in
-    C) CREATE_MODE=1 ;;
-    R) EXTRACT_MODE=1 ;;
-    p) PADDING="$OPTARG" ;;
-    n) NOSIGN=1 ;;
-    s) SNDIR="$OPTARG" ;;
-    *) Usage ;;
+	C) CREATE_MODE=1 ;;
+	R) EXTRACT_MODE=1 ;;
+	p) PADDING="$OPTARG" ;;
+	n) NOSIGN=1 ;;
+	s) SNDIR="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
 
-if [ $EXTRACT_MODE -eq 1 ]; then
+if [ $EXTRACT_MODE -eq 1 ] ; then
     [ $# -eq 4 ] || Usage
     FIXPACKDIR=$1
     NEW_ROOTFS=$2
@@ -60,7 +60,7 @@ if [ $EXTRACT_MODE -eq 1 ]; then
     PREV_PPU=$3
     [ -f $PREV_PPU ] || Error "Could not find PPU package: $PREV_PPU"
     FIXPACKFILE="$2"
-elif [ $CREATE_MODE -eq 1 ]; then
+elif [ $CREATE_MODE -eq 1 ] ; then
     [ $# -eq 2 ] || Usage
     FIXPACKDIR=$1
     ROOTFSDIR=$FIXPACKDIR/rootfs
@@ -100,7 +100,7 @@ cp -r $FIXPACKDIR/* $NEW_FIXPACKDIR
     cd $NEW_FIXPACKDIR
     for I in backup.lst new.lst remove.lst ; do
         touch $I
-        if [ "$I" = "backup.lst" ]; then
+        if [ "$I" = "backup.lst" ] ; then
             # Always include the signed FIPS checksums file in backup
             #echo "etc/checksums" >> backup.lst
             #echo "etc/checksums.sig" >> backup.lst
@@ -112,7 +112,7 @@ cp -r $FIXPACKDIR/* $NEW_FIXPACKDIR
 )
 
 # Extract files from rootfs
-if [ $EXTRACT_MODE -eq 1 ]; then
+if [ $EXTRACT_MODE -eq 1 ] ; then
     # Extract rootfs from previous PPU package
     PREV_ROOTFS=$(MakeTemp)
     $HEX_SCRIPTSDIR/mountppu -r "cp @ROOTDIR@/rootfs.cgz $PREV_ROOTFS" $PREV_PPU
@@ -144,7 +144,7 @@ if [ $EXTRACT_MODE -eq 1 ]; then
     chmod 755 $NEW_ROOTFS_DIR
     cat $FIXPACK_FILES | ( cd $PREV_ROOTFS_DIR && cpio --quiet -pdum $NEW_ROOTFS_DIR )
     # Fix ownership of lmi directory
-    if [ -d $NEW_ROOTFS_DIR/var/www/lmi ]; then
+    if [ -d $NEW_ROOTFS_DIR/var/www/lmi ] ; then
         chown -R www-data:www-data $NEW_ROOTFS_DIR/var/www/lmi
     fi
 
@@ -152,7 +152,7 @@ if [ $EXTRACT_MODE -eq 1 ]; then
     CreateCgz $NEW_FIXPACKDIR/rootfs.cgz $NEW_ROOTFS_DIR
 fi
 
-if [ $CREATE_MODE -eq 1 ]; then
+if [ $CREATE_MODE -eq 1 ] ; then
     rm -rf $NEW_FIXPACKDIR/rootfs
     [ -e $ROOTFSDIR ] || mkdir -p $ROOTFSDIR
     CreateCgz $NEW_FIXPACKDIR/rootfs.cgz $ROOTFSDIR

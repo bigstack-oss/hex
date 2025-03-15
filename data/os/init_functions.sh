@@ -9,21 +9,21 @@ echo $PATH | grep -q 'sbin:' || export PATH="/sbin:${PATH}"
 GetKernelConsoles()
 {
     (
-        CONSOLES=
+        local consoles=
         set dummy $(cat /proc/cmdline)
         shift 1
         while [ $# -gt 0 ]; do
             case "$1" in
                 console=*)
-                    CHARDEV=$(echo $1 | sed -e 's/console=//' | cut -d',' -f1)
-                    if timeout 1 bash -c "echo -n ' ' > /dev/$CHARDEV" ; then
-                        CONSOLES="$CONSOLES $CHARDEV"
+                    chardev=$(echo $1 | sed -e 's/console=//' | cut -d',' -f1)
+                    if timeout 1 bash -c "echo -n ' ' > /dev/$chardev" ; then
+                        consoles="$consoles $chardev"
                     fi
                     ;;
             esac
             shift 1
         done
-        echo $CONSOLES
+        echo $consoles
     )
 }
 
@@ -31,11 +31,11 @@ GetKernelConsoles()
 # Returns: /dev/tty0 /dev/ttyS0 ...
 GetKernelConsoleDevices()
 {
-    DEVICES=
+    local devices=
     for C in $(GetKernelConsoles) ; do
-        DEVICES="$DEVICES /dev/$C"
+        devices="$devices /dev/$C"
     done
-    echo $DEVICES
+    echo $devices
 }
 
 # Mount the proc filesystem so we can examine the kernel args
@@ -157,48 +157,46 @@ WaitForDev()
 
 WaitForCdrom()
 {
-    local SRDEV
+    local srdev
 
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        for BLOCKDEV in /dev/sr*
-        do
-            [ -e $BLOCKDEV ] || continue
-            SRDEV+="$BLOCKDEV "
+        for blockdev in /dev/sr* ; do
+            [ -e $blockdev ] || continue
+            srdev+="$blockdev "
         done
 
-        if [ -z "$SRDEV" ]; then
+        if [ -z "$srdev" ]; then
             sleep 1
         else
             sleep 3 && break
         fi
     done
 
-    for i in $SRDEV; do echo $i; done
+    for i in $srdev; do echo $i; done
 }
 
 # Wait for up to 15 seconds for udev to fire and add usb drive
 WaitForUsb()
 {
-    local USBDEV
+    local usbdev
 
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        for BLOCKDEV in /sys/block/sd*
-        do
-            [ -e $BLOCKDEV ] || continue
-            if readlink $BLOCKDEV | grep -q usb
+        for blockdev in /sys/block/sd* ; do
+            [ -e $blockdev ] || continue
+            if readlink $blockdev | grep -q usb
             then
-                local DEVNAME=$(basename $BLOCKDEV)
-                USBDEV+="$(lsblk -o NAME,FSTYPE /dev/$DEVNAME | grep $DEVNAME | awk '$2 != "" {print $1}' | grep -o "${DEVNAME}.*" | head -1 | xargs) "
+                local DEVNAME=$(basename $blockdev)
+                usbdev+="$(lsblk -o NAME,FSTYPE /dev/$DEVNAME | grep $DEVNAME | awk '$2 != "" {print $1}' | grep -o "${DEVNAME}.*" | head -1 | xargs) "
             fi
         done
-        if [ -z "$USBDEV" ]; then
+        if [ -z "$usbdev" ]; then
             sleep 1
         else
             sleep 3 && break
         fi
     done
 
-    for i in $USBDEV; do echo "/dev/$i"; done
+    for i in $usbdev; do echo "/dev/$i"; done
 }
 
 Source()

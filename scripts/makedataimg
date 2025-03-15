@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions
 else
     echo "$PROG: functions not found" >&2
@@ -46,7 +46,7 @@ shift $(($OPTIND - 1))
 IMG_TYPE=$1
 IMG=$2
 
-if [ $QUIET -eq 1 ]; then
+if [ $QUIET -eq 1 ] ; then
     QUIET_FLAG="quiet"
 else
     QUIET_FLAG=""
@@ -64,8 +64,8 @@ Cleanup()
 trap Cleanup INT TERM EXIT
 
 TEMPDIR=$(MakeTempDir)
-if [ -z "$IMG_SIZE" ]; then
-    if [ -z "$BUNDLE" ]; then
+if [ -z "$IMG_SIZE" ] ; then
+    if [ -z "$BUNDLE" ] ; then
         BUNDLE_SIZE=0
     else
         BUNDLE_SIZE=0

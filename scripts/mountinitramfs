@@ -5,7 +5,7 @@ set -e
 
 PROG=$(basename $0)
 HEX_SCRIPTSDIR=$(dirname $0)
-if [ -f $HEX_SCRIPTSDIR/functions ]; then
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
     . $HEX_SCRIPTSDIR/functions 
 else
     echo "$PROG: functions not found" >&2
@@ -39,22 +39,22 @@ PADDING=10M
 
 while getopts "RiCrs:p:" OPT ; do
     case $OPT in
-    R) REMOVE_RPM=1 ;;
-    i) INTERACTIVE=1 ;;
-    C) CHROOT=1 ;;
-    r) READONLY=1 ;;
-    s) IMG_SIZE="$OPTARG" ;;
-    p) PADDING="$OPTARG" ;;
-    *) Usage ;;
+	R) REMOVE_RPM=1 ;;
+	i) INTERACTIVE=1 ;;
+	C) CHROOT=1 ;;
+	r) READONLY=1 ;;
+	s) IMG_SIZE="$OPTARG" ;;
+	p) PADDING="$OPTARG" ;;
+	*) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
 
-if [ $INTERACTIVE -eq 1 -a $CHROOT -eq 1 ]; then
+if [ $INTERACTIVE -eq 1 -a $CHROOT -eq 1 ] ; then
     Usage 
 fi
 
-if [ $INTERACTIVE -eq 0 -a $CHROOT -eq 0 ]; then
+if [ $INTERACTIVE -eq 0 -a $CHROOT -eq 0 ] ; then
     [ $# -ge 1 ] || Usage
     INSTALL_CMD="$1"
     shift 1
@@ -65,13 +65,13 @@ fi
 [ -f $1 ] || Usage
 OLDIMG=$1
 
-if [ $# -eq 2 ]; then
+if [ $# -eq 2 ] ; then
     NEWIMG=$2
 else
     NEWIMG=$1
 fi
 
-if [ $HEX_USETEMP -eq 1 ]; then
+if [ $HEX_USETEMP -eq 1 ] ; then
     ROOTDIR=$(MakeTempDir)
     chmod 755 $ROOTDIR
     ExtractCgz $OLDIMG $ROOTDIR
@@ -84,8 +84,8 @@ else
     trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
 fi
 
-if [ $INTERACTIVE -eq 1 ]; then
-    if [ $READONLY -eq 1 ]; then
+if [ $INTERACTIVE -eq 1 ] ; then
+    if [ $READONLY -eq 1 ] ; then
         echo "Interactive mode (readonly)"
     else
         echo "Interactive mode"
@@ -94,8 +94,8 @@ if [ $INTERACTIVE -eq 1 ]; then
     echo "Current directory: $(pwd)"
     [ -n "$SHELL" ] || SHELL=/bin/sh
     (cd $ROOTDIR && PS1="$PROG \$ " PS2="> " $SHELL)
-elif [ $CHROOT -eq 1 ]; then
-    if [ $READONLY -eq 1 ]; then
+elif [ $CHROOT -eq 1 ] ; then
+    if [ $READONLY -eq 1 ] ; then
         echo "Chroot mode (readonly)"
     else
         echo "Chroot mode"
@@ -116,7 +116,7 @@ rm -f $ROOTDIR/*.tsv $ROOTDIR/*_rpms.txt
 
 CreateCgz $NEWIMG $ROOTDIR
 
-if [ -z "$IMG_SIZE" ]; then
+if [ -z "$IMG_SIZE" ] ; then
     IMG_SIZE=$(du -sk $ROOTDIR | awk '{print $1}')
 
     # Add padding to rootfs size

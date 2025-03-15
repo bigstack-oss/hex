@@ -1,7 +1,7 @@
 # HEX SDK
 
 # PROG must be set before sourcing this file
-if [ -z "$PROG" ]; then
+if [ -z "$PROG" ] ; then
     echo "Error: PROG not set" >&2
     exit 1
 fi
@@ -75,7 +75,7 @@ MakeTempDir()
 # Usage: RemoveTempFiles
 RemoveTempFiles()
 {
-    if [ $HEX_CLEANUP -eq 0 ]; then
+    if [ $HEX_CLEANUP -eq 0 ] ; then
         Warning "Temporary files not removed:"
         echo ${HEX_TMPDIR}/${PROG}$$.* >&2
     else
@@ -98,7 +98,7 @@ Quiet()
 
     TEMP=$(MakeTemp)
     IGNORE_ERR=0
-    if [ "$1" = "-n" ]; then
+    if [ "$1" = "-n" ] ; then
         IGNORE_ERR=1
         shift 1
     fi
@@ -120,7 +120,7 @@ Quiet()
 SetupLoop()
 {
     local LOOPDEV=$(losetup -f 2>/dev/null || true)
-    if [ -n "$LOOPDEV" -a -e "$LOOPDEV" ]; then
+    if [ -n "$LOOPDEV" -a -e "$LOOPDEV" ] ; then
         # Mounting signed PPUs/Fixpacks causes losetup to complain about not fitting into a 512-byte sector so redirect stdout/stderr
         Quiet losetup $LOOPDEV $* || Error "Failed to setup loop device"
     else
@@ -134,7 +134,7 @@ SetupLoop()
 RemoveLoop()
 {
     sync
-    if [ -n "$1" ]; then
+    if [ -n "$1" ] ; then
         [ -z "$(losetup $1 2>/dev/null)" ] || losetup -d $1
     fi
 }
@@ -147,17 +147,17 @@ UnmountRemoveLoop()
         local i=0;
         local MNTDIR=$(mount | grep "^$ldev" | awk '{print $3}')
         if [ -n "$MNTDIR" ] ; then
-            while [ $((i++)) -lt 3 ]; do
+            while [ $((i++)) -lt 3 ] ; do
                 sync
                 if umount $MNTDIR >/dev/null 2>&1 ; then
-		    break
-		else
-		    sleep 1
-		fi
+                    break
+                else
+                    sleep 1
+                fi
             done
         fi
         umount $ldev >/dev/null 2>&1 || true
-	RemoveLoop $ldev
+        RemoveLoop $ldev
     done
 }
 
@@ -178,9 +178,9 @@ ConvertImageSize()
 
     N=$(echo $1 | sed 's/[MGKmgk]//')
     case $1 in
-    *[Mm]) R=$(expr $N \* 1024) ;;
-    *[Gg]) R=$(expr $N \* 1024 \* 1024) ;;
-    *)     R=$N ;;
+        *[Mm]) R=$(expr $N \* 1024) ;;
+        *[Gg]) R=$(expr $N \* 1024 \* 1024) ;;
+        *)     R=$N ;;
     esac
 
     echo $R
@@ -197,17 +197,17 @@ AddFsOverhead()
 
     # Note: These values were calculated by test_fs_overhead
     case "$IMG_FMT" in
-    ext2|ext4)
-        # Ext2/4 requires approx 5.2% overhead
-        IMG_SIZE=$(( $(ConvertImageSize $IMG_SIZE) * 1052 / 1000 ))
-        ;;
-    vfat|efi)
-        # Vfat requires approx 1.2% overhead
-        IMG_SIZE=$(( $(ConvertImageSize $IMG_SIZE) * 1012 / 1000 ))
-        ;;
-    *)
-        Error "Unsupported image type"
-        ;;
+        ext2|ext4)
+            # Ext2/4 requires approx 5.2% overhead
+            IMG_SIZE=$(( $(ConvertImageSize $IMG_SIZE) * 1052 / 1000 ))
+            ;;
+        vfat|efi)
+            # Vfat requires approx 1.2% overhead
+            IMG_SIZE=$(( $(ConvertImageSize $IMG_SIZE) * 1012 / 1000 ))
+            ;;
+        *)
+            Error "Unsupported image type"
+            ;;
     esac
 
     # Round to nearest 4k boundary
@@ -226,25 +226,25 @@ FormatImage()
     local LOOPDEV=$2
     local BLOCKS=$3
     case "$IMG_FMT" in
-    vfat|efi)
-        Quiet mkfs.vfat -F 32 $LOOPDEV $BLOCKS
-        ;;
-    ext2)
-        # Disable root user reserved blocks
-        Quiet mkfs.ext2 -m 0 $LOOPDEV $BLOCKS
-        # Disable fsck
-        Quiet tune2fs -c -1 -i 0 $LOOPDEV
-        ;;
-    ext4)
-        # Disable journaling and root user reserved blocks
-        # enable lazy itable init to speed mkfs up, inodes will be clearned on next mount
-        Quiet mkfs.ext4 -O ^has_journal -E lazy_itable_init=1 -m 0 $LOOPDEV $BLOCKS
-        # Disable fsck
-        Quiet tune2fs -c -1 -i 0 $LOOPDEV
-        ;;
-    *)
-        Error "Unsupported image type"
-        ;;
+        vfat|efi)
+            Quiet mkfs.vfat -F 32 $LOOPDEV $BLOCKS
+            ;;
+        ext2)
+            # Disable root user reserved blocks
+            Quiet mkfs.ext2 -m 0 $LOOPDEV $BLOCKS
+            # Disable fsck
+            Quiet tune2fs -c -1 -i 0 $LOOPDEV
+            ;;
+        ext4)
+            # Disable journaling and root user reserved blocks
+            # enable lazy itable init to speed mkfs up, inodes will be clearned on next mount
+            Quiet mkfs.ext4 -O ^has_journal -E lazy_itable_init=1 -m 0 $LOOPDEV $BLOCKS
+            # Disable fsck
+            Quiet tune2fs -c -1 -i 0 $LOOPDEV
+            ;;
+        *)
+            Error "Unsupported image type"
+            ;;
     esac
 }
 
@@ -335,8 +335,8 @@ CreateOva()
 # Wait for up to 15 seconds for udev to fire and add device
 WaitForDev()
 {
-    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if [ -b $1 -o -c $1 ]; then
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ; do
+        if [ -b $1 -o -c $1 ] ; then
             break
         else
             sleep 1
@@ -355,7 +355,7 @@ PartitionSysHDD()
     local SWAPSIZE=$(ConvertImageSize $3)
 
     if [ -d /sys/firmware/efi ] ; then
-	if [ $SWAPSIZE -eq 0 ]; then
+        if [ $SWAPSIZE -eq 0 ] ; then
             # Create GUID partitions
             # 1: boot (EFI)
             cat <<EOF | Quiet -n fdisk $DEVICE
@@ -369,7 +369,7 @@ t
 1
 w
 EOF
-	else
+        else
             # Create GUID partitions
             # 1: boot (EFI)
             # 2: swap
@@ -391,9 +391,9 @@ t
 19
 w
 EOF
-	fi
+        fi
     else
-	if [ $SWAPSIZE -eq 0 ]; then
+        if [ $SWAPSIZE -eq 0 ] ; then
             # Create MBR partitions
             # 1: boot
             # 2: extended: rest of disk
@@ -416,7 +416,7 @@ t
 83
 w
 EOF
-	else
+        else
             # Create MBR partitions
             # 1: boot
             # 2: swap
@@ -448,14 +448,14 @@ t
 82
 w
 EOF
-	fi
+        fi
     fi
 
     # unit is sector (512B), divide by 2 for KB
-    local SPACELEFT=$(parted $DEVICE unit KB print free | grep 'Free Space' | tail -1 | awk '{sub(/kB/, "", $3); print $3}')
+    local SPACELEFT=$(parted $DEVICE unit KB print free | grep 'Free Space' | tail -1 | awk '{sub(/kB/, "", $3) ; print $3}')
     local MIN_HDDSIZE=$(ConvertImageSize 100G)
 
-    if [ $SPACELEFT -lt $MIN_HDDSIZE ]; then
+    if [ $SPACELEFT -lt $MIN_HDDSIZE ] ; then
         Error "minimum disk size for root partitions is 100GB"
     fi
 
@@ -467,7 +467,7 @@ EOF
     # 6: system (B)
     # 7: store (C)
     if [ -d /sys/firmware/efi ] ; then
-	cat <<EOF | Quiet -n fdisk $DEVICE
+        cat <<EOF | Quiet -n fdisk $DEVICE
 n
 5
 
@@ -484,7 +484,7 @@ p
 w
 EOF
     else
-	cat <<EOF | Quiet -n fdisk $DEVICE
+        cat <<EOF | Quiet -n fdisk $DEVICE
 n
 l
 
@@ -512,7 +512,7 @@ EOF
     fi
     partprobe $DEVICE
 
-    if echo $DEVICE | grep -q nvme; then
+    if echo $DEVICE | grep -q nvme ; then
         # nvme partition example /dev/nvme0n1p1 /dev/nvme0n1p2, ...
         DEV_PART=${DEV_PART}p
     fi
@@ -520,11 +520,11 @@ EOF
     WaitForDev ${DEV_PART}1
 
     if [ -d /sys/firmware/efi ] ; then
-	# GPT for UEFI doesn't have logical partition
-	[ $SWAPSIZE -eq 0 ] || WaitForDev ${DEV_PART}2
+        # GPT for UEFI doesn't have logical partition
+        [ $SWAPSIZE -eq 0 ] || WaitForDev ${DEV_PART}2
     else
-	WaitForDev ${DEV_PART}2
-	[ $SWAPSIZE -eq 0 ] || WaitForDev ${DEV_PART}3
+        WaitForDev ${DEV_PART}2
+        [ $SWAPSIZE -eq 0 ] || WaitForDev ${DEV_PART}3
     fi
     WaitForDev ${DEV_PART}5
     WaitForDev ${DEV_PART}6
@@ -560,10 +560,10 @@ PartitionDiskImage()
 
     local IDTYPE
     case "$IMG_FMT" in
-    ext2|ext4) IDTYPE=83 ;; # Linux
-    vfat)      IDTYPE=e ;;  # W95 FAT16 (LBA)
-    efi)       IDTYPE=ef ;;  # EFI (FAT-12/16/32)
-    *)         Error "Unsupported image type" ;;
+        ext2|ext4) IDTYPE=83 ;; # Linux
+        vfat)      IDTYPE=e ;;  # W95 FAT16 (LBA)
+        efi)       IDTYPE=ef ;;  # EFI (FAT-12/16/32)
+        *)         Error "Unsupported image type" ;;
     esac
 
     # For more information see: http://wiki.osdev.org/Loopback_Device#Hard_Disk_Images
@@ -629,7 +629,7 @@ GetPartitionOffset()
     #  3      2319528960B  8587192319B  6267663360B  extended
     #  5      2319561216B  5461585919B  3142024704B  logical   ext4
     #  6      5461618176B  8587192319B  3125574144B  logical   ext4
-    local OFFSET=$(parted $IMG unit B print | grep "^ $INDEX" | awk '{sub(/B/, "", $2); print $2}')
+    local OFFSET=$(parted $IMG unit B print | grep "^ $INDEX" | awk '{sub(/B/, "", $2) ; print $2}')
     echo $OFFSET
 }
 
@@ -655,7 +655,7 @@ CreateDiskImage()
     local OFFSET=${4:-$(GetPartitionOneOffset)}
 
     # Compute request image size in bytes including filesystem overhead and partition table
-    if [ "u$IMG_FMT" = "uefi" ]; then
+    if [ "u$IMG_FMT" = "uefi" ] ; then
         local OFFSET=0
     fi
     local IMG_BYTES=$(( ( $(AddFsOverhead $IMG_FMT $IMG_SIZE) * 1024 ) + $OFFSET ))
@@ -713,23 +713,23 @@ GenRootMd5()
     (
         cd $ROOTDIR
         find . -type f |
-        while read FILE ; do
-            case "$FILE" in
-            *.debug) ;;
-            *)  if isElf "$FILE" ; then
-                    # Strip build id and debuglink
-                    TEMPFILE=$(MakeTemp)
-                    objcopy -R .note.gnu.build-id -R .gnu_debuglink -R .rodata.str1.8 -S "$FILE" "$TEMPFILE"
-                    SUM=$(md5sum "$TEMPFILE" | awk '{print $1}')
-                    rm -f $TEMPFILE
-                else
-                    SUM=$(md5sum "$FILE" | awk '{print $1}')
-                fi
-                # To handle files with spaces separate with colon
-                echo "$FILE:$SUM"
-                ;;
-            esac
-        done | sort | sed -e 's!^\./!!'
+            while read FILE ; do
+                case "$FILE" in
+                    *.debug) ;;
+                    *)  if isElf "$FILE" ; then
+                            # Strip build id and debuglink
+                            TEMPFILE=$(MakeTemp)
+                            objcopy -R .note.gnu.build-id -R .gnu_debuglink -R .rodata.str1.8 -S "$FILE" "$TEMPFILE"
+                            SUM=$(md5sum "$TEMPFILE" | awk '{print $1}')
+                            rm -f $TEMPFILE
+                        else
+                            SUM=$(md5sum "$FILE" | awk '{print $1}')
+                        fi
+                        # To handle files with spaces separate with colon
+                        echo "$FILE:$SUM"
+                        ;;
+                esac
+            done | sort | sed -e 's!^\./!!'
     )
 }
 
@@ -746,15 +746,15 @@ ChangeFilenameSuffixSignature()
     local NEW_FILE
     Debug "ChangeFilenameSuffixSignature: FILE=$FILE"
     case "$(basename "$FILE" "$EXTENSION")" in
-    *_dev)
-        NEW_FILE=$(echo "$FILE" | sed -e "s/_dev/$NEW_SUFFIX/")
-        ;;
-    *_beta)
-        NEW_FILE=$(echo "$FILE" | sed -e "s/_beta/$NEW_SUFFIX/")
-        ;;
-    *)
-        NEW_FILE=$(basename "$FILE" "$EXTENSION" | sed -e "s/\$/$NEW_SUFFIX/")"$EXTENSION"
-        ;;
+        *_dev)
+            NEW_FILE=$(echo "$FILE" | sed -e "s/_dev/$NEW_SUFFIX/")
+            ;;
+        *_beta)
+            NEW_FILE=$(echo "$FILE" | sed -e "s/_beta/$NEW_SUFFIX/")
+            ;;
+        *)
+            NEW_FILE=$(basename "$FILE" "$EXTENSION" | sed -e "s/\$/$NEW_SUFFIX/")"$EXTENSION"
+            ;;
     esac
     Debug "ChangeFilenameSuffixSignature: NEW_FILE=$NEW_FILE"
     echo "$NEW_FILE"
@@ -785,7 +785,7 @@ ChangeSettingsSysSignature()
     local ROOTDIR="$1"
     local KEY_TYPE="$2"
 
-    if [ -f $ROOTDIR/etc/settings.sys ]; then
+    if [ -f $ROOTDIR/etc/settings.sys ] ; then
         Debug "ChangeSettingsSysSignature: Original: $(grep ^sys.build.signature $ROOTDIR/etc/settings.sys)"
         sed -i -e "/^sys.build.signature/d" $ROOTDIR/etc/settings.sys
         echo sys.build.signature = $KEY_TYPE >> $ROOTDIR/etc/settings.sys
@@ -802,12 +802,12 @@ ChangeReleaseFileSignature()
     local FILE="$1"
     local NEW_SUFFIX="$2"
 
-    if [ -f $FILE ]; then
+    if [ -f $FILE ] ; then
         Debug "ChangeReleaseFileSignature: Original: $(cat $FILE)"
         case "$(cat $FILE)" in
-        *_dev)  sed -i -e "s/_dev/$NEW_SUFFIX/" $FILE ;;
-        *_beta) sed -i -e "s/_beta/$NEW_SUFFIX/" $FILE ;;
-        *)      sed -i -e "s/\$/$NEW_SUFFIX/" $FILE ;;
+            *_dev)  sed -i -e "s/_dev/$NEW_SUFFIX/" $FILE ;;
+            *_beta) sed -i -e "s/_beta/$NEW_SUFFIX/" $FILE ;;
+            *)      sed -i -e "s/\$/$NEW_SUFFIX/" $FILE ;;
         esac
         Debug "ChangeReleaseFileSignature: New: $(cat $FILE)"
     fi
@@ -824,8 +824,8 @@ ChangeUpdateContentsSignature()
 
     Debug "ChangeUpdateContentsSignature: Original: $(grep 'source.*pkg' $ROOTDIR/update.contents)"
     sed -i -e "s/_dev\.pkg/.pkg/" \
-           -e "s/_beta\.pkg/.pkg/"  \
-           -e "s/\.pkg/$NEW_SUFFIX.pkg/" $ROOTDIR/update.contents
+        -e "s/_beta\.pkg/.pkg/"  \
+        -e "s/\.pkg/$NEW_SUFFIX.pkg/" $ROOTDIR/update.contents
     Debug "ChangeUpdateContentsSignature: New: $(grep 'source.*pkg' $ROOTDIR/update.contents)"
 }
 
@@ -839,17 +839,17 @@ MakeISO()
     local TEMPDIR="$2"
 
     Quiet xorriso -as mkisofs -o $IMG \
-	  -isohybrid-mbr /usr/share/syslinux/isohdpfx.bin \
-	  -b isolinux/isolinux.bin \
-	  -c isolinux/boot.cat \
-	  -no-emul-boot \
-	  -boot-load-size 4 \
-	  -boot-info-table \
-	  -l -R -L -D -r \
-	  -eltorito-alt-boot \
-	  -e uefi.img \
-	  -no-emul-boot \
-	  -isohybrid-gpt-basdat $TEMPDIR
+          -isohybrid-mbr /usr/share/syslinux/isohdpfx.bin \
+          -b isolinux/isolinux.bin \
+          -c isolinux/boot.cat \
+          -no-emul-boot \
+          -boot-load-size 4 \
+          -boot-info-table \
+          -l -R -L -D -r \
+          -eltorito-alt-boot \
+          -e uefi.img \
+          -no-emul-boot \
+          -isohybrid-gpt-basdat $TEMPDIR
 }
 
 MakeDataISO()
@@ -919,9 +919,9 @@ MountOtherPartition()
 
     CURRENT="$(cat /etc/mtab | grep '^/dev' | awk '{if ($2 == "/") print $1;}')"
     case "$CURRENT" in
-    *5) OTHER="$(dirname $CURRENT)/$(basename $CURRENT 5)6" ;;
-    *6) OTHER="$(dirname $CURRENT)/$(basename $CURRENT 6)5" ;;
-    *) echo "Error: Could not determine current default" >&2 ; exit 1 ;;
+        *5) OTHER="$(dirname $CURRENT)/$(basename $CURRENT 5)6" ;;
+        *6) OTHER="$(dirname $CURRENT)/$(basename $CURRENT 6)5" ;;
+        *) echo "Error: Could not determine current default" >&2 ; exit 1 ;;
     esac
 
     echo "Mounting $OTHER on /mnt/target"
@@ -931,7 +931,7 @@ MountOtherPartition()
 # List all nvme* and sd* on system
 ListAllDisks()
 {
-    for host in /sys/class/scsi_host/*; do echo "- - -" > $host/scan ; done
+    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
     local nvmes=$(ls /dev/nvme* 2>/dev/null| grep -oe '/dev/nvme[0-9]\+n[0-9]\+$')
     local ssds=$(ls /dev/sd* 2>/dev/null| grep -oe '/dev/sd[a-z]\+$')
 
@@ -964,12 +964,12 @@ ListMountedDisks()
 # Return free sectors by given disk
 GetFreeSectorsByDisk()
 {
-   DEVICE=$1
-   TOTAL=$(sgdisk -E $DEVICE | grep -oe '^[0-9]\+$')
-   OCCUP=$(sgdisk -F $DEVICE | grep -oe '^[0-9]\+$')
-   AVAIL=$(( $TOTAL - $OCCUP ))
-   [[ "$AVAIL" -gt 0 ]] || AVAIL=0
-   echo $AVAIL
+    DEVICE=$1
+    TOTAL=$(sgdisk -E $DEVICE | grep -oe '^[0-9]\+$')
+    OCCUP=$(sgdisk -F $DEVICE | grep -oe '^[0-9]\+$')
+    AVAIL=$(( $TOTAL - $OCCUP ))
+    [[ "$AVAIL" -gt 0 ]] || AVAIL=0
+    echo $AVAIL
 }
 
 # Show # of partitions in a disk
@@ -984,7 +984,7 @@ ListPreparedDisks()
 {
     local PREP_NVME_DEVS=$(readlink -e /dev/disk/by-partlabel/hex_prep* | grep -oe '/dev/nvme[0-9]\+n[0-9]\+' | sort | uniq)
     echo -n $PREP_NVME_DEVS
-    if [ -n "$PREP_NVME_DEVS" ]; then
+    if [ -n "$PREP_NVME_DEVS" ] ; then
         echo -n " "
     fi
     local PREP_SCSI_DEVS=$(readlink -e /dev/disk/by-partlabel/hex_prep* | grep -oe '/dev/sd[a-z]\+' | sort | uniq)
@@ -1012,7 +1012,7 @@ ListAvailDisks()
 # List all HDDs
 ListAllHDDs()
 {
-    for host in /sys/class/scsi_host/*; do echo "- - -" > $host/scan ; done
+    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
     echo -n $(lsblk -n -d -o name,rota | grep "^sd" | grep 1$ | grep -oe 'sd[a-z]\+' | sed -e 's@^@/dev/@g')
 }
 
@@ -1022,12 +1022,11 @@ ListAvailHDDs()
     local ALL_DEVS=$(ListAllHDDs)
     local BUSY_DEVS=$(ListMountedDisks)
     local RET_DEVS=""
-    for h in ${ALL_DEVS}
-    do
-       if [[ ${BUSY_DEVS} =~ ${h} ]]; then
-           continue
-       fi
-       RET_DEVS+=" $h"
+    for h in ${ALL_DEVS} ; do
+        if [[ ${BUSY_DEVS} =~ ${h} ]] ; then
+            continue
+        fi
+        RET_DEVS+=" $h"
     done
     echo -n ${RET_DEVS}
 }
@@ -1035,11 +1034,11 @@ ListAvailHDDs()
 # List all SSDs
 ListAllSSDs()
 {
-    for host in /sys/class/scsi_host/*; do echo "- - -" > $host/scan ; done
+    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
     local nvme=$(lsblk -n -d -o name,rota | grep ^nvme | grep 0$ | grep -oe 'nvme[0-9]\+n[0-9]\+' | sed -e 's@^@/dev/@g')
     local hdd=$(lsblk -n -d -o name,rota | grep "^sd" | grep 0$ | grep -oe 'sd[a-z]\+' | sed -e 's@^@/dev/@g')
     echo -n $nvme
-    if [ -n "$nvme" ]; then
+    if [ -n "$nvme" ] ; then
         echo -n " "
     fi
     echo -n $hdd
@@ -1051,12 +1050,11 @@ ListAvailSSDs()
     local ALL_DEVS=$(ListAllSSDs)
     local BUSY_DEVS=$(ListMountedDisks)
     local RET_DEVS=""
-    for h in ${ALL_DEVS}
-    do
-       if [[ ${BUSY_DEVS} =~ ${h} ]]; then
-           continue
-       fi
-       RET_DEVS+=" $h"
+    for h in ${ALL_DEVS} ; do
+        if [[ ${BUSY_DEVS} =~ ${h} ]] ; then
+            continue
+        fi
+        RET_DEVS+=" $h"
     done
     echo -n ${RET_DEVS}
 }
@@ -1085,23 +1083,21 @@ ClearBondingSlaves()
     local cidrs=$(ip -4 addr show $MASTER | grep "^    inet .* $MASTER" | awk '{print $2}')
     local defgw=$(ip -4 route | grep "^default.*$MASTER" | awk '{print $3}')
 
-    if [ -n "$MASTER" ]; then
+    if [ -n "$MASTER" ] ; then
         /usr/sbin/ip link set $MASTER down
-        for SLAVE in $(cat /sys/class/net/$MASTER/bonding/slaves)
-        do
+        for SLAVE in $(cat /sys/class/net/$MASTER/bonding/slaves) ; do
             RemoveBondingSlave $MASTER $SLAVE
         done
         /usr/sbin/ip link set $MASTER up
 
-        if ! ip -4 addr show $MASTER | grep -q "inet"; then
-            for cidr in $cidrs
-            do
+        if ! ip -4 addr show $MASTER | grep -q "inet" ; then
+            for cidr in $cidrs ; do
                 ip -4 addr add $cidr dev $MASTER
             done
         fi
 
-        if [ -n "$defgw" ]; then
-            if ! ip -4 route | grep "^default.*$MASTER"; then
+        if [ -n "$defgw" ] ; then
+            if ! ip -4 route | grep "^default.*$MASTER" ; then
                 route add default gw $defgw $MASTER
             fi
         fi
@@ -1111,10 +1107,9 @@ ClearBondingSlaves()
 ClearBondingIf()
 {
     local MASTER=$1
-    if [ -n "$MASTER" ]; then
+    if [ -n "$MASTER" ] ; then
         /usr/sbin/ip link set $MASTER down
-        for SLAVE in $(cat /sys/class/net/$MASTER/bonding/slaves)
-        do
+        for SLAVE in $(cat /sys/class/net/$MASTER/bonding/slaves) ; do
             RemoveBondingSlave $MASTER $SLAVE
         done
         echo "-$MASTER" > /sys/class/net/bonding_masters
@@ -1136,7 +1131,7 @@ UpdateBondingInterface()
     fi
 
     # check if interface exist now
-    if [ -d /sys/class/net/$INTERFACE ]; then
+    if [ -d /sys/class/net/$INTERFACE ] ; then
         # 802.3ad
         local cidrs=$(ip -4 addr show $INTERFACE | grep "^    inet .* $INTERFACE" | awk '{print $2}')
         local defgw=$(ip -4 route | grep "^default.*$INTERFACE" | awk '{print $3}')
@@ -1150,15 +1145,14 @@ UpdateBondingInterface()
 
         ip link set $INTERFACE up
 
-        if ! ip -4 addr show $INTERFACE | grep -q "inet"; then
-            for cidr in $cidrs
-            do
+        if ! ip -4 addr show $INTERFACE | grep -q "inet" ; then
+            for cidr in $cidrs ; do
                 ip -4 addr add $cidr dev $INTERFACE
             done
         fi
 
-        if [ -n "$defgw" ]; then
-            if ! ip -4 route | grep "^default.*$INTERFACE"; then
+        if [ -n "$defgw" ] ; then
+            if ! ip -4 route | grep "^default.*$INTERFACE" ; then
                 route add default gw $defgw $INTERFACE
             fi
         fi
@@ -1173,7 +1167,7 @@ AddBondingSlave()
 {
     local MASTER=$1
     local SLAVE=$2
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for i in 1 2 3 4 5 6 7 8 9 10 ; do
         local BONDING_SLAVES=$(cat /sys/class/net/$MASTER/bonding/slaves)
         echo " $BONDING_SLAVES " | grep " $SLAVE " >/dev/null
         if [ $? -eq 0 ] ; then
@@ -1191,7 +1185,7 @@ RemoveBondingSlave()
 {
     local MASTER=$1
     local SLAVE=$2
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for i in 1 2 3 4 5 6 7 8 9 10 ; do
         local BONDING_SLAVES=$(cat /sys/class/net/$MASTER/bonding/slaves)
         echo " $BONDING_SLAVES " | grep " $SLAVE " >/dev/null
         if [ $? -gt 0 ] ; then
@@ -1208,7 +1202,7 @@ RemoveBondingSlave()
 ClearVlanConfig()
 {
     local VIF=$1
-    if [ -n "$VIF" ]; then
+    if [ -n "$VIF" ] ; then
         ip link set $VIF down
         ip link delete $VIF
     fi
@@ -1218,7 +1212,7 @@ UpdateVlanInterface()
 {
     local MASTER=$1
     local VID=$2
-    if [ -n "$MASTER" ]; then
+    if [ -n "$MASTER" ] ; then
         ip link set $MASTER up
         ip link add link $MASTER name $MASTER.$VID type vlan id $VID
     fi
@@ -1237,7 +1231,7 @@ AddUpdateHistory()
     local NOW=$(date +"%Y%m%d-%H%M TZ:%z")
 
     # in YAML format
-    if [ ! -f "$HISTORY_FILE" ]; then
+    if [ ! -f "$HISTORY_FILE" ] ; then
         echo "---" > $HISTORY_FILE
         echo "# file: /var/appliance-db/update.history" >> $HISTORY_FILE
         echo "" >> $HISTORY_FILE
@@ -1273,12 +1267,12 @@ EtcShadowMigrate()
     local PREV_DIR=$1
     local root_line=$(cat $PREV_DIR/etc/shadow | grep root:)
     local admin_line=$(cat $PREV_DIR/etc/shadow | grep admin:)
-    if sed "s~^root:.*~$root_line~g" /etc/shadow >/dev/null 2>&1; then
+    if sed "s~^root:.*~$root_line~g" /etc/shadow >/dev/null 2>&1 ; then
         sed -i "s~^root:.*~$root_line~g" /etc/shadow
     else
         echo "failed to migrate root account" >> /var/log/migrate.log
     fi
-    if sed "s~^admin:.*~$admin_line~g" /etc/shadow >/dev/null 2>&1; then
+    if sed "s~^admin:.*~$admin_line~g" /etc/shadow >/dev/null 2>&1 ; then
         sed -i "s~^admin:.*~$admin_line~g" /etc/shadow
     else
         echo "failed to migrate admin account" >> /var/log/migrate.log
@@ -1291,7 +1285,7 @@ DumpInterface()
     touch /etc/settings.sys
     source hex_tuning /etc/settings.sys sys.net.if
 
-    if [ -n "$VERBOSE" ]; then
+    if [ -n "$VERBOSE" ] ; then
         printf "%120s\n" " " | tr " " "-"
         printf "%8s %8s %16s %14s %20s %10s %5s %6s %s\n" "Dev" "Label" "DevID/Cfg" "BusID/Slaves" "HWAddr" "Driver" "Link" "State" "Speed(actual/advertised)"
         printf "%120s\n" " " | tr " " "-"
@@ -1306,22 +1300,22 @@ DumpInterface()
     declare -A ORIG_STATE=()
     while true ; do
         eval HWADDR=\${T_sys_net_if_mac_eth${I}}
-        if [ -z "$HWADDR" ]; then
+        if [ -z "$HWADDR" ] ; then
             I=$(expr $I + 1)
             FAILED=$(expr $FAILED + 1)
-            if [ $FAILED -gt 10 ]; then
+            if [ $FAILED -gt 10 ] ; then
                 break
             else
                 continue
             fi
         fi
         if /usr/sbin/ethtool eth$I >/dev/null 2>&1 ; then
-            if cat /sys/class/net/eth$I/carrier >/dev/null 2>&1; then
+            if cat /sys/class/net/eth$I/carrier >/dev/null 2>&1 ; then
                 ORIG_STATE[$I]="UP"
             else
                 /usr/sbin/ip link set eth$I up >/dev/null 2>&1
                 ORIG_STATE[$I]="DOWN"
-                for S in $(seq $wait_sec); do
+                for S in $(seq $wait_sec) ; do
                     SPEED=$(cat /sys/class/net/eth$I/speed 2>/dev/null)
                     [ "x$SPEED" = "x" ] || break
                     sleep 1
@@ -1335,10 +1329,10 @@ DumpInterface()
     FAILED=0
     while true ; do
         eval HWADDR=\${T_sys_net_if_mac_eth${I}}
-        if [ -z "$HWADDR" ]; then
+        if [ -z "$HWADDR" ] ; then
             I=$(expr $I + 1)
             FAILED=$(expr $FAILED + 1)
-            if [ $FAILED -gt 10 ]; then
+            if [ $FAILED -gt 10 ] ; then
                 break
             else
                 continue
@@ -1353,23 +1347,23 @@ DumpInterface()
             LINK=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Link detected:" | awk '{print $3}')
             SPEED=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Speed:" | awk {'print $2'} | sed 's/.\{4\}$//')
             DUPLEX=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Duplex:" | awk '{print substr ($2, 0, 1)}')
-	    ADVERTISED=$(/usr/sbin/ethtool eth$I 2>/dev/null | sed -ne '/Advertised link modes:/,/:/p' | sed -e 's/.*://' -e 's/^[[:space:]]*//' -e '$d' | tr " " "\n" | sort -n | tail -1 | sed 's/base.*//')
-            if [ "$SPEED" == "Unkn" ]; then
+            ADVERTISED=$(/usr/sbin/ethtool eth$I 2>/dev/null | sed -ne '/Advertised link modes:/,/:/p' | sed -e 's/.*://' -e 's/^[[:space:]]*//' -e '$d' | tr " " "\n" | sort -n | tail -1 | sed 's/base.*//')
+            if [ "$SPEED" == "Unkn" ] ; then
                 SPEED="NA"
                 DUPLEX=""
             fi
-            if [ "$LINK" == "yes" ]; then
-                if [ -z $SPEED ]; then
+            if [ "$LINK" == "yes" ] ; then
+                if [ -z $SPEED ] ; then
                     # For para-virtual driver, we assume the speed is 1000
                     SPEED=1000
                 fi
-                if [ -z $DUPLEX ]; then
+                if [ -z $DUPLEX ] ; then
                     # For para-virtual driver, we assume it is full duplex
                     DUPLEX="F"
                 fi
             fi
             STATE=${ORIG_STATE[$I]}
-            if [ "$STATE" == "DOWN" ]; then
+            if [ "$STATE" == "DOWN" ] ; then
                 /usr/sbin/ip link set eth$I down >/dev/null 2>&1
             fi
         else
@@ -1378,7 +1372,7 @@ DumpInterface()
             DUPLEX=""
             STATE="NA"
         fi
-        if [ -n "$VERBOSE" ]; then
+        if [ -n "$VERBOSE" ] ; then
             printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "eth$I" "$LABEL" "${VNDID}.${DEVID}" "$BUSID" "$HWADDR" "$DRIVER" "$LINK" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
         else
             printf "%8s %14s %10s %6s %18s\n" "$LABEL" "$BUSID" "$DRIVER" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
@@ -1386,8 +1380,7 @@ DumpInterface()
         I=$(expr $I + 1)
     done
 
-    for bond in $(ls /sys/class/net/*/bonding/slaves 2>/dev/null | awk -F'/' '{print $5}')
-    do
+    for bond in $(ls /sys/class/net/*/bonding/slaves 2>/dev/null | awk -F'/' '{print $5}') ; do
         if /usr/sbin/ethtool $bond >/dev/null 2>&1 ; then
             LINK=$(/usr/sbin/ethtool $bond 2>/dev/null | grep "Link detected:" | awk '{print $3}')
             SPEED=$(/usr/sbin/ethtool $bond 2>/dev/null |grep "Speed:" |awk {'print $2'} |sed 's/.\{4\}$//')
@@ -1396,16 +1389,16 @@ DumpInterface()
             SLAVES=$(cat /proc/net/bonding/$bond 2>/dev/null | grep -i "slave interface" | awk '{print $3}' | tr '\n' ',')
             RATE=$(cat /sys/class/net/$bond/bonding/lacp_rate | awk '{print $1}')
             XMIT=$(cat /sys/class/net/$bond/bonding/xmit_hash_policy | awk '{print $1}')
-            if [ "$SPEED" == "Unkn" ]; then
+            if [ "$SPEED" == "Unkn" ] ; then
                 SPEED="NA"
                 DUPLEX=""
             fi
-            if [ "$LINK" == "yes" ]; then
-                if [ -z $SPEED ]; then
+            if [ "$LINK" == "yes" ] ; then
+                if [ -z $SPEED ] ; then
                     # For para-virtual driver, we assume the speed is 1000
                     SPEED=1000
                 fi
-                if [ -z $DUPLEX ]; then
+                if [ -z $DUPLEX ] ; then
                     # For para-virtual driver, we assume it is full duplex
                     DUPLEX="F"
                 fi
@@ -1418,14 +1411,14 @@ DumpInterface()
             DUPLEX=""
             STATE="NA"
         fi
-        if [ -n "$VERBOSE" ]; then
+        if [ -n "$VERBOSE" ] ; then
             printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "$bond" "$bond" "${RATE},${XMIT}" "${SLAVES::-1}" "$HWADDR" "802.3ad" "$LINK" "$STATE" "${SPEED}${DUPLEX}/bonded"
         else
             printf "%8s %14s %10s %6s %18s\n" "$bond" "${SLAVES::-1}" "802.3ad" "$STATE" "${SPEED}${DUPLEX}/bonded"
         fi
     done
 
-    if [ -n "$VERBOSE" ]; then
+    if [ -n "$VERBOSE" ] ; then
         printf "%120s\n" " " | tr " " "-"
     else
         printf "%61s\n" " " | tr " " "-"
@@ -1448,11 +1441,10 @@ FindIfnameById()
 {
     local id=$1
 
-    for ether in $(ls /sys/class/net/*/device/uevent)
-    do
+    for ether in $(ls /sys/class/net/*/device/uevent) ; do
         local ifname=$(echo $ether | awk -F'/' '{print $5}')
         local pciid=$(cat $ether | grep PCI_SLOT_NAME | awk -F'=' '{print $2}')
-        if [ -n "$pciid" -a "$pciid" == "$id" ]; then
+        if [ -n "$pciid" -a "$pciid" == "$id" ] ; then
             echo -n "$ifname"
             break
         fi
@@ -1467,19 +1459,19 @@ FetchPxeCfg()
     local endpoint=$(echo $url | awk -F '//' '{print $2}' | awk -F'/' '{print $1}')
     local path=$(echo $url | awk -F '//' '{print $2}' | cut -d '/' -f2- | tr -d '\n')
     rm -f /tmp/pxe.cfg
-    if [ "$proto" == "http" ]; then
-      /usr/bin/wget -q -O /tmp/pxe.cfg $url
-    elif [ "$proto" == "tftp" ]; then
-      (cd /tmp && /usr/bin/tftp -m binary $endpoint -c get $path)
+    if [ "$proto" == "http" ] ; then
+        /usr/bin/wget -q -O /tmp/pxe.cfg $url
+    elif [ "$proto" == "tftp" ] ; then
+        (cd /tmp && /usr/bin/tftp -m binary $endpoint -c get $path)
     fi
 }
 
 ReadPxeCfg()
 {
     local key=$1
-    if [ -f /tmp/pxe.cfg ]; then
+    if [ -f /tmp/pxe.cfg ] ; then
         local value=$(cat /tmp/pxe.cfg | grep $key | awk -F'=' '{print $2}')
-        if [ -n "$value" ]; then
+        if [ -n "$value" ] ; then
             echo -n "$value"
         fi
     fi
@@ -1488,10 +1480,10 @@ ReadPxeCfg()
 GetParentIfname()
 {
     local pIf=$(ls -la /sys/class/net/$1/upper_* 2>/dev/null | awk -F'/' '{print $NF}')
-    if [ -S /var/run/openvswitch/db.sock ]; then
-        if [ -z "$pIf" ]; then
+    if [ -S /var/run/openvswitch/db.sock ] ; then
+        if [ -z "$pIf" ] ; then
             pIf=$(/usr/bin/ovs-vsctl port-to-br $1 2>/dev/null)
-        elif grep -q "ovs-system" <<< "$pIf"; then
+        elif grep -q "ovs-system" <<< "$pIf" ; then
             pIf=$(/usr/bin/ovs-vsctl port-to-br $1 2>/dev/null)
         fi
     fi
@@ -1503,13 +1495,13 @@ GetDeviceDriver()
     dev=$(readlink -m $1)
 
     # test for block/character device
-    if [ -b "$dev" ]; then
-      mode=block
-    elif [ -c "$dev" ]; then
-      mode=char
+    if [ -b "$dev" ] ; then
+        mode=block
+    elif [ -c "$dev" ] ; then
+        mode=char
     else
-      echo "$dev is not a device file" >&2
-      exit 1
+        echo "$dev is not a device file" >&2
+        exit 1
     fi
 
     # stat outputs major/minor in hex, convert to decimal
@@ -1524,32 +1516,32 @@ GetDeviceDriver()
 
     # sometimes nodes have been created for devices that are not present
     dir=$(readlink -f /sys/dev/$mode/$major\:$minor)
-    if ! [ -e "$dir" ]; then
-      echo "No /sys entry for $dev" >&2
-      exit 3
+    if ! [ -e "$dir" ] ; then
+        echo "No /sys entry for $dev" >&2
+        exit 3
     fi
 
     # walk up the /sys hierarchy one directory at a time
     # stop when there are three levels left
-    while [[ $dir == /*/*/* ]]; do
+    while [[ $dir == /*/*/* ]] ; do
 
-      # it seems the directory is only of interest if there is a 'uevent' file
-      if [ -e "$dir/uevent" ]; then
-        echo "$dir:"
-        echo "  Uevent:"
-        sed 's/^/    /' "$dir/uevent"
+        # it seems the directory is only of interest if there is a 'uevent' file
+        if [ -e "$dir/uevent" ] ; then
+            echo "$dir:"
+            echo "  Uevent:"
+            sed 's/^/    /' "$dir/uevent"
 
-        # check for subsystem link
-        if [ -d "$dir/subsystem" ]; then
-            subsystem=$(readlink -f "$dir/subsystem")
-            echo -e "\n  Subsystem:\n    ${subsystem##*/}"
+            # check for subsystem link
+            if [ -d "$dir/subsystem" ] ; then
+                subsystem=$(readlink -f "$dir/subsystem")
+                echo -e "\n  Subsystem:\n    ${subsystem##*/}"
+            fi
+
+            echo
         fi
 
-        echo
-      fi
-
-      # strip a subdirectory
-      dir=${dir%/*}
+        # strip a subdirectory
+        dir=${dir%/*}
     done
 }
 
@@ -1584,9 +1576,9 @@ RootfsEnableProxy()
     if timeout 5 curl -x $HEX_PROXY_URL ifconfig.co >/dev/null 2>&1 ; then
         export http_proxy=$HEX_PROXY_URL
         export https_proxy=$HEX_PROXY_URL
-        if [ "x$PROG" = "xinstallpip" ]; then
+        if [ "x$PROG" = "xinstallpip" ] ; then
             OPTIONS+=" --proxy $HEX_PROXY_URL"
-        elif [ "x$PROG" = "xinstalldnf" ]; then
+        elif [ "x$PROG" = "xinstalldnf" ] ; then
             ! grep -q "^proxy=" $ROOTDIR/etc/dnf/dnf.conf || sed -i '/^proxy=/d' $ROOTDIR/etc/dnf/dnf.conf
             echo "proxy=$HEX_PROXY_URL" >> $ROOTDIR/etc/dnf/dnf.conf
         fi
@@ -1598,9 +1590,9 @@ RootfsDisableProxy()
 {
     export http_proxy=
     export https_proxy=
-    if [ "x$PROG" = "xinstallpip" ]; then
+    if [ "x$PROG" = "xinstallpip" ] ; then
         unset OPTIONS
-    elif [ "x$PROG" = "xinstalldnf" ]; then
+    elif [ "x$PROG" = "xinstalldnf" ] ; then
         ! grep -q "^proxy=" $ROOTDIR/etc/dnf/dnf.conf || sed -i '/^proxy=/d' $ROOTDIR/etc/dnf/dnf.conf
     fi
 }
@@ -1623,21 +1615,21 @@ CreateSwap()
     local SWAPSIZEM=0
     local ISNUM='^[0-9]+$'
 
-    if ! [[ $FREESPACE =~ $ISNUM ]]; then echo "Bad free space value: $FREESPACE" && return; fi
+    if ! [[ $FREESPACE =~ $ISNUM ]] ; then echo "Bad free space value: $FREESPACE" && return ; fi
 
-    if [ $FREESPACE -gt $(ConvertImageSize 40G) ]; then
+    if [ $FREESPACE -gt $(ConvertImageSize 40G) ] ; then
         SWAPSIZEK=$(ConvertImageSize 40G)
-    elif [ $FREESPACE -gt $(ConvertImageSize 30G) ]; then
+    elif [ $FREESPACE -gt $(ConvertImageSize 30G) ] ; then
         SWAPSIZEK=$(ConvertImageSize 30G)
-    elif [ $FREESPACE -gt $(ConvertImageSize 20G) ]; then
+    elif [ $FREESPACE -gt $(ConvertImageSize 20G) ] ; then
         SWAPSIZEK=$(ConvertImageSize 20G)
-    elif [ $FREESPACE -gt $(ConvertImageSize 10G) ]; then
+    elif [ $FREESPACE -gt $(ConvertImageSize 10G) ] ; then
         SWAPSIZEK=$(ConvertImageSize 10G)
     else
         SWAPSIZEK=$(( $FREESPACE - $(ConvertImageSize 1G) ))
     fi
 
-    if [ -e $SWAPFILE ]; then
+    if [ -e $SWAPFILE ] ; then
         echo "swap file ($SWAPFILE) already exists"
     else
         free -g

@@ -2,42 +2,38 @@
 # HEX SDK
 
 PROG=$(basename $0)
+SDK_DIR=/usr/lib/hex_sdk
 
-if [ -f /etc/init_functions ]; then
-    . /etc/init_functions
-fi
-if [ -f /usr/lib/hex_sdk/functions ]; then
-    . /usr/lib/hex_sdk/functions
-fi
-if [ -f /usr/lib/hex_sdk/proj_functions ]; then
-    . /usr/lib/hex_sdk/proj_functions
-fi
-
-for sdk_sh in /usr/lib/hex_sdk/modules/*.sh; do
-    . $sdk_sh
-done 2>/dev/null
+_hex_exec() {
+    $@
+}
+for sdk_sh in /etc/init_functions $SDK_DIR/functions $SDK_DIR/proj_functions ; do
+    if [ -f $sdk_sh ] ; then
+	source $sdk_sh
+    fi
+done
 
 Usage()
 {
     cat <<EOF >&1
-Usage: $PROG <function>            run hex_sdk functions
-Functions:
-$(compgen -A function | grep -v '^_')
-Options:
+Usage: $PROG <option> <function>
+options:
+-d            dry run
 -x            enable trace mode
 -v            verbose/full output
--f <format>   {pretty,json,line,value,shell} the output format, defaults to pretty
+-f <format>   {pretty,json,line,value,shell,none} the output format, defaults to pretty
+functions:
+$(compgen -A function | grep -v '^_')
 EOF
     exit 1
 }
 
-[ $# -ge 1 ] || Usage
-
 VERBOSE=
 FORMAT=pretty
 
-while getopts "xvf:" OPT ; do
+while getopts "dxvf:" OPT ; do
     case $OPT in
+	d) DRYRUN=1 ;;
         x) set -x;;
         v) VERBOSE=1 ;;
         f) FORMAT=$OPTARG ;;
@@ -47,5 +43,42 @@ done
 shift $(($OPTIND - 1))
 
 CMD="$1"
+for sdk_sh in ${SDK_DIR}/modules.pre/sdk_*.sh ; do
+    if [ -f $sdk_sh ] ; then
+	source $sdk_sh
+    fi
+done
+
+if [ "x$(type -t $CMD)" != "xfunction" ] ; then
+    MOD=$(echo ${1:-NOSUCHARG} 2>/dev/null | cut -d"_" -f1)
+    if [ -e ${SDK_DIR}/modules/sdk_${MOD:-NOSUCHMOD}*.sh ] ; then
+	source ${SDK_DIR}/modules/sdk_${MOD}*.sh
+    else
+	for sdk_sh in ${SDK_DIR}/modules/*.sh ; do
+	    if [ -f $sdk_sh ] ; then
+		source $sdk_sh
+	    fi
+	done
+    fi
+
+    for sdk_sh in ${SDK_DIR}/modules.post/sdk_*.sh ; do
+	if [ -f $sdk_sh ] ; then
+	    source $sdk_sh
+	fi
+    done
+fi
+
+[ $# -ge 1 ] || Usage
+if [ "x$(type -t $CMD)" != "xfunction" ] ; then
+    Usage && Error "$CMD"
+fi
 shift 1
-$CMD $@
+if [ ${DRYRUN:-0} -eq 0 ] ; then
+    _hex_exec $CMD $@
+else
+    if [ "x$VERBOSE" = "x1" ] ; then
+        set -o posix
+        set | nl
+    fi
+    type $CMD | sed 1d
+fi
