@@ -82,9 +82,6 @@ HEX_VER=${_HEX_VER}
 HEX_ARCH=${_HEX_ARCH}
 HEX_DIST=${_HEX_DIST}
 WEAK_DEP=${_WEAK_DEP}
-GOLANG_VERSION=${_GOLANG_VERSION}
-UI_NODE_VERSION=${_UI_NODE_VERSION}
-LMI_NODE_VERSION=${_LMI_NODE_VERSION}
 
 if [ ! -f local.mk -o $RECONFIGURE -eq 0 ]; then
     if [ $VERBOSE -eq 0 ]; then
@@ -243,19 +240,11 @@ HEX_VER := ${HEX_VER}
 HEX_ARCH := ${HEX_ARCH}
 HEX_DIST := ${HEX_DIST}
 WEAK_DEP := ${WEAK_DEP}
-GOLANG_VERSION := ${GOLANG_VERSION}
-UI_NODE_VERSION := ${UI_NODE_VERSION}
-LMI_NODE_VERSION := ${LMI_NODE_VERSION}
 
 # Full (non-relative) paths to top of build and source directories
 TOP_DIR := ${top_dir}
 TOP_SRCDIR := ${top_srcdir}
 TOP_BLDDIR := ${top_blddir}
-RPMBUILD_DIR := /root/rpmbuild
-PROJ_NFS_SERVER := 10.32.0.200
-PROJ_NFS_CUBECOS_PATH := /volume1/bigstack/cube-images
-PROJ_NFS_OPENSTACK_PATH := /volume1/openstack-images
-PROJ_NFS_PATH := /volume1/pxe-server
 
 include \$(TOP_BLDDIR)/local.mk
 
