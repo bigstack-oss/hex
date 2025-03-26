@@ -61,6 +61,12 @@ DownloadPkg()
                 for i in {1..10} ; do
                     if $GIT clone -b $GIT_BRANCH --depth 1 $d ${d##*/} ; then
                         break
+                    elif $GIT clone -b ${GIT_BRANCH/stable/unmaintained} --depth 1 $d ${d##*/} ; then
+                        break
+                    elif $GIT clone -b yoga-eol --depth 1 $d ${d##*/} ; then
+                        break
+                    elif $GIT clone --depth 1 $d ${d##*/} ; then
+                        break
                     else
                         sleep 10
                     fi
