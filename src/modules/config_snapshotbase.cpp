@@ -14,8 +14,8 @@ static const char SLA_ACCPETED_FILE[] = "/etc/appliance/state/sla_accepted";
 static const char CONFIGURED_FILE[] = "/etc/appliance/state/configured";
 
 // public tunings
-CONFIG_TUNING_STR(SNAPSHOT_APPLY_ACTION, "snapshot.apply.action", TUNING_PUB, "Action in applying a snapshot (apply|load)", "apply", ValidateNone);
-CONFIG_TUNING_STR(SNAPSHOT_APPLY_POLICY_IGNORE, "snapshot.apply.policy.ignore", TUNING_PUB, "Comma separated list for ignored policies in applying a snapshot", "", ValidateNone);
+CONFIG_TUNING_STR(SNAPSHOT_APPLY_ACTION, "snapshot.apply.action", TUNING_PUB, "Action in applying a snapshot (apply|load)", "apply", ValidateRegex, DFT_REGEX_STR);
+CONFIG_TUNING_STR(SNAPSHOT_APPLY_POLICY_IGNORE, "snapshot.apply.policy.ignore", TUNING_PUB, "Comma separated list for ignored policies in applying a snapshot", "", ValidateRegex, DFT_REGEX_STR);
 
 // parse tunings
 PARSE_TUNING_STR(s_applyAct, SNAPSHOT_APPLY_ACTION);
@@ -76,7 +76,7 @@ ApplyPolicy(const char* backupBaseDir, const char* snapshotBaseDir)
     }
 
     HexLogDebugN(FWD, "Commit policies in %s", policyDir.c_str());
-    int status = HexExitStatus(HexSpawn(0, "/usr/sbin/hex_config", "-p", cmd.c_str(), policyDir.c_str(), ZEROCHAR_PTR));
+    int status = HexExitStatus(HexSpawn(0, HEX_CFG, "-p", cmd.c_str(), policyDir.c_str(), ZEROCHAR_PTR));
     HexLogDebugN(FWD, "Commit returned status %d", status);
 
     return status;

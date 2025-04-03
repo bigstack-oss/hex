@@ -11,10 +11,12 @@ extern "C" {
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <regex.h>
 
 enum ValidateType {
     ValidateNone = 0,
     ValidateIpRange,
+    ValidateRegex,
 };
 
 bool HexParseBool(const char *value, bool *b);
@@ -66,6 +68,8 @@ bool HexParseIP(const char *value, int af, void *n);
 bool HexParseIPRange(const char *value, int af, void* from, void* to);
 #define HexValidateIPRange(value, af) HexParseIPRange(value, af, NULL, NULL)
 
+bool HexParseRegex(const char *value, const char *pattern);
+#define HexValidateRegex(value, pattern) HexParseRegex(value, pattern)
 
 // Takes in a list of IPRanges
 //  list    := range | range ',' list

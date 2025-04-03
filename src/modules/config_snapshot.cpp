@@ -104,7 +104,7 @@ CreateSnapshot(const std::string &name, const char* commentFile)
     path += name;
 
     std::vector<const char*> command;
-    command.push_back("/usr/sbin/hex_config");
+    command.push_back(HEX_CFG);
     command.push_back("create_snapshot");
     command.push_back(path.c_str());
     if (commentFile != NULL) {
@@ -248,7 +248,7 @@ ApplyMain(int argc, char **argv)
     HexLogDebugN(FWD, "Snapshot file: %s", path.c_str());
 
     std::vector<const char*> command;
-    command.push_back("/usr/sbin/hex_config");
+    command.push_back(HEX_CFG);
     command.push_back("apply_snapshot");
     command.push_back(path.c_str());
     command.push_back(0);

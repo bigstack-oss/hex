@@ -16,7 +16,7 @@
 #include <hex/dryrun.h>
 
 // public tunings
-CONFIG_TUNING_STR(TIME_TZ, "time.timezone", TUNING_PUB, "Set system timzeon.", "America/New_York", ValidateNone);
+CONFIG_TUNING_STR(TIME_TZ, "time.timezone", TUNING_PUB, "Set system timzeon.", "America/New_York", ValidateRegex, "^[a-zA-Z/]+$");
 
 // parse tunings
 PARSE_TUNING_STR(s_tz, TIME_TZ);
@@ -216,7 +216,7 @@ DatetimeMain(int argc, char* argv[])
     HexUtilSystem(0, 0, "/sbin/hwclock -w -u", ZEROCHAR_PTR);
 
     // Tell other modules that date/time has changed
-    HexSystemF(0, "/usr/sbin/hex_config trigger date_time_changed");
+    HexSystemF(0, HEX_CFG " trigger date_time_changed");
 
     return rc;
 }
@@ -255,7 +255,7 @@ DateMain(int argc, char* argv[])
     HexUtilSystem(0, 0, "/sbin/hwclock -w -u", ZEROCHAR_PTR);
 
     // Tell other modules that date/time has changed
-    HexSystemF(0, "/usr/sbin/hex_config trigger date_time_changed");
+    HexSystemF(0, HEX_CFG " trigger date_time_changed");
 
     return rc;
 }

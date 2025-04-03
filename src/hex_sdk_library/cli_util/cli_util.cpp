@@ -585,9 +585,9 @@ bool HexPolicyManager::apply(bool progress)
     // Run hex_config apply to apply the policy
     int status;
     if (progress)
-        status = HexExitStatus(HexSpawn(0, "/usr/sbin/hex_config", "-p", "apply", m_location.c_str(), ZEROCHAR_PTR));
+        status = HexExitStatus(HexSpawn(0, HEX_CFG, "-p", "apply", m_location.c_str(), ZEROCHAR_PTR));
     else
-        status = HexExitStatus(HexSpawn(0, "/usr/sbin/hex_config", "apply", m_location.c_str(), ZEROCHAR_PTR));
+        status = HexExitStatus(HexSpawn(0, HEX_CFG, "apply", m_location.c_str(), ZEROCHAR_PTR));
 
     bool success = ((status & EXIT_FAILURE) == 0);
     if (success) {
@@ -597,12 +597,12 @@ bool HexPolicyManager::apply(bool progress)
             HexLogInfo("hex_config requested reboot.");
             CliPrintf(MSG_APPLY_SUCCESS_REBOOT);
             CliReadContinue();
-            HexSpawn(0, "/usr/sbin/hex_config", "reboot", NULL);
+            HexSpawn(0, HEX_CFG, "reboot", NULL);
         }
         else if ((status & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
             HexLogInfo("hex_config requested LMI restart.");
             // Do not need to get user input before restarting LMI
-            HexSpawn(0, "/usr/sbin/hex_config", "restart_lmi", NULL);
+            HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
             CliPrintf(MSG_APPLY_SUCCESS_LMI_RESTART);
         }
         else {
@@ -615,12 +615,12 @@ bool HexPolicyManager::apply(bool progress)
             HexLogInfo("hex_config requested reboot.");
             CliPrintf(MSG_APPLY_FAILURE_REBOOT);
             CliReadContinue();
-            HexSpawn(0, "/usr/sbin/hex_config", "reboot", NULL);
+            HexSpawn(0, HEX_CFG, "reboot", NULL);
         }
         else if ((status & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
             HexLogInfo("hex_config requested LMI restart.");
             // Do not need to get user input before restarting LMI
-            HexSpawn(0, "/usr/sbin/hex_config", "restart_lmi", NULL);
+            HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
             CliPrintf(MSG_APPLY_FAILURE_LMI_RESTART);
         }
         else {
@@ -664,7 +664,7 @@ void HexPolicyManager::cleanup()
 
 static const char* ConfStateFile = "/etc/appliance/state/configured";
 static const char* firstTimeCmd = "/usr/sbin/hex_firsttime";
-static const char* cliCmd = "/usr/sbin/hex_cli";
+static const char* cliCmd = HEX_CLI;
 
 bool FirstTimeSetupRequired()
 {
@@ -725,4 +725,3 @@ void FinalizeFirstTimeWizard(int logToStderr)
     // Launch() called exec() would lead to memory to be overwritten (destructor won't be called)
     Launch(cliCmd, logToStderr);
 }
-

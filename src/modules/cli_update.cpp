@@ -10,7 +10,6 @@
 #include <hex/log.h>
 #include <hex/strict.h>
 
-#define HEX_CONFIG "/usr/sbin/hex_config"
 #define UPDATE_DIR "/var/update/"
 
 static const char* MSG_INSERT_USB = "Insert a USB device into the USB port on the appliance.";
@@ -71,7 +70,7 @@ ListUSB(void)
 
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
 
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CONFIG, "mount_usb", NULL) != 0 ||
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "mount_usb", NULL) != 0 ||
         CliPopulateList(list, cmd.c_str()) != 0 || list.size() == 0) {
         CliPrintf(ERR_NO_PKG);
         goto list_quit;
@@ -83,7 +82,7 @@ ListUSB(void)
     }
 
 list_quit:
-    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CONFIG, "umount_usb", NULL);
+    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "umount_usb", NULL);
     return CLI_SUCCESS;
 }
 
@@ -164,7 +163,7 @@ InstallUSB(void)
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
 
     int index = -1;
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CONFIG, "mount_usb", NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "mount_usb", NULL) != 0) {
         CliPrintf(ERR_NO_PKG);
         goto ins_quit;
     }
@@ -196,7 +195,7 @@ InstallUSB(void)
     CliPrintf("Uploading %s", list[index].c_str());
     for (auto x : pkg_list) {
 	if (x.find(list[index]) != std::string::npos) {
-	    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CONFIG,
+	    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG,
 			      "upload_usb_file", x.c_str(), UPDATE_DIR, NULL) != 0) {
 		CliPrintf("Install failed. Unable to access file: %s",x.c_str());
 		CliPrintf("Please check the USB device and retry the command.");
@@ -217,7 +216,7 @@ InstallUSB(void)
     HexLogInfo("Successfully started firmware update %s from USB device.", list[index].c_str());
 
 ins_quit:
-    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CONFIG, "umount_usb", NULL);
+    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "umount_usb", NULL);
     return CLI_SUCCESS;
 }
 
@@ -259,7 +258,7 @@ ShowMain(int argc, const char** argv)
     if (argc > 1) {
         return CLI_INVALID_ARGS;
     }
-    if (HexSpawn(0, HEX_CONFIG, "show_update_info", NULL) != 0) {
+    if (HexSpawn(0, HEX_CFG, "show_update_info", NULL) != 0) {
         CliPrintf("Could not retrieve update version information.");
         return CLI_UNEXPECTED_ERROR;
     }
@@ -272,7 +271,7 @@ HistoryMain(int argc, const char** argv)
     if (argc  != 1) {
         return CLI_INVALID_ARGS;
     }
-    if (HexSpawn(0, HEX_CONFIG, "get_update_history", NULL) != 0) {
+    if (HexSpawn(0, HEX_CFG, "get_update_history", NULL) != 0) {
         CliPrintf("Could not retrieve update history information.");
         return CLI_UNEXPECTED_ERROR;
     }

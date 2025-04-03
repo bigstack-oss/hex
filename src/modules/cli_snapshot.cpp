@@ -10,14 +10,12 @@
 #include <hex/cli_module.h>
 #include <hex/cli_util.h>
 
-#define CONFIG_CMD "/usr/sbin/hex_config"
-
 namespace fs = std::filesystem;
 
 static int
 GetList(CliList& list)
 {
-    if (CliPopulateList(list, CONFIG_CMD " snapshot_list | sort") != 0)
+    if (CliPopulateList(list, HEX_CFG " snapshot_list | sort") != 0)
         return CLI_UNEXPECTED_ERROR;
 
     if (list.size() == 0)
@@ -70,7 +68,7 @@ CreateMain(int argc, const char** argv)
     }
 
     if (argc == 1) {
-        fp = HexPOpenF(CONFIG_CMD " snapshot_create");
+        fp = HexPOpenF(HEX_CFG " snapshot_create");
     }
     else {
         // Concatenate arguments into comment string
@@ -84,7 +82,7 @@ CreateMain(int argc, const char** argv)
         write(tmpfile.fd(), comment.c_str(), comment.size());
         tmpfile.close();
 
-        fp = HexPOpenF(CONFIG_CMD " snapshot_create %s", tmpfile.path());
+        fp = HexPOpenF(HEX_CFG " snapshot_create %s", tmpfile.path());
     }
 
     int status = CLI_SUCCESS;
@@ -133,7 +131,7 @@ ApplyMain(int argc, const char** argv)
             return rc;
 
         if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0,
-                          CONFIG_CMD, "snapshot_get_comment",
+                          HEX_CFG, "snapshot_get_comment",
                           snapshot.c_str(), NULL) == 0)
             break;
 
@@ -190,7 +188,7 @@ ApplyMain(int argc, const char** argv)
     }
 
     int ret = HexExitStatus(HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0,
-                                          CONFIG_CMD, "snapshot_apply",
+                                          HEX_CFG, "snapshot_apply",
                                           snapshot.c_str(), NULL));
     if ((ret & EXIT_FAILURE) == 0) {
         char username[256];
@@ -212,11 +210,11 @@ ApplyMain(int argc, const char** argv)
 
     if ((ret & CONFIG_EXIT_NEED_REBOOT) != 0) {
         CliPrintf("Snapshot requires reboot\nRebooting...\n");
-        HexSystemF(0, "/usr/sbin/hex_config reboot");
+        HexSystemF(0, HEX_CFG " reboot");
     }
     else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
         CliPrintf("Snapshot requires LMI restart\nRestarting LMI... ");
-        HexSystemF(0, CONFIG_CMD " restart_lmi");
+        HexSystemF(0, HEX_CFG " restart_lmi");
         CliPrintf("Done\n");
     }
 
@@ -254,7 +252,7 @@ DeleteMain(int argc, const char** argv)
 
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
     if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0,
-                      CONFIG_CMD, "snapshot_delete",
+                      HEX_CFG, "snapshot_delete",
                       snapshot.c_str(), NULL) == 0) {
         char username[256];
         CliGetUserName(username, sizeof(username));
@@ -283,7 +281,7 @@ GetCommentMain(int argc, const char** argv)
 
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
     if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0,
-                      CONFIG_CMD, "snapshot_get_comment",
+                      HEX_CFG, "snapshot_get_comment",
                       snapshot.c_str(), NULL) != 0)
         return CLI_UNEXPECTED_ERROR;
 
@@ -325,7 +323,7 @@ SetCommentMain(int argc, const char** argv)
 
     int status = CLI_SUCCESS;
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
-    if (HexSystemF(0, "cat %s | " CONFIG_CMD " snapshot_set_comment %s", tmpfile.path(), snapshot.c_str()) == 0) {
+    if (HexSystemF(0, "cat %s | " HEX_CFG " snapshot_set_comment %s", tmpfile.path(), snapshot.c_str()) == 0) {
         CliPrintf("Comment updated\n");
     }
     else {
@@ -392,18 +390,18 @@ PushToUsb(const std::string &snapshot)
         return CLI_SUCCESS;
 
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "mount_usb", NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "mount_usb", NULL) != 0) {
         CliPrintf("Could not write to the USB drive. Please check the USB drive and retry the command.\n");
         return CLI_SUCCESS;
     }
 
     CliPrintf("Copying...\n");
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "download_usb_file", snapshot.c_str(), NULL) != 0)
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "download_usb_file", snapshot.c_str(), NULL) != 0)
         CliPrintf("Copy failed. Please check the USB drive and retry the command.\n");
     else
         CliPrintf("Copy complete. It is safe to remove the USB drive.\n");
 
-    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "umount_usb", NULL);
+    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "umount_usb", NULL);
 
     return CLI_SUCCESS;
 }
@@ -479,7 +477,7 @@ PullFromUsb()
         return ret;
 
     AutoSignalHandlerMgt autoSignalHandlerMgt(UnInterruptibleHdr);
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "mount_usb", NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "mount_usb", NULL) != 0) {
         CliPrintf("Could not read from the USB drive. Please check the USB drive and retry the command.\n");
         return ret;
     }
@@ -488,7 +486,7 @@ PullFromUsb()
     int index;
     std::string filename;
 again:
-    if (CliPopulateList(list, CONFIG_CMD " list_usb_files | grep '\\.snapshot$' | sort") != 0) {
+    if (CliPopulateList(list, HEX_CFG " list_usb_files | grep '\\.snapshot$' | sort") != 0) {
         ret = CLI_UNEXPECTED_ERROR;
         goto cleanup;
     }
@@ -504,13 +502,13 @@ again:
     }
 
     CliPrintf("Copying...\n");
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "upload_usb_file", list[index].c_str(), NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "upload_usb_file", list[index].c_str(), NULL) != 0) {
         CliPrintf("Copy failed. Please check the USB drive and retry the command.\n");
         goto cleanup;
     }
 
     filename = "/var/support/" + list[index];
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
         CliPrintf("Unable to get comment from snapshot file. The snapshot file is invalid.\n\nPlease select a different file.\n\n");
         unlink(filename.c_str());
         goto again;
@@ -522,7 +520,7 @@ again:
     CliPrintf("Copy complete. It is safe to remove the USB drive.\n");
 
 cleanup:
-    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "umount_usb", NULL);
+    HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "umount_usb", NULL);
 
     return ret;
 }
@@ -579,7 +577,7 @@ PullFromNfs()
     }
 
     filename = "/var/support/" + snapshot;
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
         CliPrintf("Unable to get comment from snapshot file. The snapshot file is invalid.\n\nPlease select a different file.\n\n");
         unlink(filename.c_str());
         ret = CLI_INVALID_ARGS;
@@ -632,7 +630,7 @@ PullFromUrl()
     }
 
     filename = "/var/support/" + snapshot;
-    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, CONFIG_CMD, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
+    if (HexSpawnNoSig(UnInterruptibleHdr, (int)true, 0, HEX_CFG, "snapshot_get_comment", filename.c_str(), NULL) != 0) {
         CliPrintf("Unable to get comment from snapshot file. The snapshot file is invalid.\n\nPlease select a different file.\n\n");
         unlink(filename.c_str());
         ret = CLI_INVALID_ARGS;

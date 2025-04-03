@@ -95,6 +95,7 @@ struct TuningSpecInfo {
     int intMax;
     std::string strDef;
     ValidateType strValidateType;
+    std::string strRegex;
 };
 
 struct TuningInfo {

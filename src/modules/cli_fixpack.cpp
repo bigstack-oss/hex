@@ -12,7 +12,7 @@
 static int
 GetFixpackHistoryList(CliList& list)
 {
-    int ret = CliPopulateList(list, "/usr/sbin/hex_config fixpack_get_history");
+    int ret = CliPopulateList(list, HEX_CFG " fixpack_get_history");
     if (ret != 0) {
         return CLI_UNEXPECTED_ERROR;
     }
@@ -213,7 +213,7 @@ InstallMain(int argc, const char** argv)
     else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
         CliPrintf("fixpack requires LMI restart");
         CliPrintf("Restarting LMI... ");
-        HexSpawn(0, "/usr/sbin/hex_config", "restart_lmi", NULL);
+        HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
         CliPrintf("Done");
     }
 
@@ -226,7 +226,7 @@ static int RollbackMain(int argc, const char** argv)
         return CLI_INVALID_ARGS;
     }
 
-    int ret = HexSpawn(0, "/usr/sbin/hex_config", "fixpack_rollback", NULL);
+    int ret = HexSpawn(0, HEX_CFG, "fixpack_rollback", NULL);
 
     if ((ret & CONFIG_EXIT_NEED_REBOOT) != 0) {
         CliPrintf("fixpack requires reboot");
@@ -235,7 +235,7 @@ static int RollbackMain(int argc, const char** argv)
     else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
         CliPrintf("fixpack requires LMI restart");
         CliPrintf("Restarting LMI... ");
-        HexSpawn(0, "/usr/sbin/hex_config", "restart_lmi", NULL);
+        HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
         CliPrintf("Done");
     }
 

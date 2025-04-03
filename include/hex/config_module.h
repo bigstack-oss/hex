@@ -3,6 +3,8 @@
 #ifndef HEX_CONFIGMODULE_H
 #define HEX_CONFIGMODULE_H
 
+#define DFT_REGEX_STR "^.*$"
+
 /** @defgroup config_module HEX Config Module Headers */
 
 /** @file config_module.h
@@ -195,8 +197,8 @@ int ApplyTrigger(ArgVec argv);
     hex_config::TuningSpecUInt key(name, def, min, max); \
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
-#define CONFIG_TUNING_STR(key, name, publish, description, def, type) \
-    hex_config::TuningSpecString key(name, def, type); \
+#define CONFIG_TUNING_STR(key, name, publish, description, def, type, regex)	\
+    hex_config::TuningSpecString key(name, def, type, regex);		\
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 /**
@@ -490,5 +492,3 @@ int ApplyTrigger(ArgVec argv);
 #endif // __cplusplus
 
 #endif /* ndef HEX_CONFIGMODULE_H */
-
-

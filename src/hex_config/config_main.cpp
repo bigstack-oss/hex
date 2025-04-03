@@ -6,6 +6,7 @@
 #include <getopt.h> // getopt_long
 #include <time.h>
 #include <chrono>
+#include <arpa/inet.h>
 
 #include <hex/log.h>
 #include <hex/pidfile.h>
@@ -30,7 +31,7 @@ using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 
 static const char PROGRAM[] = "hex_config";
-static const char PROGRAM_PATH[] = "/usr/sbin/hex_config";
+static const char PROGRAM_PATH[] = HEX_CFG;
 
 // Special files for testing "bootstrap/commit" exit status logic
 static const char TEST_NEED_REBOOT[] = "/etc/test_need_reboot";
@@ -53,7 +54,7 @@ static const char DEFAULT_SETTINGS[] = "/etc/settings.def";
 
 // tmp settings file for applying new settings
 static const char TEMP_NEW_SETTINGS[]   = "/tmp/settings.new";
-
+static const char TEMP_RAW_TUNINGS[]   = "/tmp/tunings.raw";
 static const char POST_DIR[] = "/etc/hex_config/post.d";
 
 static const bool PARSE_CURRENT = false;
@@ -641,7 +642,7 @@ TuningSpecUInt::TuningSpecUInt(const char *name, unsigned def, unsigned min, uns
     s_staticsPtr->tuningSpecMap[name] = spec;
 }
 
-TuningSpecString::TuningSpecString(const char *name, const char* def, ValidateType vldType)
+TuningSpecString::TuningSpecString(const char *name, const char* def, ValidateType vldType, const char* regex)
 {
     StaticsInit();
 
@@ -650,6 +651,7 @@ TuningSpecString::TuningSpecString(const char *name, const char* def, ValidateTy
     this->def = spec.strDef = def;
     this->type = spec.strValidateType = vldType;
     this->format = name;
+    this->regex = spec.strRegex = regex;
     s_staticsPtr->tuningSpecMap[name] = spec;
 }
 
@@ -1477,14 +1479,12 @@ DumpTuning(const char* title, bool pub)
     TuningList& tl = s_staticsPtr->tuningList;
     TuningList::iterator it;
 
-    printf("\n%s\n", title);
-    printf("----------------------------------------------------------------\n");
-    printf("%-30s%-100s%s\n", "Name", "Description", "Default|Min|Max");
+    FILE *fout = fopen(TEMP_RAW_TUNINGS, "w");
     for (it = tl.begin(); it != tl.end(); ++it) {
         if (it->publish != pub)
             continue;
 
-        printf("%-30s%-100s",
+        fprintf(fout, "%s|%s|",
             it->name.c_str(),
             it->description.c_str());
 
@@ -1493,37 +1493,123 @@ DumpTuning(const char* title, bool pub)
 
         specIt = tsm.find(it->name);
         if (specIt == tsm.end())
-            printf("---");
+            fprintf(fout, "mix|na|na|na|na");
         else {
             switch (specIt->second.type) {
                 case TUNING_BOOL:
-                    printf("[%s]",
+                    fprintf(fout, "boolean|%s|false|true|na",
                         specIt->second.boolDef ? "True" : "False");
                     break;
                 case TUNING_INT:
-                    printf("[%d|%d|%d]",
+                    fprintf(fout, "int|%d|%d|%d|na",
                         specIt->second.intDef,
                         specIt->second.intMin,
                         specIt->second.intMax);
                     break;
                 case TUNING_UINT:
-                    printf("[%u|%u|%u]",
+                    fprintf(fout, "uint|%u|%u|%u|na",
                         specIt->second.intDef,
                         specIt->second.intMin,
                         specIt->second.intMax);
                     break;
                 case TUNING_STRING:
-                    printf("[\"%s\" (%s)]",
-                        specIt->second.strDef.c_str(),
-                        specIt->second.strValidateType == ValidateNone ? "Any" : "Others"
+                    fprintf(fout, "str|\"%s\"|%s|%s|%s",
+			    specIt->second.strDef.c_str(),
+			    specIt->second.strValidateType == ValidateNone ? "Any" : "Others",
+			    specIt->second.strValidateType == ValidateNone ? "Any" : "Others",
+			    specIt->second.strRegex.c_str()
                         );
                     break;
                 default:
-                    printf("---");
+                    fprintf(fout, "\n");
             }
         }
-        printf("\n");
+        fprintf(fout, "\n");
     }
+    fclose(fout);
+    HexSystemF(0, HEX_SDK " _tuning_dump");
+}
+
+static void
+UsageValidateTuningValue()
+{
+    fprintf(stderr, "Usage: %s validate_tuning_value key value\n", PROGRAM);
+}
+
+static int
+MainValidateTuningValue(int argc, char **argv)
+{
+    if (argc < 3)
+        Usage();
+
+    std::string key = argv[1];
+    std::string value = argv[2];
+
+    TuningList& tl = s_staticsPtr->tuningList;
+    TuningList::iterator it;
+    bool result = 1;
+
+    for (it = tl.begin(); it != tl.end(); ++it) {
+        if (it->name != key)
+            continue;
+
+        TuningSpecMap& tsm = s_staticsPtr->tuningSpecMap;
+        TuningSpecMap::iterator specIt;
+
+        specIt = tsm.find(it->name);
+        if (specIt == tsm.end())
+            printf("mix|na|na|na|na");
+        else {
+            switch (specIt->second.type) {
+            case TUNING_BOOL:
+                if (HexValidateBool(value.c_str())) {
+                    result = 0;
+                } else {
+                    fprintf(stderr, "%s: %s is false\n", key.c_str(), value.c_str());
+                }
+                    
+                break;
+            case TUNING_INT:
+                if (HexValidateInt(value.c_str(), specIt->second.intMin,specIt->second.intMax)) {
+                    result = 0;
+                } else {
+                    fprintf(stderr, "%s: %s is not >= %d and <= %d\n", key.c_str(), value.c_str(), specIt->second.intMin,specIt->second.intMax);
+                }
+
+                break;
+            case TUNING_UINT:
+                if (HexValidateUInt(value.c_str(), specIt->second.intMin,specIt->second.intMax)) {
+                    result = 0;
+                } else {
+                    fprintf(stderr, "%s: %s is not >= %d and <= %d\n", key.c_str(), value.c_str(), specIt->second.intMin,specIt->second.intMax);
+                }
+                break;
+            case TUNING_STRING:
+                if (specIt->second.strValidateType == ValidateIpRange) {
+                    if (HexValidateIPRange(value.c_str(), AF_INET)) {
+			result = 0;
+		    } else {
+                        fprintf(stderr, "%s: %s is not a valid IP or IP/CIDR\n", key.c_str(), value.c_str());
+                    }
+                } else if (specIt->second.strValidateType == ValidateRegex) {
+                    if (specIt->second.strRegex != "na") {
+                        if (HexValidateRegex(value.c_str(), specIt->second.strRegex.c_str())) {
+                            result = 0;
+                        } else {
+                            fprintf(stderr, "%s: %s fails to match egrep \"%s\"\n", key.c_str(), value.c_str(), specIt->second.strRegex.c_str());
+                        }
+                    }
+                } else {
+                    result = 0;
+                    fprintf(stderr, "%s: %s skips validation\n", key.c_str(), value.c_str());
+                }
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 static int
@@ -2657,20 +2743,21 @@ MainLicenseCheck(int argc, char** argv)
  *   3. parse settings files (.sys and .bad) once as new
  *   4. be able to resotre setting if failed
  */
-CONFIG_COMMAND(commit,                  MainCommit,           UsageCommit);
-CONFIG_COMMAND(force_commit_all,        MainForceCommitAll,   UsageForceCommitAll);
-CONFIG_COMMAND(merge,                   MainMerge,            UsageMerge);
-CONFIG_COMMAND(validate,                MainValidate,         UsageValidate);
+CONFIG_COMMAND(commit,                  MainCommit,              UsageCommit);
+CONFIG_COMMAND(force_commit_all,        MainForceCommitAll,      UsageForceCommitAll);
+CONFIG_COMMAND(merge,                   MainMerge,               UsageMerge);
+CONFIG_COMMAND(validate,                MainValidate,            UsageValidate);
+CONFIG_COMMAND(validate_tuning_value,   MainValidateTuningValue, UsageValidateTuningValue);
 
 /* This is used after firmware upgrade ex /hex_hwdetect/postupgrade.sh */
-CONFIG_COMMAND(migrate,                 MainMigrate,          UsageMigrate);
-CONFIG_COMMAND(stop_all_processes,      MainStopAllProcesses, UsageStopAllProcesses);
-CONFIG_COMMAND(create_support_info,     MainSupport,          UsageSupport);
-CONFIG_COMMAND(create_snapshot,         MainCreateSnapshot,   UsageCreateSnapshot);
-CONFIG_COMMAND(apply_snapshot,          MainApplySnapshot,    UsageApplySnapshot);
-CONFIG_COMMAND(trigger,                 MainTrigger,          UsageTrigger);
-CONFIG_COMMAND(strict_zeroize_files,    MainStrictZeroizeFiles, UsageStrictZeroizeFiles);
-CONFIG_COMMAND(license_check,           MainLicenseCheck,     UsageLicenseCheck);
+CONFIG_COMMAND(migrate,                 MainMigrate,             UsageMigrate);
+CONFIG_COMMAND(stop_all_processes,      MainStopAllProcesses,    UsageStopAllProcesses);
+CONFIG_COMMAND(create_support_info,     MainSupport,             UsageSupport);
+CONFIG_COMMAND(create_snapshot,         MainCreateSnapshot,      UsageCreateSnapshot);
+CONFIG_COMMAND(apply_snapshot,          MainApplySnapshot,       UsageApplySnapshot);
+CONFIG_COMMAND(trigger,                 MainTrigger,             UsageTrigger);
+CONFIG_COMMAND(strict_zeroize_files,    MainStrictZeroizeFiles,  UsageStrictZeroizeFiles);
+CONFIG_COMMAND(license_check,           MainLicenseCheck,        UsageLicenseCheck);
 
 // "sys" is a reserved module observed by lots of other modules
 // "sys" is processed before all other modules

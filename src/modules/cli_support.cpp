@@ -20,7 +20,7 @@
 static int
 GetList(CliList& list)
 {
-    if (CliPopulateList(list, "/usr/sbin/hex_config list_support_files | sort") != 0)
+    if (CliPopulateList(list, HEX_CFG " list_support_files | sort") != 0)
         return CLI_UNEXPECTED_ERROR;
 
     if (list.size() == 0)
@@ -43,7 +43,7 @@ CreateMain(int argc, const char** argv)
 
     if (argc == 1) {
         // no comment given
-        fp = HexPOpenF("/usr/sbin/hex_config create_support_file");
+        fp = HexPOpenF(HEX_CFG " create_support_file");
     }
     else {
         // Concatenate arguments into comment string
@@ -57,7 +57,7 @@ CreateMain(int argc, const char** argv)
         write(tmpfile.fd(), comment.c_str(), comment.size());
         tmpfile.close();
 
-        fp = HexPOpenF("/usr/sbin/hex_config create_support_file %s", tmpfile.path());
+        fp = HexPOpenF(HEX_CFG " create_support_file %s", tmpfile.path());
     }
 
     int status = CLI_SUCCESS;
@@ -133,7 +133,7 @@ DeleteMain(int argc, const char** argv)
             index = tmp - 1;
         }
 
-        if (HexSpawn(0, "/usr/sbin/hex_config", "delete_support_file", list[index].c_str(), NULL) == 0) {
+        if (HexSpawn(0, HEX_CFG, "delete_support_file", list[index].c_str(), NULL) == 0) {
             CliPrintf("Support information file deleted\n");
         } else {
             HexLogError("Could not delete support info file: %s", list[index].c_str());
@@ -170,7 +170,7 @@ GetCommentMain(int argc, const char** argv)
             index = tmp - 1;
         }
 
-        if (HexSpawn(0, "/usr/sbin/hex_config", "get_support_file_comment", list[index].c_str(), NULL) != 0)
+        if (HexSpawn(0, HEX_CFG, "get_support_file_comment", list[index].c_str(), NULL) != 0)
             return CLI_UNEXPECTED_ERROR;
     }
 
@@ -268,18 +268,18 @@ DownloadMain(int argc, const char** argv)
     if (!CliReadConfirmation())
         return CLI_SUCCESS;
 
-    if (HexSpawn(0, "/usr/sbin/hex_config", "mount_usb", NULL) != 0) {
+    if (HexSpawn(0, HEX_CFG, "mount_usb", NULL) != 0) {
         CliPrintf("Could not write to the USB drive. Please check the USB drive and retry the command.\n");
         return CLI_SUCCESS;
     }
 
     CliPrintf("Copying...\n");
-    if (HexSpawn(0, "/usr/sbin/hex_config", "download_usb_file", list[index].c_str(), NULL) != 0) {
-        HexSpawn(0, "/usr/sbin/hex_config", "umount_usb", NULL);
+    if (HexSpawn(0, HEX_CFG, "download_usb_file", list[index].c_str(), NULL) != 0) {
+        HexSpawn(0, HEX_CFG, "umount_usb", NULL);
         CliPrintf("Copy failed. Please check the USB drive and retry the command.\n");
     }
     else {
-        HexSpawn(0, "/usr/sbin/hex_config", "umount_usb", NULL);
+        HexSpawn(0, HEX_CFG, "umount_usb", NULL);
         CliPrintf("Copy complete. It is safe to remove the USB drive.\n");
     }
 

@@ -110,8 +110,9 @@ struct TuningSpecString {
     std::string format;
     std::string def;
     ValidateType type;
+    std::string regex;
 
-    TuningSpecString(const char *name, const char* def, ValidateType vldType);
+    TuningSpecString(const char *name, const char* def, ValidateType vldType, const char* regex);
 };
 
 struct Tuning {

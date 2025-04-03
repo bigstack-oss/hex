@@ -53,7 +53,7 @@ SaveFailedPolicy()
 
     bool success = HexRunCommand(exitStatus,
                                  filename,
-                                 "/usr/sbin/hex_config snapshot_create %s",
+                                 HEX_CFG " snapshot_create %s",
                                  tmpfile.path());
 
     if (success) {
@@ -100,7 +100,7 @@ static bool
 BootstrapCommit(const char* moduleList)
 {
     std::vector<const char *> args;
-    args.push_back("/usr/sbin/hex_config");
+    args.push_back(HEX_CFG);
 
     // propagate log level
     for (int i = 0 ; i < HexLogDebugLevel ; i++) {
@@ -193,9 +193,9 @@ MainApply(int argc, char **argv)
     HexLogNotice("Applying policy changes");
     int status;
     if (WithProgress())
-        status = HexExitStatus(HexSpawn(0, "/usr/sbin/hex_config", "-p", "commit", TEMP_APPLY_SETTINGS, NULL));
+        status = HexExitStatus(HexSpawn(0, HEX_CFG, "-p", "commit", TEMP_APPLY_SETTINGS, NULL));
     else
-        status = HexExitStatus(HexSpawn(0, "/usr/sbin/hex_config", "commit", TEMP_APPLY_SETTINGS, NULL));
+        status = HexExitStatus(HexSpawn(0, HEX_CFG, "commit", TEMP_APPLY_SETTINGS, NULL));
     if ((status & EXIT_FAILURE) == 0) {
         // NOTE: Tests look explicitly for this message
         HexLogNotice("Policy changes committed");

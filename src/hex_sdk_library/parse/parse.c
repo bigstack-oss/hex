@@ -345,4 +345,19 @@ HexParseMACAddress(const char* macAddrStr, unsigned char macAddr[], unsigned int
     return true;
 }
 
+bool
+HexParseRegex(const char *value, const char *pattern)
+{
+    regex_t regex;
 
+    if (regcomp(&regex, pattern, REG_EXTENDED) != 0) {
+        return false;
+    }
+    if (regexec(&regex, value, 0, NULL, 0) == REG_NOMATCH) {
+        return false;
+    } else {
+        return true;
+    }
+
+    regfree(&regex);
+}

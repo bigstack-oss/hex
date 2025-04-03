@@ -221,7 +221,7 @@ private:
      */
     bool setPassword(const std::string oldPassword, const std::string newPassword)
     {
-        int rc = HexSpawn(0, "/usr/sbin/hex_config", "password",
+        int rc = HexSpawn(0, HEX_CFG, "password",
                           oldPassword.c_str(), newPassword.c_str(), (const char*)0);
 
         int exitCode = HexExitStatus(rc);

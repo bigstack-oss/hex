@@ -122,7 +122,7 @@ TuningDumpMain(int argc, const char** argv)
         return CLI_INVALID_ARGS;
     }
 
-    HexSpawn(0, "/usr/sbin/hex_config", "-P", NULL);
+    HexSpawn(0, HEX_CFG, "-P", NULL);
     CliPrintf("----------------------------------------------------------------\n\n\nNetwork Interfaces");
     HexSpawn(0, HEX_SDK, "-v", "DumpInterface", "0", NULL);
 

@@ -81,7 +81,7 @@ protected:
 
         // Set timezone based on policy setting (see NOTE in doAction())
         std::string tz = m_policy.getTimeZone();
-        if (tz == "" || HexSpawn(0, "/usr/sbin/hex_config", "timezone", tz.c_str(), ZEROCHAR_PTR) != 0) {
+        if (tz == "" || HexSpawn(0, HEX_CFG, "timezone", tz.c_str(), ZEROCHAR_PTR) != 0) {
             CliPrintf(LABEL_POLICY_TIMEZONE_SYNC_ERROR, tz.c_str());
         }
 
@@ -124,7 +124,7 @@ protected:
                 }
 
                 // Commit the timezone policy straight away
-                if (HexSpawn(0, "/usr/sbin/hex_config", "timezone", timeZone.c_str(), ZEROCHAR_PTR) != 0) {
+                if (HexSpawn(0, HEX_CFG, "timezone", timeZone.c_str(), ZEROCHAR_PTR) != 0) {
                     return false;
                 }
 
@@ -263,7 +263,7 @@ private:
         }
 
         // Perform the system date/time update
-        int rc = HexSpawn(0, "/usr/sbin/hex_config", "date", buf, ZEROCHAR_PTR);
+        int rc = HexSpawn(0, HEX_CFG, "date", buf, ZEROCHAR_PTR);
         if( rc != 0 )
             CliPrintf(LABEL_DATE_SET_ERROR);
 
@@ -304,7 +304,7 @@ private:
         }
 
         // Perform the system date/time update
-        int rc = HexSpawn(0, "/usr/sbin/hex_config", "date", buf, ZEROCHAR_PTR);
+        int rc = HexSpawn(0, HEX_CFG, "date", buf, ZEROCHAR_PTR);
         if(rc!=0)
             CliPrintf(LABEL_TIME_SET_ERROR);
 

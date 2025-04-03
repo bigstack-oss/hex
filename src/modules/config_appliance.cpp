@@ -10,7 +10,7 @@
 static const char NEED_LMI_REBOOT[] = "/etc/appliance/state/appliance_need_lmi_reboot";
 static const char NEED_REBOOT[] = "/etc/appliance/state/appliance_need_reboot";
 
-CONFIG_TUNING_STR(APPLIANCE_LOGIN_GREETING, "appliance.login.greeting", TUNING_PUB, "Set greeting message for login", "", ValidateNone);
+CONFIG_TUNING_STR(APPLIANCE_LOGIN_GREETING, "appliance.login.greeting", TUNING_PUB, "Set greeting message for login", "", ValidateRegex, DFT_REGEX_STR);
 
 static void
 ShutdownUsage(void)

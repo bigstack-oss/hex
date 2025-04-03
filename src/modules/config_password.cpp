@@ -73,7 +73,7 @@ static bool AddCheckPasswordJob(const char *username)
     char cronfile[128]={};
     char check_command[256]={};
     snprintf(cronfile, sizeof(cronfile), CRON_FILE_FMT, username);
-    snprintf(check_command, sizeof(check_command), "/usr/sbin/hex_config check_password %s", username);
+    snprintf(check_command, sizeof(check_command), HEX_CFG " check_password %s", username);
 
     HexLogDebug("Adding crob job %s", cronfile);
     FILE *fout = fopen(cronfile, "w");

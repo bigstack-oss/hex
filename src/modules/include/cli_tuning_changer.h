@@ -149,7 +149,10 @@ private:
                 if (!setTuningValue(&t.value)) {
                     return false;
                 }
-
+                if (HexSystemF(0, HEX_CFG " validate_tuning_value %s %s", t.name.c_str(), t.value.c_str()) != 0) {
+                  HexLogError("failed to validate tuning %s: %s", t.name.c_str(), t.value.c_str());
+                  return false;
+                }
                 if (!setTuningEnable(&t.enabled)) {
                     return false;
                 }

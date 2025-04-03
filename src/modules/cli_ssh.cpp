@@ -21,7 +21,7 @@ ReGenerateKeys(int argc, const char** argv)
         return CLI_INVALID_ARGS;
     }
 
-    int rc = HexSystem(0, "/usr/sbin/hex_config", "regenerate_ssh_keys", NULL);
+    int rc = HexSystem(0, HEX_CFG, "regenerate_ssh_keys", NULL);
     if (rc != 0) {
         CliPrintf("Failed to regenerated SSH keys.\n");
         return rc;

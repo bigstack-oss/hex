@@ -34,13 +34,13 @@ CONFIG_TUNING(NET_IF_ADDR6, "net.if.addr6.<name>", TUNING_UNPUB, "Set interface 
 CONFIG_TUNING(NET_IF_PREFIX6, "net.if.prefix6.<name>", TUNING_UNPUB, "Set interface IPv6 prefix.");
 CONFIG_TUNING(NET_IF_GW6, "net.if.gw6.<name>", TUNING_UNPUB, "Set the IPv6 default gateway (only applies if net.default_interface is set to <name>).");
 CONFIG_TUNING(NET_HOSTNAME, "net.hostname", TUNING_UNPUB, "Set appliance hostname.");
-CONFIG_TUNING_STR(NET_DEFAULT_INTERFACE, "net.default_interface", TUNING_UNPUB, "Set which interface's gateway settings should be used as the default gateway.", "", ValidateNone);
+CONFIG_TUNING_STR(NET_DEFAULT_INTERFACE, "net.default_interface", TUNING_UNPUB, "Set which interface's gateway settings should be used as the default gateway.", "", ValidateRegex, DFT_REGEX_STR);
 CONFIG_TUNING(NET_DNS_1ST, "net.dns.primary", TUNING_UNPUB, "Turn on the Linux SYN cookies implementation. Default is true.");
 CONFIG_TUNING(NET_DNS_2ND, "net.dns.secondary", TUNING_UNPUB, "Turn on the Linux SYN cookies implementation. Default is true.");
 CONFIG_TUNING(NET_DNS_3RD, "net.dns.tertiary", TUNING_UNPUB, "Turn on the Linux SYN cookies implementation. Default is true.");
 CONFIG_TUNING(NET_DNS_DOMAINS, "net.dns.search", TUNING_UNPUB, "Turn on the Linux SYN cookies implementation. Default is true.");
-CONFIG_TUNING_STR(NET_LACP_DEF_RATE, "net.lacp.default.rate", TUNING_PUB, "Set default LACP rate (fast/slow).", "fast", ValidateNone);
-CONFIG_TUNING_STR(NET_LACP_DEF_XMIT, "net.lacp.default.xmit", TUNING_PUB, "Set default LACP transmit hash policy (layer2/layer2+3/layer3+4).", "layer3+4", ValidateNone);
+CONFIG_TUNING_STR(NET_LACP_DEF_RATE, "net.lacp.default.rate", TUNING_PUB, "Set default LACP rate (fast/slow).", "fast", ValidateRegex, DFT_REGEX_STR);
+CONFIG_TUNING_STR(NET_LACP_DEF_XMIT, "net.lacp.default.xmit", TUNING_PUB, "Set default LACP transmit hash policy (layer2/layer2+3/layer3+4).", "layer3+4", ValidateRegex, DFT_REGEX_STR);
 
 enum {
     IFTYPE_NORMAL = 0,

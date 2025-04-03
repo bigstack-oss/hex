@@ -16,7 +16,7 @@ ShutdownMain(int argc, const char** argv)
         char username[256];
         CliGetUserName(username, sizeof(username));
         //TODO: HexLogEvent("system shutdown by [user] via [CLI]");
-        HexSpawn(0, "/usr/sbin/hex_config", "shutdown", NULL);
+        HexSpawn(0, HEX_CFG, "shutdown", NULL);
         return CLI_SUCCESS;
     }
 
@@ -33,7 +33,7 @@ RebootMain(int argc, const char** argv)
         char username[256];
         CliGetUserName(username, sizeof(username));
         //TODO: HexLogEvent("system reboot by [user] via [CLI]");
-        HexSpawn(0, "/usr/sbin/hex_config", "reboot", NULL);
+        HexSpawn(0, HEX_CFG, "reboot", NULL);
         return CLI_SUCCESS;
     }
 

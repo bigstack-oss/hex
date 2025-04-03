@@ -108,7 +108,7 @@ CreateMain(int argc, char* argv[])
     if (tmpdir.dir() == NULL)
         HexLogFatal("Could not create temporary directory");
 
-    if (HexSpawn(0, "/usr/sbin/hex_config", "create_support_info", tmpdir.dir(), NULL) != 0)
+    if (HexSpawn(0, HEX_CFG, "create_support_info", tmpdir.dir(), NULL) != 0)
         HexLogFatal("Could not create support info contents");
 
     std::string commentFile = tmpdir.dir();
