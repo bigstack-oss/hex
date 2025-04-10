@@ -1285,14 +1285,18 @@ DumpInterface()
     touch /etc/settings.sys
     source hex_tuning /etc/settings.sys sys.net.if
 
-    if [ -n "$VERBOSE" ] ; then
-        printf "%120s\n" " " | tr " " "-"
-        printf "%8s %8s %16s %14s %20s %10s %5s %6s %s\n" "Dev" "Label" "DevID/Cfg" "BusID/Slaves" "HWAddr" "Driver" "Link" "State" "Speed(actual/advertised)"
-        printf "%120s\n" " " | tr " " "-"
+    if [ "x$FORMAT" = "xjson" ] ; then
+        printf "[ "
     else
-        printf "%61s\n" " " | tr " " "-"
-        printf "%8s %14s %10s %6s %12s\n" "Label" "BusID/Slaves" "Driver" "State" "Speed"
-        printf "%61s\n" " " | tr " " "-"
+        if [ -n "$VERBOSE" ] ; then
+            printf "%120s\n" " " | tr " " "-"
+            printf "%8s %8s %16s %14s %20s %10s %5s %6s %s\n" "Dev" "Label" "DevID/Cfg" "BusID/Slaves" "HWAddr" "Driver" "Link" "State" "Speed(actual/advertised)"
+            printf "%120s\n" " " | tr " " "-"
+        else
+            printf "%61s\n" " " | tr " " "-"
+            printf "%8s %14s %10s %6s %12s\n" "Label" "BusID/Slaves" "Driver" "State" "Speed"
+            printf "%61s\n" " " | tr " " "-"
+        fi
     fi
 
     I=0
@@ -1372,10 +1376,25 @@ DumpInterface()
             DUPLEX=""
             STATE="NA"
         fi
-        if [ -n "$VERBOSE" ] ; then
-            printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "eth$I" "$LABEL" "${VNDID}.${DEVID}" "$BUSID" "$HWADDR" "$DRIVER" "$LINK" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+        if [ "x$FORMAT" = "xjson" ] ; then
+            [ $I -le 0 ] || printf ","
+            printf "{ "
+            printf "\"dev\": \"%s\"," "eth$I"
+            printf "\"label\": \"%s\"," "$LABEL"
+            printf "\"devid\": \"%s\"," "${VNDID}.${DEVID}"
+            printf "\"busid\": \"%s\"," "$BUSID"
+            printf "\"hwaddr\": \"%s\"," "$HWADDR"
+            printf "\"driver\": \"%s\"," "$DRIVER"
+            printf "\"link\": \"%s\"," "$LINK"
+            printf "\"state\": \"%s\"," "$STATE"
+            printf "\"speed\": \"%s\"" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+            printf " }"
         else
-            printf "%8s %14s %10s %6s %18s\n" "$LABEL" "$BUSID" "$DRIVER" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+            if [ -n "$VERBOSE" ] ; then
+                printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "eth$I" "$LABEL" "${VNDID}.${DEVID}" "$BUSID" "$HWADDR" "$DRIVER" "$LINK" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+            else
+                printf "%8s %14s %10s %6s %18s\n" "$LABEL" "$BUSID" "$DRIVER" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+            fi
         fi
         I=$(expr $I + 1)
     done
@@ -1418,10 +1437,14 @@ DumpInterface()
         fi
     done
 
-    if [ -n "$VERBOSE" ] ; then
-        printf "%120s\n" " " | tr " " "-"
+    if [ "x$FORMAT" = "xjson" ] ; then
+        printf " ]\n"
     else
-        printf "%61s\n" " " | tr " " "-"
+        if [ -n "$VERBOSE" ] ; then
+            printf "%120s\n" " " | tr " " "-"
+        else
+            printf "%61s\n" " " | tr " " "-"
+        fi
     fi
 }
 
