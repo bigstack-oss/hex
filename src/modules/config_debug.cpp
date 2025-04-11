@@ -16,10 +16,10 @@
 CONFIG_TUNING_INT(DBG_LVL, "debug.level", TUNING_UNPUB, "Set global debug level", 0, 0, 2);
 
 // public tunigns
-CONFIG_TUNING_INT(DBG_LVL_PROC, "debug.level.%s", TUNING_PUB, "Set debug level for process %s", 0, 0, 9);
-CONFIG_TUNING_BOOL(DBG_CORE_PROC, "debug.enable_core_dump.%s", TUNING_PUB, "Enable core dump for process %s", false);
-CONFIG_TUNING_INT(DBG_CORE_MAX, "debug.max_core_dump", TUNING_PUB, "Set the total number of core files before oldest are removed", 0, 0, 999);
-CONFIG_TUNING_BOOL(DBG_KERNEL_DUMP, "debug.enable_kdump", TUNING_PUB, "Enable kdump to collect dump from kernel panic", false);
+CONFIG_TUNING_INT(DBG_LVL_PROC, "debug.level.%s", TUNING_UNPUB, "Set debug level for process %s", 0, 0, 9);
+CONFIG_TUNING_BOOL(DBG_CORE_PROC, "debug.enable_core_dump.%s", TUNING_UNPUB, "Enable core dump for process %s", false);
+CONFIG_TUNING_INT(DBG_CORE_MAX, "debug.max_core_dump", TUNING_UNPUB, "Set the total number of core files before oldest are removed", 0, 0, 999);
+CONFIG_TUNING_BOOL(DBG_KERNEL_DUMP, "debug.enable_kdump", TUNING_UNPUB, "Enable kdump to collect dump from kernel panic", false);
 
 // parse tunings
 PARSE_TUNING_INT(s_globalDebugLevel, DBG_LVL);

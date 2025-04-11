@@ -1565,7 +1565,7 @@ MainValidateTuningValue(int argc, char **argv)
                 if (HexValidateBool(value.c_str())) {
                     result = 0;
                 } else {
-                    fprintf(stderr, "%s: %s is false\n", key.c_str(), value.c_str());
+                    fprintf(stderr, "%s: %s is not boolean\n", key.c_str(), value.c_str());
                 }
                     
                 break;

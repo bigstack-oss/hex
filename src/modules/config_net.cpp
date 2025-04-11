@@ -17,10 +17,10 @@
 
 // published tunings
 CONFIG_TUNING_BOOL(NET_IPV4_TCP_SYNCOOKIES, "net.ipv4.tcp_syncookies", TUNING_PUB, "Turn on the Linux SYN cookies implementation.", true);
-CONFIG_TUNING_UINT(NET_IF_MTU, "net.if.mtu.<name>", TUNING_PUB, "Set interface MTU (MTU of parent interface must be greater than its VLAN interface).", DEFAULT_MTU, MIN_MTU, 65536);
+CONFIG_TUNING_UINT(NET_IF_MTU, "net.if.mtu.%s", TUNING_PUB, "Set interface MTU (MTU of parent interface must be greater than its VLAN interface).", DEFAULT_MTU, MIN_MTU, 65536);
 
 // private tuings
-CONFIG_TUNING(NET_IF_ENABLED, "net.if.enabled.<name>", TUNING_UNPUB, "Enable <name>'d interface.");
+CONFIG_TUNING(NET_IF_ENABLED, "net.if.enabled.<name>", TUNING_UNPUB, "Enable <name> interface.");
 CONFIG_TUNING(NET_IF_TYPE, "net.if.type.<name>", TUNING_UNPUB, "Set interface <name> type.");
 CONFIG_TUNING(NET_IF_MASTER, "net.if.master.<name>", TUNING_UNPUB, "Set master interface for interface <name>.");
 CONFIG_TUNING(NET_IF_SPEED_DUPLEX, "net.if.speed_duplex.<name>", TUNING_UNPUB, "Set autonego/speed/duplex for <name>'d interface.");
