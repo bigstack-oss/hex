@@ -77,7 +77,7 @@ int CliReadListOption(const CliList& options, const CliList& descriptions);
 
 // getting user input by reading 'argc/argv/argidx'
 // otherwise prompting msg for manually input.
-int CliReadInputStr(int argc, const char** argv, int argidx,
+bool CliReadInputStr(int argc, const char** argv, int argidx,
                     const char* msg, std::string* val);
 
 // getting user input by reading 'argc/argv/argidx' and matching with 'opts'

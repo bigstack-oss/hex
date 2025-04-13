@@ -104,7 +104,7 @@ ListMain(int argc, const char** argv)
     list.push_back("usb");
     list.push_back("server");
 
-    if(CliMatchListHelper(argc, argv, 1, list, &index, &value) != CLI_SUCCESS) {
+    if(CliMatchListHelper(argc, argv, 1, list, &index, &value) != 0) {
         CliPrintf("Unknown command");
         return CLI_INVALID_ARGS;
     }
@@ -238,7 +238,7 @@ InstallMain(int argc, const char** argv)
     list.push_back("usb");
     list.push_back("server");
 
-    if(CliMatchListHelper(argc, argv, 1, list, &index, &value) != CLI_SUCCESS) {
+    if(CliMatchListHelper(argc, argv, 1, list, &index, &value) != 0) {
         CliPrintf("Unknown command");
         return CLI_INVALID_ARGS;
     }

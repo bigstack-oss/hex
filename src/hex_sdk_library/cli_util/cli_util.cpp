@@ -243,7 +243,7 @@ int CliReadListOption(const CliList& options, const CliList& description)
     return -1;
 }
 
-int CliReadInputStr(int argc, const char** argv, int argidx,
+bool CliReadInputStr(int argc, const char** argv, int argidx,
                     const char* msg, std::string* val)
 {
     if (argc > argidx) {
