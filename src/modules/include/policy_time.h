@@ -103,6 +103,9 @@ private:
     // Method to read the time policy and populate the various member variables
     bool parsePolicy(const char* policyFile)
     {
+        if (m_yml != nullptr) {
+            FiniYml(m_yml);
+        }
         m_yml = InitYml(policyFile);
 
         if (ReadYml(policyFile, m_yml) < 0) {
