@@ -1484,7 +1484,7 @@ DumpTuning(const char* title, bool pub)
         if (it->publish != pub)
             continue;
 
-        fprintf(fout, "%s|%s|",
+        fprintf(fout, "%s`%s`",
             it->name.c_str(),
             it->description.c_str());
 
@@ -1493,27 +1493,27 @@ DumpTuning(const char* title, bool pub)
 
         specIt = tsm.find(it->name);
         if (specIt == tsm.end())
-            fprintf(fout, "mix|na|na|na|na");
+            fprintf(fout, "mix`na`na`na`na");
         else {
             switch (specIt->second.type) {
                 case TUNING_BOOL:
-                    fprintf(fout, "boolean|%s|false|true|na",
+                    fprintf(fout, "bool`%s`false`true`na",
                         specIt->second.boolDef ? "True" : "False");
                     break;
                 case TUNING_INT:
-                    fprintf(fout, "int|%d|%d|%d|na",
+                    fprintf(fout, "int`%d`%d`%d`na",
                         specIt->second.intDef,
                         specIt->second.intMin,
                         specIt->second.intMax);
                     break;
                 case TUNING_UINT:
-                    fprintf(fout, "uint|%u|%u|%u|na",
+                    fprintf(fout, "uint`%u`%u`%u`na",
                         specIt->second.intDef,
                         specIt->second.intMin,
                         specIt->second.intMax);
                     break;
                 case TUNING_STRING:
-                    fprintf(fout, "str|\"%s\"|%s|%s|%s",
+                    fprintf(fout, "str`\"%s\"`%s`%s`%s",
 			    specIt->second.strDef.c_str(),
 			    specIt->second.strValidateType == ValidateNone ? "Any" : "Others",
 			    specIt->second.strValidateType == ValidateNone ? "Any" : "Others",
@@ -1558,14 +1558,14 @@ MainValidateTuningValue(int argc, char **argv)
 
         specIt = tsm.find(it->name);
         if (specIt == tsm.end())
-            printf("mix|na|na|na|na");
+            printf("mix`na`na`na`na");
         else {
             switch (specIt->second.type) {
             case TUNING_BOOL:
                 if (HexValidateBool(value.c_str())) {
                     result = 0;
                 } else {
-                    fprintf(stderr, "%s: %s is not boolean\n", key.c_str(), value.c_str());
+                    fprintf(stderr, "%s: %s is not bool\n", key.c_str(), value.c_str());
                 }
                     
                 break;
