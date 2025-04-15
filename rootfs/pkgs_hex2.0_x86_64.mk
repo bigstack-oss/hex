@@ -34,7 +34,7 @@ BASE_PKGS += kmod kexec-tools hostname cpio less tree ncurses openssl-devel glib
 
 CENTOS_MIRROR := https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages
 DISTRO := el9
-GRUB2_VER := 2.06-80
+GRUB2_VER := 2.06-82
 
 BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-common-$(GRUB2_VER).$(DISTRO).noarch.rpm
 BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-pc-$(GRUB2_VER).$(DISTRO).x86_64.rpm
