@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     WriteYml("new.yml", cfg);
 
     FiniYml(cfg);
+    cfg = NULL;
 
     // for debug purpose
     //DumpYml("new.yml");
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
     HEX_TEST(strcmp(FindYmlValue(cfg, "hostname"), "hex") == 0);
     HEX_TEST(strcmp(FindYmlValue(cfg, "interfaces.1.ipv4.dhcp"), "false") == 0);
     FiniYml(cfg);
+    cfg = NULL;
 
     return HexTestResult;
 }

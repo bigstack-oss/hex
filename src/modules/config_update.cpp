@@ -126,6 +126,7 @@ ParseUpdateHistoryFile(UpdateHistory *history)
 
     if (ReadYml(UPDATE_HISTORY, yml) < 0) {
         FiniYml(yml);
+        yml = NULL;
         HexLogError("Failed to parse %s", UPDATE_HISTORY);
         return false;
     }
@@ -146,6 +147,7 @@ ParseUpdateHistoryFile(UpdateHistory *history)
     }
 
     FiniYml(yml);
+    yml = NULL;
 
     return true;
 }

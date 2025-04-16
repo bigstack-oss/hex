@@ -20,6 +20,7 @@ typedef gboolean (*TraverselFunc)(GNode *n, gpointer data);
 GNode* InitYml(const char *rootName);
 
 // free N-ary tree (cfg)
+// it is the caller's responsibility to set the passed in cfg (GNode pointer) to NULL
 void FiniYml(GNode *cfg);
 
 // poulate .yml (policyFile) content to N-ary tree (cfg)
@@ -157,4 +158,3 @@ HexYmlParseString(std::string &str, GNode *cfg, const char *fmt, ...)
 #endif /* endif __cplusplus */
 
 #endif /* endif CLI_UTIL_H_ */
-

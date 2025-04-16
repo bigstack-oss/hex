@@ -35,6 +35,7 @@ int main(int argc, char **argv)
     HEX_TEST(data == "test1");
 
     FiniYml(cfg);
+    cfg = NULL;
 
     return HexTestResult;
 }

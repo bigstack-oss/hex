@@ -13,7 +13,7 @@ enum storage_flags {
     VAR = 0,
     VAL,
     SEQ
-}; // "Store as" switch
+}; // "store as" switch
 
 // private functions
 void processLayer(yaml_parser_t *parser, GNode *data);
@@ -21,7 +21,6 @@ gboolean writeNode(GNode *node, gpointer data);
 gboolean dumpNode(GNode *node, gpointer data);
 gboolean freeNode(GNode *node, gpointer data);
 void freeTree(GNode *node, gpointer data);
-
 
 GNode*
 InitYml(const char *rootName)
@@ -32,6 +31,10 @@ InitYml(const char *rootName)
 void
 FiniYml(GNode *cfg)
 {
+    if (cfg == NULL) {
+        return;
+    }
+
     freeTree(cfg, NULL);
     cfg = NULL;
 }
@@ -39,6 +42,10 @@ FiniYml(GNode *cfg)
 int
 ReadYml(const char *policyFile, GNode *cfg)
 {
+    if (policyFile == NULL || cfg == NULL) {
+        return -1;
+    }
+
     yaml_parser_t parser;
 
     FILE *source = fopen(policyFile, "rb");
@@ -68,6 +75,10 @@ ReadYml(const char *policyFile, GNode *cfg)
 int
 WriteYml(const char *policyFile, GNode *cfg)
 {
+    if (policyFile == NULL || cfg == NULL) {
+        return -1;
+    }
+
     FILE *dest = fopen(policyFile, "wb");
     if (!dest) {
         HexLogError("Could not open policy file %s", policyFile);
@@ -83,15 +94,18 @@ WriteYml(const char *policyFile, GNode *cfg)
 GNode*
 FindYmlNode(GNode *cfg, const char *path)
 {
-    if (path == NULL)
+    if (cfg == NULL) {
+        return NULL;
+    }
+    if (path == NULL) {
         return cfg;
+    }
 
     char* context = NULL;
 
     // convert const char* to char*
     // strtok_r required local variable
     char* ypath = strdup(path);
-
     char* key = strtok_r(ypath, ".", &context);
 
     // skip root node which is doc name
@@ -99,7 +113,6 @@ FindYmlNode(GNode *cfg, const char *path)
     GNode *matched = NULL;
 
     while (key) {
-
         matched = NULL;
 
         while (node) {
@@ -113,39 +126,49 @@ FindYmlNode(GNode *cfg, const char *path)
         }
 
         // go deeper if matched
-        if (matched)
+        if (matched) {
             node = g_node_first_child(matched);
-        else
+        } else {
             break;
+        }
 
         key = strtok_r(NULL, ".", &context);
     }
 
     free(ypath);
-
     return matched;
 }
 
 const char*
 FindYmlValue(GNode *cfg, const char *path)
 {
-    GNode* value = g_node_first_child(FindYmlNode(cfg, path));
-    if (value)
-        return (char*)value->data;
-    else
+    if (cfg == NULL || path == NULL) {
         return NULL;
+    }
+
+    GNode* value = g_node_first_child(FindYmlNode(cfg, path));
+    if (value) {
+        return (char*)value->data;
+    } else {
+        return NULL;
+    }
 }
 
 const char*
 FindYmlValueF(GNode *cfg, const char *fmt, ...)
 {
+    if (cfg == NULL || fmt == NULL) {
+        return NULL;
+    }
+
     char *path = NULL;
     const char* value = NULL;
 
     va_list ap;
     va_start(ap, fmt);
-    if (vasprintf(&path, fmt, ap) < 0)
+    if (vasprintf(&path, fmt, ap) < 0) {
         return NULL;
+    }
     va_end(ap);
 
     printf("%s\n", path);
@@ -158,9 +181,14 @@ FindYmlValueF(GNode *cfg, const char *fmt, ...)
 int
 UpdateYmlValue(GNode *cfg, const char *path, const char *value)
 {
-    GNode* node = g_node_first_child(FindYmlNode(cfg, path));
-    if (!node)
+    if (cfg == NULL || path == NULL || value == NULL) {
         return -1;
+    }
+
+    GNode* node = g_node_first_child(FindYmlNode(cfg, path));
+    if (!node) {
+        return -1;
+    }
 
     g_free(node->data);
     gchar *new = g_strdup((gchar *)value);
@@ -172,9 +200,14 @@ UpdateYmlValue(GNode *cfg, const char *path, const char *value)
 int
 AddYmlNode(GNode *cfg, const char *path, const char *key, const char *value)
 {
-    GNode* node = FindYmlNode(cfg, path);
-    if (!node)
+    if (cfg == NULL || path == NULL || key == NULL || value == NULL) {
         return -1;
+    }
+
+    GNode* node = FindYmlNode(cfg, path);
+    if (!node) {
+        return -1;
+    }
 
     gchar *gkey = g_strdup((gchar *)key);
     gchar *gvalue = g_strdup((gchar *)value);
@@ -188,9 +221,14 @@ AddYmlNode(GNode *cfg, const char *path, const char *key, const char *value)
 int
 AddYmlKey(GNode *cfg, const char *path, const char *key)
 {
-    GNode* node = FindYmlNode(cfg, path);
-    if (!node)
+    if (cfg == NULL || path == NULL || key == NULL) {
         return -1;
+    }
+
+    GNode* node = FindYmlNode(cfg, path);
+    if (!node) {
+        return -1;
+    }
 
     gchar *gkey = g_strdup((gchar *)key);
     g_node_append(node, g_node_new(gkey));
@@ -202,12 +240,17 @@ AddYmlKey(GNode *cfg, const char *path, const char *key)
 int
 DeleteYmlNode(GNode *cfg, const char *path)
 {
-    GNode* node = FindYmlNode(cfg, path);
-    if (!node)
+    if (cfg == NULL || path == NULL) {
         return -1;
+    }
+
+    GNode* node = FindYmlNode(cfg, path);
+    if (!node) {
+        return -1;
+    }
 
     FiniYml(node);
-
+    node = NULL;
     return 0;
 }
 
@@ -215,12 +258,16 @@ DeleteYmlNode(GNode *cfg, const char *path)
 int
 DeleteYmlChildren(GNode *cfg, const char *path)
 {
-    GNode* node = FindYmlNode(cfg, path);
-    if (!node)
+    if (cfg == NULL || path == NULL) {
         return -1;
+    }
+
+    GNode* node = FindYmlNode(cfg, path);
+    if (!node) {
+        return -1;
+    }
 
     g_node_children_foreach(node, G_TRAVERSE_ALL, freeTree, NULL);
-
     return 0;
 }
 
@@ -228,16 +275,25 @@ DeleteYmlChildren(GNode *cfg, const char *path)
 size_t
 SizeOfYmlSeq(GNode *cfg, const char *path)
 {
-    GNode* node = FindYmlNode(cfg, path);
-    if (node)
-        return (unsigned int)g_node_n_children(node);
-    else
+    if (cfg == NULL || path == NULL) {
         return 0;
+    }
+
+    GNode* node = FindYmlNode(cfg, path);
+    if (node) {
+        return (unsigned int)g_node_n_children(node);
+    } else {
+        return 0;
+    }
 }
 
 void
 TraverseYml(GNode *cfg, TraverselFunc func, gpointer data)
 {
+    if (cfg == NULL) {
+        return;
+    }
+
     // Start traversing
     g_node_traverse(cfg, G_PRE_ORDER, G_TRAVERSE_ALL, -1, func, data);
 }
@@ -246,17 +302,27 @@ TraverseYml(GNode *cfg, TraverselFunc func, gpointer data)
 void
 DumpYml(const char *policyFile)
 {
+    if (policyFile == NULL) {
+        return;
+    }
+
     GNode *cfg = InitYml(policyFile);
 
-    if (ReadYml(policyFile, cfg))
+    if (ReadYml(policyFile, cfg)) {
         TraverseYml(cfg, dumpNode, NULL);
+    }
 
     FiniYml(cfg);
+    cfg = NULL;
 }
 
 void
 DumpYmlNode(GNode *node)
 {
+    if (node == NULL) {
+        return;
+    }
+
     TraverseYml(node, dumpNode, NULL);
 }
 
@@ -275,46 +341,45 @@ processLayer(yaml_parser_t *parser, GNode *data)
         // or as a leaf value (one of them, in case it's a sequence)
         if (event.type == YAML_SCALAR_EVENT) {
             gchar *value = g_strdup((gchar *)event.data.scalar.value);
-            if (storage) // val
+            if (storage) {
+                // val
                 g_node_append_data(last_leaf, value);
-            else // key
+            } else {
+                // key
                 last_leaf = g_node_append(data, g_node_new(value));
+            }
 
             // Flip VAR/VAL switch for the next event
             storage ^= VAL;
-        }
-
-        // Sequence - the following scalars will be appended to the seq index node
-        else if (event.type == YAML_SEQUENCE_START_EVENT) {
+        } else if (event.type == YAML_SEQUENCE_START_EVENT) {
+            // Sequence - the following scalars will be appended to the seq index node
             seqidx = 1;
             storage = SEQ;
-        }
-        else if (event.type == YAML_SEQUENCE_END_EVENT)
+        } else if (event.type == YAML_SEQUENCE_END_EVENT) {
             storage = VAR;
-
-        // depth += 1
-        else if (event.type == YAML_MAPPING_START_EVENT) {
+        } else if (event.type == YAML_MAPPING_START_EVENT) {
+            // depth += 1
             if (storage & SEQ) {
                 gchar *value = g_strdup_printf("%d", seqidx++);
                 GNode *idxNode = g_node_append(last_leaf, g_node_new(value));
                 processLayer(parser, idxNode);
-            }
-            else
+            } else {
                 processLayer(parser, last_leaf);
+            }
 
             // Flip VAR/VAL, w/o touching SEQ
             storage ^= VAL;
-        }
-
-        // depth -= 1
-        else if (event.type == YAML_MAPPING_END_EVENT || event.type == YAML_STREAM_END_EVENT)
+        } else if (event.type == YAML_MAPPING_END_EVENT || event.type == YAML_STREAM_END_EVENT) {
+            // depth -= 1
             break;
+        }
 
         yaml_event_delete(&event);
     }
 }
 
-gboolean writeNode(GNode *node, gpointer data)
+gboolean
+writeNode(GNode *node, gpointer data)
 {
     FILE *dest = (FILE *)data;
     int i = g_node_depth(node) - 1;
@@ -328,23 +393,23 @@ gboolean writeNode(GNode *node, gpointer data)
 
     if(!G_NODE_IS_LEAF(node)) {
         // non leaf node
-        while (--i)
+        while (--i) {
             fprintf(dest, "  ");
+        }
 
         if (atoi(node->data) > 0) {
             //seq node
             fprintf(dest, "- \n");
-        }
-        else {
+        } else {
             fprintf(dest, "%s: ", (char*)node->data);
 
             // if its child is not leaf, the node is start of a node/map/seq.
             // Adding a newline
-            if(!G_NODE_IS_LEAF(g_node_first_child(node)))
+            if(!G_NODE_IS_LEAF(g_node_first_child(node))) {
                 fprintf(dest, "\n");
+            }
         }
-    }
-    else {
+    } else {
         // leaf node
         fwrite(node->data, 1, strlen(node->data), dest);
         fprintf(dest, "\n");
@@ -353,23 +418,27 @@ gboolean writeNode(GNode *node, gpointer data)
     return(FALSE);
 }
 
-gboolean dumpNode(GNode *node, gpointer data)
+gboolean
+dumpNode(GNode *node, gpointer data)
 {
     int i = g_node_depth(node);
-    while (--i)
+    while (--i) {
         printf("  ");
+    }
 
     printf("%s\n", (char *)node->data);
     return(FALSE);
 }
 
-gboolean freeNode(GNode *node, gpointer data)
+gboolean
+freeNode(GNode *node, gpointer data)
 {
     g_free(node->data);
     return(FALSE);
 }
 
-void freeTree(GNode *node, gpointer data)
+void
+freeTree(GNode *node, gpointer data)
 {
     g_node_traverse(node, G_PRE_ORDER, G_TRAVERSE_ALL, -1, freeNode, NULL);
     g_node_destroy(node);
