@@ -42,7 +42,7 @@ FiniYml(GNode *cfg)
 int
 ReadYml(const char *policyFile, GNode *cfg)
 {
-    if (policyFile == NULL || cfg == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -75,7 +75,7 @@ ReadYml(const char *policyFile, GNode *cfg)
 int
 WriteYml(const char *policyFile, GNode *cfg)
 {
-    if (policyFile == NULL || cfg == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -142,11 +142,16 @@ FindYmlNode(GNode *cfg, const char *path)
 const char*
 FindYmlValue(GNode *cfg, const char *path)
 {
-    if (cfg == NULL || path == NULL) {
+    if (cfg == NULL) {
         return NULL;
     }
 
-    GNode* value = g_node_first_child(FindYmlNode(cfg, path));
+    GNode* node = FindYmlNode(cfg, path);
+    if (node == NULL) {
+        return NULL;
+    }
+
+    GNode* value = g_node_first_child(node);
     if (value) {
         return (char*)value->data;
     } else {
@@ -157,7 +162,7 @@ FindYmlValue(GNode *cfg, const char *path)
 const char*
 FindYmlValueF(GNode *cfg, const char *fmt, ...)
 {
-    if (cfg == NULL || fmt == NULL) {
+    if (cfg == NULL) {
         return NULL;
     }
 
@@ -181,12 +186,16 @@ FindYmlValueF(GNode *cfg, const char *fmt, ...)
 int
 UpdateYmlValue(GNode *cfg, const char *path, const char *value)
 {
-    if (cfg == NULL || path == NULL || value == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
-    GNode* node = g_node_first_child(FindYmlNode(cfg, path));
-    if (!node) {
+    GNode* parent = FindYmlNode(cfg, path);
+    if (parent == NULL) {
+        return -1;
+    }
+    GNode* node = g_node_first_child(parent);
+    if (node == NULL) {
         return -1;
     }
 
@@ -200,7 +209,7 @@ UpdateYmlValue(GNode *cfg, const char *path, const char *value)
 int
 AddYmlNode(GNode *cfg, const char *path, const char *key, const char *value)
 {
-    if (cfg == NULL || path == NULL || key == NULL || value == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -221,7 +230,7 @@ AddYmlNode(GNode *cfg, const char *path, const char *key, const char *value)
 int
 AddYmlKey(GNode *cfg, const char *path, const char *key)
 {
-    if (cfg == NULL || path == NULL || key == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -240,7 +249,7 @@ AddYmlKey(GNode *cfg, const char *path, const char *key)
 int
 DeleteYmlNode(GNode *cfg, const char *path)
 {
-    if (cfg == NULL || path == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -258,7 +267,7 @@ DeleteYmlNode(GNode *cfg, const char *path)
 int
 DeleteYmlChildren(GNode *cfg, const char *path)
 {
-    if (cfg == NULL || path == NULL) {
+    if (cfg == NULL) {
         return -1;
     }
 
@@ -275,7 +284,7 @@ DeleteYmlChildren(GNode *cfg, const char *path)
 size_t
 SizeOfYmlSeq(GNode *cfg, const char *path)
 {
-    if (cfg == NULL || path == NULL) {
+    if (cfg == NULL) {
         return 0;
     }
 
@@ -302,13 +311,9 @@ TraverseYml(GNode *cfg, TraverselFunc func, gpointer data)
 void
 DumpYml(const char *policyFile)
 {
-    if (policyFile == NULL) {
-        return;
-    }
-
     GNode *cfg = InitYml(policyFile);
 
-    if (ReadYml(policyFile, cfg)) {
+    if (ReadYml(policyFile, cfg) == 0) {
         TraverseYml(cfg, dumpNode, NULL);
     }
 

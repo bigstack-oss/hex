@@ -90,13 +90,15 @@ HexYmlParseInt(int64_t *integer, int64_t min, int64_t max, GNode *cfg, const cha
 
     va_list ap;
     va_start(ap, fmt);
-    if (vasprintf(&path, fmt, ap) < 0)
+    if (vasprintf(&path, fmt, ap) < 0) {
         return;
+    }
     va_end(ap);
 
     char *value = (char *)FindYmlValue(cfg, path);
-    if (HexValidateInt(value, min, max))
+    if (value && HexValidateInt(value, min, max)) {
         HexParseInt(value, min, max, integer);
+    }
 
     free(path);
 }
@@ -108,13 +110,15 @@ HexYmlParseUInt(uint64_t *integer, uint64_t min, uint64_t max, GNode *cfg, const
 
     va_list ap;
     va_start(ap, fmt);
-    if (vasprintf(&path, fmt, ap) < 0)
+    if (vasprintf(&path, fmt, ap) < 0) {
         return;
+    }
     va_end(ap);
 
     char *value = (char *)FindYmlValue(cfg, path);
-    if (HexValidateUInt(value, min, max))
+    if (value && HexValidateUInt(value, min, max)) {
         HexParseUInt(value, min, max, integer);
+    }
 
     free(path);
 }
@@ -126,13 +130,15 @@ HexYmlParseBool(bool *b, GNode *cfg, const char *fmt, ...)
 
     va_list ap;
     va_start(ap, fmt);
-    if (vasprintf(&path, fmt, ap) < 0)
+    if (vasprintf(&path, fmt, ap) < 0) {
         return;
+    }
     va_end(ap);
 
     char *value = (char *)FindYmlValue(cfg, path);
-    if (HexValidateBool(value))
+    if (value && HexValidateBool(value)) {
         HexParseBool(value, b);
+    }
 
     free(path);
 }
@@ -144,13 +150,15 @@ HexYmlParseString(std::string &str, GNode *cfg, const char *fmt, ...)
 
     va_list ap;
     va_start(ap, fmt);
-    if (vasprintf(&path, fmt, ap) < 0)
+    if (vasprintf(&path, fmt, ap) < 0) {
         return;
+    }
     va_end(ap);
 
     char *value = (char *)FindYmlValue(cfg, path);
-    if (value)
+    if (value) {
         str.assign(value);
+    }
 
     free(path);
 }

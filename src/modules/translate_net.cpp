@@ -221,8 +221,9 @@ Adapt(const char *policy)
 
     /* write new policy */
     HexLogDebugN(2, "Write policy file %s", policy);
-    if (WriteYml(policy, yml) == -1)
+    if (WriteYml(policy, yml) == -1) {
         status = false;
+    }
 
     FiniYml(yml);
     yml = NULL;
