@@ -213,7 +213,7 @@ LicenseGenerate2()
     read -p 'product: ' product
     read -p 'feature (all, virtualization, as-a-service): ' feature
     read -p 'quantity (0: unlimited): ' quantity
-    read -p 'sla (5x8, 7x24, fully-managed): ' sla
+    read -p 'support plan (esa, eea, or fma): ' supportPlan
     read -p 'valid days: ' days
     read -p 'license name: ' name
 
@@ -225,8 +225,7 @@ issue.hardware=$issueHardware
 product=$product
 feature=$feature
 quantity=$quantity
-sla=$sla
-issue.hardware=$issueHardware
+support.plan=$supportPlan
 issue.date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
 expiry.date=$(date --date="$days days" -u +"%Y-%m-%d %H:%M:%S UTC")
 EOF

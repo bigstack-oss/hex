@@ -94,7 +94,7 @@ issue.hardware=*
 product=APP
 feature=virtualization
 quantity=0
-sla=5x8
+support.plan=esa
 issue.date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
 expiry.date=$(date --date="60 days" -u +"%Y-%m-%d %H:%M:%S UTC")
 EOF
