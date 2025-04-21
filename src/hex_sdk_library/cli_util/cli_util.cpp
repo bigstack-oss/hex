@@ -467,6 +467,8 @@ std::string CliEventAttrs(void)
  */
 /******************************************************************************/
 
+HexPolicy::~HexPolicy() {}
+
 // All the user-visible message strings
 static const char MSG_POLICY_APPLY[] = "Applying policy changes.";
 static const char MSG_APPLY_SUCCESS[] = "Policy changes were successfully applied.";

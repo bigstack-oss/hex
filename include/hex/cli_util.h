@@ -120,7 +120,7 @@ std::string CliEventAttrs(void);
  */
 class HexPolicy {
 public:
-    virtual ~HexPolicy();
+    virtual ~HexPolicy() = 0;
 
     // Get the name of the policy type.
     virtual const char* policyName() const = 0;
