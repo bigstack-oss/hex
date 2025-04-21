@@ -5,7 +5,7 @@ PROG=$(basename $0)
 SDK_DIR=/usr/lib/hex_sdk
 
 _hex_exec() {
-    $@
+    "$@"
 }
 for sdk_sh in /etc/init_functions $SDK_DIR/functions $SDK_DIR/proj_functions ; do
     if [ -f $sdk_sh ] ; then
@@ -49,7 +49,7 @@ for sdk_sh in ${SDK_DIR}/modules.pre/sdk_*.sh ; do
     fi
 done
 
-if [ "x$(type -t $CMD)" != "xfunction" ] ; then
+if [ "x$(type -t "$CMD")" != "xfunction" ] ; then
     MOD=$(echo ${1:-NOSUCHARG} 2>/dev/null | cut -d"_" -f1)
     if [ -e ${SDK_DIR}/modules/sdk_${MOD:-NOSUCHMOD}*.sh ] ; then
 	source ${SDK_DIR}/modules/sdk_${MOD}*.sh
@@ -69,16 +69,16 @@ if [ "x$(type -t $CMD)" != "xfunction" ] ; then
 fi
 
 [ $# -ge 1 ] || Usage
-if [ "x$(type -t $CMD)" != "xfunction" ] ; then
+if [ "x$(type -t "$CMD")" != "xfunction" ] ; then
     Usage && Error "$CMD"
 fi
 shift 1
 if [ ${DRYRUN:-0} -eq 0 ] ; then
-    _hex_exec $CMD $@
+    _hex_exec "$CMD" "$@"
 else
     if [ "x$VERBOSE" = "x1" ] ; then
         set -o posix
         set | nl
     fi
-    type $CMD | sed 1d
+    type "$CMD" | sed 1d
 fi
