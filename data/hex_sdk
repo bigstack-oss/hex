@@ -9,7 +9,7 @@ _hex_exec() {
 }
 for sdk_sh in /etc/init_functions $SDK_DIR/functions $SDK_DIR/proj_functions ; do
     if [ -f $sdk_sh ] ; then
-	source $sdk_sh
+        source $sdk_sh
     fi
 done
 
@@ -33,7 +33,7 @@ FORMAT=pretty
 
 while getopts "dxvf:" OPT ; do
     case $OPT in
-	d) DRYRUN=1 ;;
+        d) DRYRUN=1 ;;
         x) set -x;;
         v) VERBOSE=1 ;;
         f) FORMAT=$OPTARG ;;
@@ -45,28 +45,27 @@ shift $(($OPTIND - 1))
 CMD="$1"
 for sdk_sh in ${SDK_DIR}/modules.pre/sdk_*.sh ; do
     if [ -f $sdk_sh ] ; then
-	source $sdk_sh
+        source $sdk_sh
     fi
 done
 
 if [ "x$(type -t $CMD)" != "xfunction" ] ; then
     MOD=$(echo ${1:-NOSUCHARG} 2>/dev/null | cut -d"_" -f1)
     if [ -e ${SDK_DIR}/modules/sdk_${MOD:-NOSUCHMOD}*.sh ] ; then
-	source ${SDK_DIR}/modules/sdk_${MOD}*.sh
+        source ${SDK_DIR}/modules/sdk_${MOD}*.sh
     else
-	for sdk_sh in ${SDK_DIR}/modules/*.sh ; do
-	    if [ -f $sdk_sh ] ; then
-		source $sdk_sh
-	    fi
-	done
+        for sdk_sh in ${SDK_DIR}/modules/*.sh ; do
+            if [ -f $sdk_sh ] ; then
+                source $sdk_sh
+            fi
+        done
     fi
-
-    for sdk_sh in ${SDK_DIR}/modules.post/sdk_*.sh ; do
-	if [ -f $sdk_sh ] ; then
-	    source $sdk_sh
-	fi
-    done
 fi
+for sdk_sh in ${SDK_DIR}/modules.post/sdk_*.sh ; do
+    if [ -f $sdk_sh ] ; then
+        source $sdk_sh
+    fi
+done
 
 [ $# -ge 1 ] || Usage
 if [ "x$(type -t $CMD)" != "xfunction" ] ; then

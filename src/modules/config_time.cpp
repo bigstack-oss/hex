@@ -16,7 +16,7 @@
 #include <hex/dryrun.h>
 
 // public tunings
-CONFIG_TUNING_STR(TIME_TZ, "time.timezone", TUNING_PUB, "Set system timzeon.", "America/New_York", ValidateRegex, "^[a-zA-Z/]+$");
+CONFIG_TUNING_STR(TIME_TZ, "time.timezone", TUNING_UNPUB, "Set system timzeon.", "America/New_York", ValidateRegex, "^[a-zA-Z/]+$");
 
 // parse tunings
 PARSE_TUNING_STR(s_tz, TIME_TZ);

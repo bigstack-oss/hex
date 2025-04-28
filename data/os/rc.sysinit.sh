@@ -56,8 +56,20 @@ modprobe isofs
 modprobe nls_iso8859-1
 
 # required by usb storage devices
-modprobe usbhid
-modprobe usb_storage
+if [ ! -e /etc/appliance/state/configured ] ; then
+    usb_conf=/etc/modprobe.d/usb.conf
+    usb_temp=/tmp/usb.conf
+    rm -f $usb_temp
+    [ ! -e $usb_conf ] || mv -f $usb_conf $usb_temp
+    modprobe usbhid
+    modprobe usb_storage
+    modprobe uas
+    [ ! -e $usb_temp ] || mv -f $usb_temp $usb_conf
+else
+    modprobe usbhid
+    modprobe usb_storage
+    modprobe uas
+fi
 
 # required by LCAP support
 modprobe bonding mode=4 miimon=100 lacp_rate=1
