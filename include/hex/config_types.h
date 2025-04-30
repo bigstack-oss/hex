@@ -183,6 +183,110 @@ public:
     size_t size() const { return m_map.size(); }
 };
 
+struct MatrixIndex {
+    std::size_t first;
+    std::size_t second;
+};
+
+template <class C, class T>
+class ConfigTypeMatrix
+{
+private:
+    std::vector<std::vector<C>> m_matrix;
+    T m_def;
+public:
+    ConfigTypeMatrix(const T& def) : m_def(def) { }
+
+    bool parse(MatrixIndex key, const char *value, bool isNew)
+    {
+        C config(m_def);
+        if (!config.parse(value, isNew)) {
+            return false;
+        }
+
+        if (key.first >= m_matrix.size()) {
+            m_matrix.resize(key.first + 1);
+        }
+        if (key.second >= m_matrix[key.first].size()) {
+            m_matrix[key.first].resize(key.second + 1);
+        }
+
+        return m_matrix[key.first][key.second].parse(value, isNew);
+    }
+
+    bool modified() const
+    {
+        bool m = false;
+        for (typename std::vector<std::vector<C>>::const_iterator it = m_matrix.begin(); it != m_matrix.end(); ++it) {
+            for (typename std::vector<C>::const_iterator jt = it->begin(); jt != it->end(); ++jt) {
+                if (jt->modified()) {
+                    m = true;
+                    break;
+                }
+            }
+            if (m) {
+                break;
+            }
+        }
+        return m;
+    }
+
+    const T oldValue(std::size_t first, std::size_t second) const {
+        if (first >= m_matrix.size()) {
+            return m_def;
+        }
+        if (second >= m_matrix.at(first).size()) {
+            return m_def;
+        }
+        return m_matrix.at(first).at(second).oldValue();
+    }
+
+    const T newValue(std::size_t first, std::size_t second) const {
+        if (first >= m_matrix.size()) {
+            return m_def;
+        }
+        if (second >= m_matrix.at(first).size()) {
+            return m_def;
+        }
+        return m_matrix.at(first).at(second).newValue();
+    }
+
+    const std::vector<T> oldValue(std::size_t first) const {
+        std::vector<T> output;
+        if (first >= m_matrix.size()) {
+            return output;
+        }
+        for (typename std::vector<C>::const_iterator it = m_matrix.at(first).begin(); it != m_matrix.at(first).end(); it++) {
+            output.push_back(it->oldValue());
+        }
+        return output;
+    }
+
+    const std::vector<T> newValue(std::size_t first) const {
+        std::vector<T> output;
+        if (first >= m_matrix.size()) {
+            return output;
+        }
+        for (typename std::vector<C>::const_iterator it = m_matrix.at(first).begin(); it != m_matrix.at(first).end(); it++) {
+            output.push_back(it->newValue());
+        }
+        return output;
+    }
+
+    std::vector<std::vector<C>>::const_iterator begin() const {
+        return m_matrix.begin();
+    }
+    std::vector<std::vector<C>>::const_iterator end() const {
+        return m_matrix.end();
+    }
+    std::size_t size() const {
+        return m_matrix.size();
+    }
+    void resize(std::size_t n) {
+        m_matrix.resize(n);
+    }
+};
+
 class ConfigString
 {
 private:
@@ -218,6 +322,7 @@ public:
 
 typedef ConfigTypeArray<ConfigString, std::string> ConfigStringArray;
 typedef ConfigTypeMap<ConfigString, std::string> ConfigStringMap;
+typedef ConfigTypeMatrix<ConfigString, std::string> ConfigStringMatrix;
 
 class ConfigBool
 {

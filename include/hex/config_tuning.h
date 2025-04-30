@@ -7,7 +7,9 @@
 
 #include <unordered_map>
 #include <string>
+#include <sstream>
 
+#include <hex/string_util.h>
 #include <hex/log.h>
 #include <hex/config_types.h>
 
@@ -23,9 +25,8 @@ struct Tune
     enum NameType {
         TUNE_P, // "Plain", i.e. no embedded variables
         TUNE_I, // embedded int, e.g. foo.9.bar
+        TUNE_M, // embedded 2 int, e.g., foo.0.bar.1.bar
         TUNE_S, // string, e.g. foo.MY_STRING.bar
-        // TUNE_SI, // string then int, e.g. foo.MY_STRING.bar.9
-        // TUNE_IS, // int then string, e.g. foo.9.MYSTRING
     };
     NameType nameType;
     const char* format;
@@ -320,6 +321,36 @@ struct TuningStringMap: public Tune, public ConfigStringMap
     }
 };
 
+struct TuningStringMatrix: public Tune, public ConfigStringMatrix
+{
+    MatrixIndex index;
+    TuningStringMatrix(const char* def, const char* fmt, ValidateType type):
+        Tune(Tune::TUNE_M, fmt),
+        ConfigStringMatrix(def),
+        index({0, 0})
+    {}
+
+    virtual TuneStatus ParseValue(const char* value, bool isNew)
+    {
+        std::vector<std::string> keys = hex_string_util::split(ns, ',');
+        if (keys.size() != 2) {
+            return TUNE_INVALID_VALUE;
+        }
+        index.first = (std::size_t)std::stoul(keys[0]);
+        index.second = (std::size_t)std::stoul(keys[1]);
+
+        if (!parse(index, value, isNew)) {
+            return TUNE_INVALID_VALUE;
+        }
+        return TUNE_OK;
+    }
+
+    virtual bool IsModified()
+    {
+        return modified();
+    }
+};
+
 #define MAX_TUNING_MAP  10
 
 static std::unordered_map<std::string, Tune*> s_tunes[MAX_TUNING_MAP];
@@ -392,6 +423,10 @@ struct TuneMapping {
     static TuningStringMap var(spec.def.c_str(), spec.format.c_str(), spec.type); \
     static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
 
+#define PARSE_TUNING_X_STR_MATRIX(var, spec, idx) \
+    CONFIG_TUNING_SPEC_STR(spec); \
+    static TuningStringMatrix var(spec.def.c_str(), spec.format.c_str(), spec.type); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
 
 #define PARSE_TUNING_INT(var, spec)         PARSE_TUNING_X_INT(var, spec, 0)
 #define PARSE_TUNING_INT_ARRAY(var, spec)   PARSE_TUNING_X_INT_ARRAY(var, spec, 0)
@@ -405,6 +440,7 @@ struct TuneMapping {
 #define PARSE_TUNING_STR(var, spec)         PARSE_TUNING_X_STR(var, spec, 0)
 #define PARSE_TUNING_STR_ARRAY(var, spec)   PARSE_TUNING_X_STR_ARRAY(var, spec, 0)
 #define PARSE_TUNING_STR_MAP(var, spec)     PARSE_TUNING_X_STR_MAP(var, spec, 0)
+#define PARSE_TUNING_STR_MATRIX(var, spec)  PARSE_TUNING_X_STR_MATRIX(var, spec, 0)
 
 static inline TuneStatus
 ParseTune(const char* n, const char* v, bool isNew, int idx = 0) //TODO: move to .cpp file
@@ -430,6 +466,18 @@ ParseTune(const char* n, const char* v, bool isNew, int idx = 0) //TODO: move to
                 snprintf(fmt, sizeof(fmt), "%s%%n", format);
                 if (sscanf(n, fmt, &arg, &pos) == 1 && pos == (int)strlen(n)) {
                     t->ni = arg;
+                    r = t->ParseValue(v, isNew);
+                }
+                break;
+            }
+            case Tune::TUNE_M: {
+                int arg_first, arg_second, pos = 0;
+                char fmt[1024];
+                snprintf(fmt, sizeof(fmt), "%s%%n", format);
+                if (sscanf(n, fmt, &arg_first, &arg_second, &pos) == 2 && pos == (int)strlen(n)) {
+                    std::stringstream keys;
+                    keys << arg_first << "," << arg_second;
+                    t->ns = keys.str().c_str();
                     r = t->ParseValue(v, isNew);
                 }
                 break;
@@ -466,4 +514,3 @@ IsModifiedTune(int idx = 0) //TODO: move to .cpp file
 #endif /* endif __cplusplus */
 
 #endif /* endif HEX_CONFIGTUNING_H */
-
