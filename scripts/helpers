@@ -207,6 +207,7 @@ LicenseGenerate2()
     local PRIVATE_PEM=/etc/ssl/private.pem
     local PASSPHRASE="3mE5ydqfYfLmTEGaCBX4JdkjdcQg9yTSwNqygcLeti4Fc48kmiW8nXqvV7PhHhT"
 
+    read -p 'license name: ' licenseName
     read -p 'license type (trial, prime, subscribed, community): ' licensenType
     read -p 'issue to: ' issueTo
     read -p 'issue hardware: ' issueHardware
@@ -218,6 +219,7 @@ LicenseGenerate2()
     read -p 'license name: ' name
 
     cat <<EOF >$name.dat
+license.name=$licenseName
 license.type=$licensenType
 issue.by=Bigstack Ltd.
 issue.to=$issueTo

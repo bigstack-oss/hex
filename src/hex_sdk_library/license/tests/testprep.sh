@@ -87,6 +87,7 @@ openssl dgst -sha256 -sign $PRIVATE_PEM -out $PEM_DIR/license.sig.$EXT -passin p
 # create valide prime license file and sig
 EXT=v2.prime.good
 cat <<EOF >$PEM_DIR/license.dat.$EXT
+license.name=test
 license.type=prime
 issue.by=Bigstack Ltd.
 issue.to=abc Ltd.
