@@ -1430,10 +1430,25 @@ DumpInterface()
             DUPLEX=""
             STATE="NA"
         fi
-        if [ -n "$VERBOSE" ] ; then
-            printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "$bond" "$bond" "${RATE},${XMIT}" "${SLAVES::-1}" "$HWADDR" "802.3ad" "$LINK" "$STATE" "${SPEED}${DUPLEX}/bonded"
+        if [ "x$FORMAT" = "xjson" ] ; then
+            [ $I -le 0 ] || printf ","
+            printf "{ "
+            printf "\"dev\": \"%s\"," "$bond"
+            printf "\"label\": \"%s\"," "$bond"
+            printf "\"cfg\": \"%s\"," "${RATE},${XMIT}"
+            printf "\"slaves\": \"%s\"," "${SLAVES::-1}"
+            printf "\"hwaddr\": \"%s\"," "$HWADDR"
+            printf "\"driver\": \"%s\"," "802.3ad"
+            printf "\"link\": \"%s\"," "$LINK"
+            printf "\"state\": \"%s\"," "$STATE"
+            printf "\"speed\": \"%s\"" "${SPEED}${DUPLEX}/bonded"
+            printf " }"
         else
-            printf "%8s %14s %10s %6s %18s\n" "$bond" "${SLAVES::-1}" "802.3ad" "$STATE" "${SPEED}${DUPLEX}/bonded"
+            if [ -n "$VERBOSE" ] ; then
+		printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "$bond" "$bond" "${RATE},${XMIT}" "${SLAVES::-1}" "$HWADDR" "802.3ad" "$LINK" "$STATE" "${SPEED}${DUPLEX}/bonded"
+            else
+		printf "%8s %14s %10s %6s %18s\n" "$bond" "${SLAVES::-1}" "802.3ad" "$STATE" "${SPEED}${DUPLEX}/bonded"
+            fi
         fi
     done
 
