@@ -69,16 +69,6 @@ public:
     ParseSysList parseSysList;
 
     /**
-     * Get the maximum length of any registered command
-     */
-    size_t maxCommandLength() { return m_maxCommandLength; }
-
-    /**
-     * Register a command.
-     */
-    void addCommand(CommandModule* command);
-
-    /**
      * Push into the command mode specified. This should only be used when
      * switching into the mode specified, not when traversing through the mode.
      */
@@ -95,9 +85,29 @@ public:
     void popAllModes();
 
     /**
+     * Get the mode map
+     */
+    const ModeMap* getModeMap() const;
+
+    /**
+     * Get the maximum length of any registered command
+     */
+    size_t maxCommandLength() { return m_maxCommandLength; }
+
+    /**
+     * Register a command.
+     */
+    void addCommand(CommandModule* command);
+
+    /**
      * Get the command specified
      */
     CommandModule* findCommand(int argc, const char** argv, int& cmdIdx) const;
+
+    /**
+     * Get all global commands
+     */
+    const CommandMap* getGlobalCommands() const;
 
     /**
      * Get all the commands in the mode specified
@@ -145,7 +155,6 @@ private:
     // Updated with every push/pop mode
     CommandMap  m_combinedCommandMap;
 
-
     // Update the combined command map
     void updateMode();
 
@@ -169,4 +178,3 @@ struct CompletionState
 #endif /* __cplusplus */
 
 #endif /* endif HEX_CLI_MAIN_H */
-

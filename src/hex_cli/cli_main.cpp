@@ -299,6 +299,11 @@ void Statics::popAllModes()
     }
 }
 
+const ModeMap* Statics::getModeMap() const
+{
+    return &m_modeMap;
+}
+
 void Statics::updateMode()
 {
     m_combinedCommandMap.clear();
@@ -315,6 +320,11 @@ void Statics::updateMode()
     if (cm) {
         m_combinedCommandMap.insert(cm->begin(), cm->end());
     }
+}
+
+const CommandMap* Statics::getGlobalCommands() const
+{
+    return &m_globalCommandMap;
 }
 
 const CommandMap* Statics::getCommands(const char* mode) const
@@ -1358,6 +1368,50 @@ TopMain(int argc, const char** argv)
     }
 }
 
+void
+printCommandMap(int depth, const CommandMap& commandMap, const ModeMap* const modeMap)
+{
+    for (CommandMap::const_iterator it = commandMap.begin(); it != commandMap.end(); ++it) {
+        // do not list disabled commands
+        if (!it->second->isEnabled()) {
+            continue;
+        }
+
+        std::stringstream output;
+        for (int i = 0; i < depth; i++) {
+            output << "  ";
+        }
+        output << "+ " << it->first;
+        CliPrint(output.str().c_str());
+
+        if (it->second->isMode() && modeMap) {
+            ModeMap::const_iterator mmit = modeMap->find(it->second->name());
+            // found
+            if (mmit != modeMap->end()) {
+                // dfs
+                printCommandMap(depth + 1, mmit->second, modeMap);
+            }
+        }
+    }
+}
+
+static int
+TreeMain(int argc, const char** argv)
+{
+    const ModeMap* const modeMap = s_statics->getModeMap();
+    ModeMap::const_iterator topIt = modeMap->find(CLI_TOP_MODE);
+    if (topIt != modeMap->end()) {
+        printCommandMap(0, topIt->second, modeMap);
+    }
+
+    const CommandMap* const globalCommandMap = s_statics->getGlobalCommands();
+    for (CommandMap::const_iterator gmit = globalCommandMap->begin(); gmit != globalCommandMap->end(); ++gmit) {
+        CliPrintf("+ %s", gmit->first.c_str());
+    }
+
+    return CLI_SUCCESS;
+}
+
 CLI_GLOBAL_COMMAND("help", HelpMain, HelpGenerator,
     "Display information for using the specified command.",
     "help <command> [<subcommand> ...]");
@@ -1374,3 +1428,6 @@ CLI_GLOBAL_COMMAND("top",  TopMain, 0,
     "Return to the top level.",
     "top");
 
+CLI_MODE_COMMAND(CLI_TOP_MODE, "tree", TreeMain, NULL,
+    "List all enabled commands.",
+    "tree");
