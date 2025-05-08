@@ -1399,14 +1399,18 @@ static int
 TreeMain(int argc, const char** argv)
 {
     const ModeMap* const modeMap = s_statics->getModeMap();
-    ModeMap::const_iterator topIt = modeMap->find(CLI_TOP_MODE);
-    if (topIt != modeMap->end()) {
-        printCommandMap(0, topIt->second, modeMap);
+    if (modeMap) {
+        ModeMap::const_iterator topIt = modeMap->find(CLI_TOP_MODE);
+        if (topIt != modeMap->end()) {
+            printCommandMap(0, topIt->second, modeMap);
+        }
     }
 
     const CommandMap* const globalCommandMap = s_statics->getGlobalCommands();
-    for (CommandMap::const_iterator gmit = globalCommandMap->begin(); gmit != globalCommandMap->end(); ++gmit) {
-        CliPrintf("+ %s", gmit->first.c_str());
+    if (globalCommandMap) {
+        for (CommandMap::const_iterator gmit = globalCommandMap->begin(); gmit != globalCommandMap->end(); ++gmit) {
+            CliPrintf("+ %s", gmit->first.c_str());
+        }
     }
 
     return CLI_SUCCESS;
