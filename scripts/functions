@@ -1350,12 +1350,8 @@ DumpInterface()
         if /usr/sbin/ethtool eth$I >/dev/null 2>&1 ; then
             LINK=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Link detected:" | awk '{print $3}')
             SPEED=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Speed:" | awk {'print $2'} | sed 's/.\{4\}$//')
-            DUPLEX=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Duplex:" | awk '{print substr ($2, 0, 1)}')
-            ADVERTISED=$(/usr/sbin/ethtool eth$I 2>/dev/null | sed -ne '/Advertised link modes:/,/:/p' | sed -e 's/.*://' -e 's/^[[:space:]]*//' -e '$d' | tr " " "\n" | sort -n | tail -1 | sed 's/base.*//')
-            if [ "$SPEED" == "Unkn" ] ; then
-                SPEED="NA"
-                DUPLEX=""
-            fi
+            DUPLEX=$(/usr/sbin/ethtool eth$I 2>/dev/null | grep "Duplex:" | awk '{print substr ($2, 0, 1)}' | grep -v U)
+            ADVERTISED=$(/usr/sbin/ethtool eth$I 2>/dev/null | sed -ne '/Advertised link modes:/,/:/p' | sed -e 's/.*://' -e 's/^[[:space:]]*//' -e '$d' | tr " " "\n" | sort -n | tail -1 | sed 's/base.*//' | grep -v -i -e not -e reported)
             if [ "$LINK" == "yes" ] ; then
                 if [ -z $SPEED ] ; then
                     # For para-virtual driver, we assume the speed is 1000
@@ -1366,15 +1362,18 @@ DumpInterface()
                     DUPLEX="F"
                 fi
             fi
+            if [ "$SPEED" == "Unkn" ] ; then
+                SPEED=""
+            fi
             STATE=${ORIG_STATE[$I]}
             if [ "$STATE" == "DOWN" ] ; then
                 /usr/sbin/ip link set eth$I down >/dev/null 2>&1
             fi
         else
-            LINK="NA"
-            SPEED="NA"
+            LINK=""
+            SPEED=""
             DUPLEX=""
-            STATE="NA"
+            STATE=""
         fi
         if [ "x$FORMAT" = "xjson" ] ; then
             [ $I -le 0 ] || printf ","
@@ -1387,13 +1386,13 @@ DumpInterface()
             printf "\"driver\": \"%s\"," "$DRIVER"
             printf "\"link\": \"%s\"," "$LINK"
             printf "\"state\": \"%s\"," "$STATE"
-            printf "\"speed\": \"%s\"" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+            printf "\"speed\": \"%s\"" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX}"
             printf " }"
         else
             if [ -n "$VERBOSE" ] ; then
-                printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "eth$I" "$LABEL" "${VNDID}.${DEVID}" "$BUSID" "$HWADDR" "$DRIVER" "$LINK" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+                printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "eth$I" "$LABEL" "${VNDID}.${DEVID}" "$BUSID" "$HWADDR" "$DRIVER" "$LINK" "$STATE" "${SPEED}${DUPLEX:- }/${ADVERTISED}${DUPLEX:- }"
             else
-                printf "%8s %14s %10s %6s %18s\n" "$LABEL" "$BUSID" "$DRIVER" "$STATE" "${SPEED}${DUPLEX}/${ADVERTISED}${DUPLEX:-F}"
+                printf "%8s %14s %10s %6s %18s\n" "$LABEL" "$BUSID" "$DRIVER" "$STATE" "${SPEED}${DUPLEX:- }/${ADVERTISED}${DUPLEX:- }"
             fi
         fi
         I=$(expr $I + 1)
@@ -1403,15 +1402,11 @@ DumpInterface()
         if /usr/sbin/ethtool $bond >/dev/null 2>&1 ; then
             LINK=$(/usr/sbin/ethtool $bond 2>/dev/null | grep "Link detected:" | awk '{print $3}')
             SPEED=$(/usr/sbin/ethtool $bond 2>/dev/null |grep "Speed:" |awk {'print $2'} |sed 's/.\{4\}$//')
-            DUPLEX=$(/usr/sbin/ethtool $bond 2>/dev/null | grep "Duplex:" | awk '{print substr ($2, 0, 1)}')
+            DUPLEX=$(/usr/sbin/ethtool $bond 2>/dev/null | grep "Duplex:" | awk '{print substr ($2, 0, 1)}' | grep -v U)
             HWADDR=$(cat /sys/class/net/$bond/address 2>/dev/null)
             SLAVES=$(cat /proc/net/bonding/$bond 2>/dev/null | grep -i "slave interface" | awk '{print $3}' | tr '\n' ',')
             RATE=$(cat /sys/class/net/$bond/bonding/lacp_rate | awk '{print $1}')
             XMIT=$(cat /sys/class/net/$bond/bonding/xmit_hash_policy | awk '{print $1}')
-            if [ "$SPEED" == "Unkn" ] ; then
-                SPEED="NA"
-                DUPLEX=""
-            fi
             if [ "$LINK" == "yes" ] ; then
                 if [ -z $SPEED ] ; then
                     # For para-virtual driver, we assume the speed is 1000
@@ -1422,13 +1417,16 @@ DumpInterface()
                     DUPLEX="F"
                 fi
             fi
+            if [ "$SPEED" == "Unkn" ] ; then
+                SPEED=""
+            fi
             STATE="DOWN"
             (cat /sys/class/net/$bond/carrier >/dev/null 2>&1) && STATE="UP"
         else
-            LINK="NA"
-            SPEED="NA"
+            LINK=""
+            SPEED=""
             DUPLEX=""
-            STATE="NA"
+            STATE=""
         fi
         if [ "x$FORMAT" = "xjson" ] ; then
             [ $I -le 0 ] || printf ","
@@ -1445,9 +1443,9 @@ DumpInterface()
             printf " }"
         else
             if [ -n "$VERBOSE" ] ; then
-		printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "$bond" "$bond" "${RATE},${XMIT}" "${SLAVES::-1}" "$HWADDR" "802.3ad" "$LINK" "$STATE" "${SPEED}${DUPLEX}/bonded"
+		printf "%8s %8s %16s %14s %20s %10s %5s %6s %18s\n" "$bond" "$bond" "${RATE},${XMIT}" "${SLAVES::-1}" "$HWADDR" "802.3ad" "$LINK" "$STATE" "${SPEED}${DUPLEX:- }/bonded"
             else
-		printf "%8s %14s %10s %6s %18s\n" "$bond" "${SLAVES::-1}" "802.3ad" "$STATE" "${SPEED}${DUPLEX}/bonded"
+		printf "%8s %14s %10s %6s %18s\n" "$bond" "${SLAVES::-1}" "802.3ad" "$STATE" "${SPEED}${DUPLEX:- }/bonded"
             fi
         fi
     done
