@@ -29,15 +29,13 @@ typedef std::vector<const char*> ArgVec;
 
 /** @name Return Codes
  *  Exit bit flags for bootstrap/commit modes only.
- *  Regardless of success/failure we may need to reboot system or restart lmi.
+ *  Regardless of success/failure we may need to reboot system.
  *  The caller of hex_config is responsible for checking these flags and
  *  taking the appropriate action.
  */
 //@{
 #define CONFIG_EXIT_FAILURE          (1 << 0)
 #define CONFIG_EXIT_NEED_REBOOT      (1 << 1)   //!< Caller should reboot system (commit or bootstrap)
-#define CONFIG_EXIT_NEED_LMI_RESTART (1 << 2)   //!< Caller should restart LMI (commit only)
-#define CONFIG_EXIT_NEED_COMMIT_LMI_RESTART (1 << 3)   //!< Caller should commit policies and restart LMI (commit only)
 //@}
 
 #define TUNING_PUB true
@@ -94,13 +92,6 @@ bool IsValidate();
  *  @brief Specify that system reboot is required after commit.
  */
 void SetNeedReboot();
-
-/**
- *  @fn SetNeedLmiRestart()
- *  @hideinitializer
- *  @brief Used to specify that we need to restart LMI after a commit
- */
-void SetNeedLmiRestart();
 
 /**
  *  @fn ApplyTrigger()
@@ -413,9 +404,8 @@ int ApplyTrigger(ArgVec argv);
  * @brief Register functions to be called when snapshot is applied.
  *
  * Function should return 0 on success and 1 on failure.
- * Addtionally function can set bits to request reboot or LMI restart:
+ * Addtionally function can set bits to request reboot:
  *  CONFIG_EXIT_NEED_REBOOT
- *  CONFIG_EXIT_NEED_LMI_RESTART
  */
 #define CONFIG_SNAPSHOT_COMMAND(name, create, apply, rollback) \
     static hex_config::SnapshotCommand HEX_CAT(s_snapshot_, __LINE__)(#name, create, apply, rollback, false)

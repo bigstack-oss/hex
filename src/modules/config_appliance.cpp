@@ -7,7 +7,6 @@
 
 #include <hex/config_module.h>
 
-static const char NEED_LMI_REBOOT[] = "/etc/appliance/state/appliance_need_lmi_reboot";
 static const char NEED_REBOOT[] = "/etc/appliance/state/appliance_need_reboot";
 
 CONFIG_TUNING_STR(APPLIANCE_LOGIN_GREETING, "appliance.login.greeting", TUNING_PUB, "Set greeting message for login", "", ValidateRegex, DFT_REGEX_STR);
@@ -28,7 +27,6 @@ ShutdownMain(int argc, char* argv[])
     }
 
     unlink(NEED_REBOOT);
-    unlink(NEED_LMI_REBOOT);
 
     if (argc == 1) {
         HexLogNotice("System is halting");
@@ -58,7 +56,6 @@ RebootMain(int argc, char* argv[])
     }
 
     unlink(NEED_REBOOT);
-    unlink(NEED_LMI_REBOOT);
 
     if (argc == 1) {
         HexLogNotice("System is rebooting");

@@ -140,7 +140,7 @@ DoBackup()
     sed -i '/^install_type/d' $SRC/boot/grub2/info${DESTPART}
     sed -i '/^backup_date/d' $SRC/boot/grub2/info${DESTPART}
     echo "install_type = Backup" >> $SRC/boot/grub2/info${DESTPART}
-    # Time since Epoch (must be reformatted by CLI/LMI)
+    # Time since Epoch (must be reformatted by CLI)
     echo "backup_date = "$(/bin/date '+%s') >> $SRC/boot/grub2/info${DESTPART}
 
     # Modify grub title for backup

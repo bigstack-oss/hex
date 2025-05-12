@@ -61,7 +61,6 @@ CommitChanges()
         echo "No changes detected"
         exit 0
     else
-        echo "NOTE: Changes will not be in sync with LMI. Please reboot before using LMI again."
         echo "Committing changes..."
         # Suppress debug messages from console (they will still be in syslog)
         hex_config -e $DEBUG_FLAG commit $NEW_SETTINGS 2>&1 | grep -v 'Debug: '

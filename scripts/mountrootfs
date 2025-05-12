@@ -122,9 +122,9 @@ elif [ $EXTRACT -eq 1 ] ; then
     # Copy listed files (ignoring mdsum's in 2nd column if present)
     cat $EXTRACTLIST | awk '{ print $1 }' | (cd $ROOTDIR && cpio --quiet -pdum $TEMPDIR)
 
-    # Fix ownership of lmi directory
-    if [ -d $TEMPDIR/var/www/lmi ] ; then
-        chown -R www-data:www-data $TEMPDIR/var/www/lmi
+    # Fix ownership of /var/www/html for httpd
+    if [ -d $TEMPDIR/var/www/html ] ; then
+        chown -R www-data:www-data $TEMPDIR/var/www/html
     fi
     CreateCgz $NEWIMG $TEMPDIR
     exit 0

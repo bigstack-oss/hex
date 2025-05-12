@@ -468,7 +468,7 @@ InstallImage()
             # Create info file
             (
                 echo "firmware_version = $NEW_sys_product_description $NEW_sys_product_version"
-                # Time since Epoch (must be reformatted by CLI/LMI)
+                # Time since Epoch (must be reformatted by CLI)
                 echo "install_date = $(date '+%s')"
                 if [ "$MODE" == "ppu" ]; then
                     echo "install_type = PPU"

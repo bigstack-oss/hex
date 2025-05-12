@@ -109,7 +109,7 @@ done
 if [ -n "$(/usr/sbin/grub-get-default 2>/dev/null)" ]; then
     GRUB_PATH=/boot/grub2
     sed -i '/^last_boot/d' $GRUB_PATH/info$(/usr/sbin/grub-get-default)
-    # Time since Epoch (must be reformatted by CLI/LMI)
+    # Time since Epoch (must be reformatted by CLI)
     echo "last_boot = "$(/bin/date '+%s') >> $GRUB_PATH/info$(/usr/sbin/grub-get-default)
 fi
 

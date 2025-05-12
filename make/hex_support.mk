@@ -39,7 +39,7 @@ $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_install/wipembr.sh,./usr/sbin/w
 endif
 
 # Directory for crash dumps, support info files etc.
-# Give LMI/CLI access to create/delete files
+# Give CLI access to create/delete files
 # Give everyone access so that hex_cli can write its crash dump here
 rootfs_install::
 	$(Q)mkdir -p $(ROOTDIR)/var/support
