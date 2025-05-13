@@ -1,5 +1,9 @@
 # HEX
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?logo=apache)](LICENSE)
+
+Hex is the custom orchestration, management, and maintenance framework written for CubeCOS.
+
 ## License
 
 Copyright (c) 2025 [Bigstack co., ltd](https://bigstack.co/)
