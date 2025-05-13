@@ -242,7 +242,7 @@ Parse(const char* name, const char* value, bool isNew)
 
 static bool Commit(bool modified, int dryLevel)
 {
-    /* currently we only support the account "root" and "admin" for CLI
+    /* currently we only support the account "root" and "admin" for LMI and CLI
      * To support multiple administrator account creations,
      * it will need to update login.defs for max expired day and min expired day
      */

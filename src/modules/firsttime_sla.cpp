@@ -107,6 +107,8 @@ public:
                     SetupPrintTitle(LABEL_SLA_ACCEPT_TEXT);
                     if (SetupReadListIndex(m_slaChoices, false) == 0) {
                         //Create service license agreement accept file.
+                        //The LMI checks for the existence of this file to know whether the user
+                        //should be directed to the license agreement page.
                         acceptSLA();
                         state = SLA_ACCEPTED;
                     }

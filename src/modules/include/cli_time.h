@@ -203,6 +203,14 @@ puts ("\"%s %s\"," % [offset, i])
 puts ("\"" + offset + " " + i + "\",")
 end
 
+puts ("\nTimezone for LMI")
+puts ("export const timezones = [")
+zones.each do |i|
+offset = "(UTC" + ActiveSupport::TimeZone.create(i).formatted_offset + ")"
+puts ("  { name: '%s', offset: '%s' }," % [i, offset])
+end
+puts ("];")
+
 puts ("\nTotal %d timezones" % zones.length)
 */
         // Define the recognized timezones by continent to add to the valid vector

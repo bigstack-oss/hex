@@ -13,6 +13,7 @@
 #define LOG_DIR "/var/support/fixpack"
 
 // Marker files to communicate need reboot from post_install or post_rollback script
+static const char NEED_LMI_RESTART[] = FIXPACK_DIR "/need_lmi_restart";
 static const char NEED_REBOOT[] = FIXPACK_DIR "/need_reboot";
 static const char FIXPACK_HISTORY_FILE[] = "/var/appliance-db/fixpack.history";
 static const char FIXPACK_INSTALL_CMD[] = "/usr/sbin/hex_fixpack_install";
@@ -402,6 +403,7 @@ FixpackMain(int argc, char* argv[]) {
     int status = CONFIG_EXIT_FAILURE;
 
     // Remove marker files before install
+    unlink(NEED_LMI_RESTART);
     unlink(NEED_REBOOT);
 
     HexLogNotice("Installing fixpack from file %s", fixpack);
@@ -410,7 +412,7 @@ FixpackMain(int argc, char* argv[]) {
         case 0:
             status = 0;
             HexLogNotice("fixpack %s: install successful", fixpack);
-            // No need to create a HexLogEvent message, the CLI will handle it for success.
+            // No need to create a HexLogEvent message, the LMI/CLI will handle it for success.
             break;
         case 2:
             // file not found
@@ -440,13 +442,16 @@ FixpackMain(int argc, char* argv[]) {
         default:
             // generic failure
             HexLogError("fixpack %s: install failed", fixpack);
-            // No need to create a HexLogEvent message, the CLI will handle it for success.
+            // No need to create a HexLogEvent message, the LMI/CLI will handle it for success.
             break;
     }
 
     if (access(NEED_REBOOT, F_OK) == 0) {
         unlink(NEED_REBOOT);
         status |= CONFIG_EXIT_NEED_REBOOT;
+    } else if (access(NEED_LMI_RESTART, F_OK) == 0) {
+        unlink(NEED_LMI_RESTART);
+        status |= CONFIG_EXIT_NEED_LMI_RESTART;
     }
 
     return status;
@@ -481,6 +486,7 @@ FixpackRollbackMain(int argc, char* argv[])
     }
 
     // Remove marker files before rollback
+    unlink(NEED_LMI_RESTART);
     unlink(NEED_REBOOT);
 
     HexLogNotice("Uninstalling fixpack %s", fixpack.name.c_str());
@@ -499,6 +505,10 @@ FixpackRollbackMain(int argc, char* argv[])
     if (access(NEED_REBOOT, F_OK) == 0) {
         unlink(NEED_REBOOT);
         status |= CONFIG_EXIT_NEED_REBOOT;
+    }
+    else if (access(NEED_LMI_RESTART, F_OK) == 0) {
+        unlink(NEED_LMI_RESTART);
+        status |= CONFIG_EXIT_NEED_LMI_RESTART;
     }
 
     return status;

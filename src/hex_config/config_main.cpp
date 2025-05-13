@@ -35,6 +35,7 @@ static const char PROGRAM_PATH[] = HEX_CFG;
 
 // Special files for testing "bootstrap/commit" exit status logic
 static const char TEST_NEED_REBOOT[] = "/etc/test_need_reboot";
+static const char TEST_NEED_LMI_RESTART[] = "/etc/test_need_lmi_restart";
 static const char FORCE_COMMIT_ALL[]  = "/etc/hex_config.commit.all";
 
 // Lock file to prevent multiple instances from commiting at the same time
@@ -70,6 +71,7 @@ static bool s_withProgress = false;
 static bool s_commit = false;
 static bool s_validateOnly = false;
 static bool s_rebootNeeded = false;
+static bool s_lmiRestartNeeded = false;
 
 #if !defined(SHUTDOWN_DELAY)
 #define SHUTDOWN_DELAY 10
@@ -131,6 +133,12 @@ void
 SetNeedReboot()
 {
     s_rebootNeeded = true;
+}
+
+void
+SetNeedLmiRestart()
+{
+    s_lmiRestartNeeded = true;
 }
 
 int
@@ -1869,9 +1877,10 @@ main(int argc, char **argv)
     // run command
     status = it->second.main(argc-optind, argv+optind);
 
-    if (s_rebootNeeded) {
+    if (s_rebootNeeded)
         status |= CONFIG_EXIT_NEED_REBOOT;
-    }
+    else if (s_lmiRestartNeeded)
+        status |= CONFIG_EXIT_NEED_LMI_RESTART;
 
     HexLogInfo("Command %s exited with status: %d", fullCmd.c_str(), status);
 
@@ -1934,13 +1943,18 @@ MainCommit(int argc, char **argv)
         HexLogInfo("Committing settings file %s", argv[1]);
         status = DoWork(argv[1], 0, start, end);
 
-        if (s_rebootNeeded) {
+        if (s_rebootNeeded)
             status |= CONFIG_EXIT_NEED_REBOOT;
-        }
+        else if (s_lmiRestartNeeded)
+            status |= CONFIG_EXIT_NEED_LMI_RESTART;
 
         if (access(TEST_NEED_REBOOT, F_OK) == 0) {
             status |= CONFIG_EXIT_NEED_REBOOT;
             unlink(TEST_NEED_REBOOT);
+        }
+        if (access(TEST_NEED_LMI_RESTART, F_OK) == 0) {
+            status |= CONFIG_EXIT_NEED_LMI_RESTART;
+            unlink(TEST_NEED_LMI_RESTART);
         }
     }
 
@@ -2563,6 +2577,7 @@ MainApplySnapshot(int argc, char** argv)
         return status;
 
     bool needReboot = false;
+    bool needLmiRestart = false;
     for (auto iter = snapshotCmds.begin() ; iter != snapshotCmds.end() ; ++iter) {
         if (iter->apply == NULL)
             continue;
@@ -2572,6 +2587,10 @@ MainApplySnapshot(int argc, char** argv)
 
         if ((applyStatus & CONFIG_EXIT_NEED_REBOOT) != 0) {
             needReboot = true;
+        }
+
+        if ((applyStatus & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+            needLmiRestart = true;
         }
 
         if ((applyStatus & EXIT_FAILURE) != 0) {
@@ -2603,6 +2622,10 @@ MainApplySnapshot(int argc, char** argv)
     if (needReboot) {
         HexLogInfo("Snapshot requires reboot");
         status |= CONFIG_EXIT_NEED_REBOOT;
+    }
+    else if (needLmiRestart) {
+        HexLogInfo("Snapshot requires LMI restart");
+        status |= CONFIG_EXIT_NEED_LMI_RESTART;
     }
 
     return status;

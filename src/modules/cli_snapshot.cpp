@@ -212,6 +212,11 @@ ApplyMain(int argc, const char** argv)
         CliPrintf("Snapshot requires reboot\nRebooting...\n");
         HexSystemF(0, HEX_CFG " reboot");
     }
+    else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+        CliPrintf("Snapshot requires LMI restart\nRestarting LMI... ");
+        HexSystemF(0, HEX_CFG " restart_lmi");
+        CliPrintf("Done\n");
+    }
 
     return status;
 }

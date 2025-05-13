@@ -213,10 +213,11 @@ MainApply(int argc, char **argv)
         HexSystem(0, "/bin/cp", "-rf", newFiles.c_str(), FAILED_POLICY_DIR, NULL);
     }
 
-    // CLI is responsible for rebooting, but we'll log it here
-    if ((status & CONFIG_EXIT_NEED_REBOOT) != 0) {
+    // CLI/LMI is responsible for rebooting or restarting LMI, but we'll log it here
+    if ((status & CONFIG_EXIT_NEED_REBOOT) != 0)
         HexLogInfo("Reboot required");
-    }
+    else if ((status & CONFIG_EXIT_NEED_LMI_RESTART) != 0)
+        HexLogInfo("LMI restart required");
 
     HexLockRelease(APPLY_LOCKFILE);
     HexLogInfo("Released lock: %s", APPLY_LOCKFILE);

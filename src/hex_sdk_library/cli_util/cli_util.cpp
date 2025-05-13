@@ -473,8 +473,10 @@ HexPolicy::~HexPolicy() {}
 static const char MSG_POLICY_APPLY[] = "Applying policy changes.";
 static const char MSG_APPLY_SUCCESS[] = "Policy changes were successfully applied.";
 static const char MSG_APPLY_SUCCESS_REBOOT[] = "Policy changes were successfully applied. System must be rebooted.";
+static const char MSG_APPLY_SUCCESS_LMI_RESTART[] = "Policy changes were successfully applied. Local Management Interface has been restarted.";
 static const char MSG_APPLY_FAILURE[] = "Policy changes could not be applied. No changes have been made to the system.";
 static const char MSG_APPLY_FAILURE_REBOOT[] = "Policy changes could not be applied. System must be rebooted.";
+static const char MSG_APPLY_FAILURE_LMI_RESTART[] = "Policy changes could not be applied. Local Management Interface has been restarted.";
 
 static std::string
 GetPolicyDir(const std::string &baseDir, const char* name)
@@ -599,6 +601,12 @@ bool HexPolicyManager::apply(bool progress)
             CliReadContinue();
             HexSpawn(0, HEX_CFG, "reboot", NULL);
         }
+        else if ((status & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+            HexLogInfo("hex_config requested LMI restart.");
+            // Do not need to get user input before restarting LMI
+            HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
+            CliPrintf(MSG_APPLY_SUCCESS_LMI_RESTART);
+        }
         else {
             CliPrintf(MSG_APPLY_SUCCESS);
         }
@@ -610,6 +618,12 @@ bool HexPolicyManager::apply(bool progress)
             CliPrintf(MSG_APPLY_FAILURE_REBOOT);
             CliReadContinue();
             HexSpawn(0, HEX_CFG, "reboot", NULL);
+        }
+        else if ((status & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+            HexLogInfo("hex_config requested LMI restart.");
+            // Do not need to get user input before restarting LMI
+            HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
+            CliPrintf(MSG_APPLY_FAILURE_LMI_RESTART);
         }
         else {
             CliPrintf(MSG_APPLY_FAILURE);

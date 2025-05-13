@@ -143,9 +143,9 @@ if [ $EXTRACT_MODE -eq 1 ] ; then
     NEW_ROOTFS_DIR=$(MakeTempDir)
     chmod 755 $NEW_ROOTFS_DIR
     cat $FIXPACK_FILES | ( cd $PREV_ROOTFS_DIR && cpio --quiet -pdum $NEW_ROOTFS_DIR )
-    # Fix ownership of /var/www/html for httpd
-    if [ -d $NEW_ROOTFS_DIR/var/www/html ] ; then
-        chown -R www-data:www-data $NEW_ROOTFS_DIR/var/www/html
+    # Fix ownership of lmi directory
+    if [ -d $NEW_ROOTFS_DIR/var/www/lmi ] ; then
+        chown -R www-data:www-data $NEW_ROOTFS_DIR/var/www/lmi
     fi
 
     # Create fix pack rootfs

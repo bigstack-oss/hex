@@ -210,6 +210,12 @@ InstallMain(int argc, const char** argv)
         CliPrintf("fixpack requires reboot");
         CliPrintf("use reboot CLI to reboot the appliance");
     }
+    else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+        CliPrintf("fixpack requires LMI restart");
+        CliPrintf("Restarting LMI... ");
+        HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
+        CliPrintf("Done");
+    }
 
     return CLI_SUCCESS;
 }
@@ -225,6 +231,12 @@ static int RollbackMain(int argc, const char** argv)
     if ((ret & CONFIG_EXIT_NEED_REBOOT) != 0) {
         CliPrintf("fixpack requires reboot");
         CliPrintf("use reboot CLI to reboot the appliance");
+    }
+    else if ((ret & CONFIG_EXIT_NEED_LMI_RESTART) != 0) {
+        CliPrintf("fixpack requires LMI restart");
+        CliPrintf("Restarting LMI... ");
+        HexSpawn(0, HEX_CFG, "restart_lmi", NULL);
+        CliPrintf("Done");
     }
 
     return CLI_SUCCESS;
