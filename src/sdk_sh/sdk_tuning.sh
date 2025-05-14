@@ -46,7 +46,7 @@ _tuning_dump()
         _name=$name             # save original name
         eths="eth0"             # default to eth0 when there no multiple ones were detected
 
-        if  [[ "$name" =~ net.if.*\<name\> ]] ; then
+        if [[ "$name" =~ net.if.*\<name\> ]] ; then
             eths="$_eths"
         fi
         for eth in $eths ; do
