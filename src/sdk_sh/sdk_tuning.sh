@@ -11,20 +11,6 @@ _tuning_dump()
 {
     [ -e $TMP_TUNGINS_RAW ] || Error "no $TMP_TUNGINS_RAW"
 
-    source hex_tuning /etc/settings.sys sys.net.if
-    local _eths=
-    local i=0
-    while true ; do
-        hwaddr=
-        eval hwaddr=\${T_sys_net_if_mac_eth${i}}
-        if [ "x$hwaddr" = "x" ] ; then
-            break
-        else
-            _eths+="eth${i} "
-        fi
-        ((i++))
-    done
-
     if [ "x$FORMAT" = "xjson" ] ; then
         printf "[ "
     else
@@ -33,6 +19,7 @@ _tuning_dump()
         printf "%-30s%-100s%s\n" "Name" "Description" "Type|Default|Min|Max|Regex"
     fi
 
+    local eths=$($HEX_SDK -f json DumpInterface | jq -r .[].dev)
     local cnt=0
     while read line_raw ; do
         line="$(echo $line_raw | tr -d '"')" # remove '"' that leads to jq parsing errors
@@ -44,11 +31,7 @@ _tuning_dump()
         maxv="$(echo $line | cut -d'`' -f6)"
         regx="$(echo $line | cut -d'`' -f7)"
         _name=$name             # save original name
-        eths="eth0"             # default to eth0 when there no multiple ones were detected
 
-        if [[ "$name" =~ net.if.*\<name\> ]] ; then
-            eths="$_eths"
-        fi
         for eth in $eths ; do
             name=${_name/<name>/$eth}
             if [ "x$FORMAT" = "xjson" ] ; then
