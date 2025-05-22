@@ -97,7 +97,6 @@ HexLicenseCheck(const std::string& app, std::string *type, std::string *serial, 
     }
     else {
         if (RSAVerifySignature(licenseData, licenseSig)) {
-
             FILE *fin = fopen(licenseData.c_str(), "r");
             if (!fin) {
                 HexLogError("Could not read license file");
@@ -173,21 +172,40 @@ HexLicenseCheck(const std::string& app, std::string *type, std::string *serial, 
             }
 
             // check if the license has been expired
+            // first, we get the difference between the local time and the UTC time
+            // get current UTC time
+            time_t now = time(NULL);
+            if (now == (time_t)-1) {
+                return LICENSE_BADSYS;
+            }
+            tm* tmNowUtcPtr = gmtime(&now);
+            if (tmNowUtcPtr == NULL) {
+                return LICENSE_BADSYS;
+            }
+            time_t nowUtcMinusDiff = mktime(tmNowUtcPtr);
+            if (nowUtcMinusDiff == (time_t)-1) {
+                return LICENSE_BADSYS;
+            }
+            time_t timezoneTimeDiff = now - nowUtcMinusDiff;
+
+            // then, we parse the expiry time
             struct tm tmExpiry;
             memset(&tmExpiry, 0, sizeof(struct tm));
             strptime(expiry_date.c_str(), "%Y-%m-%d %H:%M:%S UTC", &tmExpiry);
-            time_t tExpiry = mktime(&tmExpiry);
+            tmExpiry.tm_isdst = 0;
+            time_t tExpiryLocal = mktime(&tmExpiry);
+            if (tExpiryLocal == (time_t)-1) {
+                return LICENSE_BADSYS;
+            }
+            time_t tExpiry = tExpiryLocal + timezoneTimeDiff;
 
-            time_t now = time(NULL); // get current UTC time
             double period = difftime(tExpiry, now);
             if (period < 0) {
                 return LICENSE_EXPIRED;
             }
 
             return (std::ceil)(period / 86400);
-
-        }
-        else {
+        } else {
             return LICENSE_BADSIG;
         }
     }
