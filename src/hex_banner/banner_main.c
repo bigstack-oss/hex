@@ -26,8 +26,10 @@ int main(int argc, char *argv[])
 
     if (has_colors()) {
         start_color();
-        init_pair(1, COLOR_BLACK, COLOR_CYAN);
-        init_pair(2, COLOR_WHITE, COLOR_BLACK);
+        init_color(COLOR_MAGENTA, 299, 407, 976);
+        init_color(COLOR_CYAN, 341, 886, 886);
+        init_pair(1, COLOR_WHITE, COLOR_MAGENTA);
+        init_pair(2, COLOR_CYAN, COLOR_BLACK);
     }
 
     int fd1, fd2;
