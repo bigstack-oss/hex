@@ -24,11 +24,17 @@ int main(int argc, char *argv[])
     noecho();
     curs_set(0);
 
+    bool useColor = false;
     if (has_colors()) {
         start_color();
-        init_color(COLOR_MAGENTA, 299, 407, 976);
-        init_color(COLOR_CYAN, 341, 886, 886);
-        init_pair(1, COLOR_WHITE, COLOR_MAGENTA);
+        useColor = true;
+
+        if (can_change_color()) {
+            init_color(COLOR_BLUE, 299, 407, 976);
+            init_color(COLOR_CYAN, 341, 886, 886);
+        }
+
+        init_pair(1, COLOR_WHITE, COLOR_BLUE);
         init_pair(2, COLOR_CYAN, COLOR_BLACK);
     }
 
@@ -50,12 +56,16 @@ int main(int argc, char *argv[])
     }
 
     refresh();
-    wbkgd(win, COLOR_PAIR(1));
+    if (useColor) {
+        wbkgd(win, COLOR_PAIR(1));
+    }
     wrefresh(win);
 
     int node_starty = (LINES / 2 - 10) / 2;
     int node_startx = (COLS - 50) / 2;
-    attrset(COLOR_PAIR(1));
+    if (useColor) {
+        attrset(COLOR_PAIR(1));
+    }
     attron(A_BOLD);
 
     char separator[] = "----------";
@@ -73,7 +83,9 @@ int main(int argc, char *argv[])
 
     int cluster_starty = (LINES / 2) + node_starty;
     int cluster_startx = (COLS - 50) / 2;
-    attrset(COLOR_PAIR(2));
+    if (useColor) {
+        attrset(COLOR_PAIR(2));
+    }
     attron(A_BOLD);
     y_inc = 0;
     while (fgets(buf, 1024, pipe_input) != NULL) {
@@ -90,9 +102,9 @@ int main(int argc, char *argv[])
         if(ch == KEY_F(2)) {
             break;
         } else {
-	    time_t it = time(NULL);
-	    struct tm *ptm = gmtime(&it);
-	    mvprintw(LINES - 2, (x++ % 10), "%21s | %s", "Press F2 to continue", asctime(ptm));
+            time_t it = time(NULL);
+            struct tm *ptm = gmtime(&it);
+            mvprintw(LINES - 2, (x++ % 10), "%21s | %s", "Press F2 to continue", asctime(ptm));
         }
     }
 
