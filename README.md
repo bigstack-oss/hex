@@ -4,6 +4,13 @@
 
 Hex is the custom orchestration, management, and maintenance framework written for CubeCOS.
 
+## Community
+
+- [License](./LICENSE)
+- [Contributing](./CONTRIBUTING.md)
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
+- [Security](./SECURITY.md)
+
 ## License
 
 Copyright (c) 2025 [Bigstack co., ltd](https://bigstack.co/)
