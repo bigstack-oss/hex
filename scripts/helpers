@@ -208,7 +208,7 @@ LicenseGenerate2()
     local PASSPHRASE="3mE5ydqfYfLmTEGaCBX4JdkjdcQg9yTSwNqygcLeti4Fc48kmiW8nXqvV7PhHhT"
 
     read -p 'license name: ' licenseName
-    read -p 'license type (trial, prime, subscribed, community): ' licensenType
+    read -p 'license type (trial, enterprise, subscribed, community): ' licensenType
     read -p 'issue to: ' issueTo
     read -p 'issue hardware: ' issueHardware
     read -p 'product: ' product

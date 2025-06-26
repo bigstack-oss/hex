@@ -75,9 +75,9 @@ grep "Checking license" $TEST.out
 grep "License (type: perpetual) is still valid for .* days" $TEST.out
 
 
-# create valid v2 prime license file and sig in custom name
+# create valid v2 enterprise license file and sig in custom name
 cat <<EOF >$PEM_DIR/test-app.dat
-license.type=prime
+license.type=enterprise
 issue.by=Bigstack Ltd.
 issue.to=abc Ltd.
 issue.hardware=*
@@ -92,12 +92,12 @@ openssl dgst -sha256 -sign $PRIVATE_PEM -out $PEM_DIR/test-app.sig -passin pass:
 
 ! ./$TEST -e license_check app $PEM_DIR/test-app > $TEST.out 2>&1
 grep "Checking license" $TEST.out
-grep "License (type: prime) is still valid for .* days" $TEST.out
+grep "License (type: enterprise) is still valid for .* days" $TEST.out
 
 cp -f $PEM_DIR/test-app.dat $PEM_DIR/license-app.dat
 cp -f $PEM_DIR/test-app.sig $PEM_DIR/license-app.sig
 
 ! ./$TEST -e license_check app > $TEST.out 2>&1
 grep "Checking license" $TEST.out
-grep "License (type: prime) is still valid for .* days" $TEST.out
+grep "License (type: enterprise) is still valid for .* days" $TEST.out
 
