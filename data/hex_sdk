@@ -22,6 +22,7 @@ options:
 -x            enable trace mode
 -v            verbose/full output
 -f <format>   {pretty,json,line,value,shell,none} the output format, defaults to pretty
+-m <manner>   {force,grace} force actions without considering other running sdk jobs
 functions:
 $(compgen -A function | grep -v '^_')
 EOF
@@ -31,12 +32,13 @@ EOF
 VERBOSE=
 FORMAT=pretty
 
-while getopts "dxvf:" OPT ; do
+while getopts "dxvf:m:" OPT ; do
     case $OPT in
         d) DRYRUN=1 ;;
         x) set -x;;
         v) VERBOSE=1 ;;
         f) FORMAT=$OPTARG ;;
+        m) MANNER=$OPTARG ;;
         *) Usage ;;
     esac
 done
