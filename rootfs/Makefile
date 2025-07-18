@@ -104,6 +104,7 @@ base_rootfs_install:
 	$(Q)chroot $(ROOTDIR) systemctl unmask systemd-logind
 	$(Q)chroot $(ROOTDIR) systemctl enable serial-getty@ttyS0
 	$(Q)chroot $(ROOTDIR) systemctl unmask getty.target
+	$(Q)chroot $(ROOTDIR) systemctl set-default multi-user.target
 	$(Q)$(INSTALL_MODULES) $(ROOTDIR) $(HEX_DATADIR)/os/base.modules
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/systemd-hexctl-sys.service ./lib/systemd/system
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/passwd ./etc
