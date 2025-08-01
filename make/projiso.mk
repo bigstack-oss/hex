@@ -26,6 +26,7 @@ iso_build:
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makebootimg -S $(CONSOLE_SPEED) -k "$(KERNEL_ARGS) $(ISO_KERNEL_ARGS) nicdetect_disable" $(QUIET_FLAG) -p $(PROJ_ISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ iso_boot_install' iso $(PROJ_KERNEL) $(PROJ_ISO_RD) $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME),"  GEN     $(PROJ_ISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME) $(PROJ_ISO)
 	$(Q)md5sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).md5
+	$(Q)sha256sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).sha256
 
 $(PROJ_ISO_RD): $(HEX_INSTALL_RD) $(HEX_HWDETECT_FILES) $(HEX_DATADIR)/os/rc.mount.sh
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) ROOTDIR=@ROOTDIR@ iso_ramdisk_install' $< $@,"  GEN     $@")

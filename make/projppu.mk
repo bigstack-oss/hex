@@ -40,8 +40,9 @@ ppu_build::
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME) $(PROJ_PPU)
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_rootfs.md5 $(PROJ_ROOTFS_MD5)
 	$(Q)md5sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5
-	$(Q)chmod 0644 $(PROJ_PPU) $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5
-	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 ; chmod 0644 $$PKG $$PKG.md5; done
+	$(Q)sha256sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256
+	$(Q)chmod 0644 $(PROJ_PPU) $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256
+	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 ; sha256sum < $$PKG > $$PKG.sha256 ; chmod 0644 $$PKG $$PKG.md5; done
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit $(PROJ_ROOTFS_COMMIT)
 	$(Q)echo $(PROJ_BUILD_COMMIT) > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit
 
@@ -96,6 +97,7 @@ ppuiso_build::
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makedataimg -p $(PROJ_PPUISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ ppuiso_install' iso $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME),"  GEN     $(PROJ_PPUISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME) $(PROJ_PPUISO)
 	$(Q)md5sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).md5
+	$(Q)sha256sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).sha256
 
 ppuiso_install::
 	$(Q)cp $(PROJ_SHIPDIR)/$(PROJ_NAME)*$(PROJ_BUILD_DESC)_*.pkg.md5 $(ROOTDIR)/

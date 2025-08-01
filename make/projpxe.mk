@@ -27,6 +27,7 @@ pxe_build:
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makepxebundle $(QUIET_FLAG) -S $(CONSOLE_SPEED) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ pxe_bundle_install' $(PROJ_NAME) $(PROJ_KERNEL) $(PROJ_PXE_RD) $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME) $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME),"  GEN     $(PROJ_PXE_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME) $(PROJ_PXE)
 	$(Q)md5sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).md5
+	$(Q)sha256sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).sha256
 
 $(PROJ_PXE_RD): $(HEX_PXE_RD) $(HEX_HWDETECT_FILES) $(PROJ_PPU) $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) PPU=$$(readlink $(PROJ_RELEASE)).pkg ROOTDIR=@ROOTDIR@ pxe_ramdisk_install' $< $@,"  GEN     $@")
