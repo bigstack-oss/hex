@@ -42,7 +42,7 @@ ppu_build::
 	$(Q)md5sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5
 	$(Q)sha256sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256
 	$(Q)chmod 0644 $(PROJ_PPU) $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256
-	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 ; sha256sum < $$PKG > $$PKG.sha256 ; chmod 0644 $$PKG $$PKG.md5; done
+	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 ; sha256sum < $$PKG > $$PKG.sha256 ; chmod 0644 $$PKG $$PKG.md5 $$PKG.sha256; done
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit $(PROJ_ROOTFS_COMMIT)
 	$(Q)echo $(PROJ_BUILD_COMMIT) > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit
 
