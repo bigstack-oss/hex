@@ -22,7 +22,7 @@ $(PROJ_ISO): $(PROJ_KERNEL) $(PROJ_ISO_RD) $(PROJ_PPU)
 .PHONY: iso_build
 iso_build:
 	$(Q)[ -d $(PROJ_SHIPDIR) ] || mkdir -p $(PROJ_SHIPDIR)
-	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)!(*_pkg).iso $(PROJ_SHIPDIR)/$(PROJ_NAME)!(*_pkg).iso.md5
+	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)!(*_pkg).iso $(PROJ_SHIPDIR)/$(PROJ_NAME)!(*_pkg).iso.md5 $(PROJ_SHIPDIR)/$(PROJ_NAME)!(*_pkg).iso.sha256
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makebootimg -S $(CONSOLE_SPEED) -k "$(KERNEL_ARGS) $(ISO_KERNEL_ARGS) nicdetect_disable" $(QUIET_FLAG) -p $(PROJ_ISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ iso_boot_install' iso $(PROJ_KERNEL) $(PROJ_ISO_RD) $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME),"  GEN     $(PROJ_ISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME) $(PROJ_ISO)
 	$(Q)md5sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).md5
