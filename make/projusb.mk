@@ -24,8 +24,8 @@ usb_build:
 	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)*$(PROJ_BUILD_DESC).img*
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makebootimg -S $(CONSOLE_SPEED) -k "$(KERNEL_ARGS) nicdetect_disable" $(QUIET_FLAG) -p $(PROJ_USB_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ usb_boot_install' usb $(PROJ_KERNEL) $(PROJ_USB_RD) $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME),"  GEN     $(PROJ_USB_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME) $(PROJ_USB)
-	$(Q)md5sum < $(PROJ_USB) > $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME).md5
-	$(Q)sha256sum < $(PROJ_USB) > $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME).sha256
+	$(Q)nohup md5sum < $(PROJ_USB) > $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME).md5 &
+	$(Q)nohup sha256sum < $(PROJ_USB) > $(PROJ_SHIPDIR)/$(PROJ_USB_LONGNAME).sha256 &
 
 $(PROJ_USB_RD): $(HEX_INSTALL_RD) $(HEX_HWDETECT_FILES) $(HEX_DATADIR)/os/rc.mount.sh
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) ROOTDIR=@ROOTDIR@ usb_ramdisk_install' $< $@,"  GEN     $@")
