@@ -42,7 +42,7 @@ ppu_build::
 	$(Q)chmod 0644 $(PROJ_PPU)
 	$(Q)nohup bash -c "md5sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5" &
 	$(Q)nohup bash -c "sha256sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256" &
-	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do chmod 0644 $$PKG; nohup bash -c "md5sum < $$PKG > $$PKG.md5 && chmod 0644 $$PKG.md5" &; nohup bash -c "sha256sum < $$PKG > $$PKG.sha256 && chmod 0644 $$PKG.sha256" &; done
+	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do chmod 0644 $$PKG ; (nohup bash -c "md5sum < $$PKG > $$PKG.md5 && chmod 0644 $$PKG.md5" &) ; (nohup bash -c "sha256sum < $$PKG > $$PKG.sha256 && chmod 0644 $$PKG.sha256" &) ; done
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit $(PROJ_ROOTFS_COMMIT)
 	$(Q)echo $(PROJ_BUILD_COMMIT) > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit
 
