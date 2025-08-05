@@ -25,8 +25,8 @@ iso_build:
 	$(Q)find $(PROJ_SHIPDIR) -type f -name "$(PROJ_NAME)*.iso*" -not -name "$(PROJ_NAME)*_pkg.iso*" -not -name "$(PROJ_NAME)*_pxeserver.iso*" -delete
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makebootimg -S $(CONSOLE_SPEED) -k "$(KERNEL_ARGS) $(ISO_KERNEL_ARGS) nicdetect_disable" $(QUIET_FLAG) -p $(PROJ_ISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ iso_boot_install' iso $(PROJ_KERNEL) $(PROJ_ISO_RD) $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME),"  GEN     $(PROJ_ISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME) $(PROJ_ISO)
-	$(Q)nohup md5sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).md5 &
-	$(Q)nohup sha256sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).sha256 &
+	$(Q)nohup md5sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).md5 2>&1 &
+	$(Q)nohup sha256sum < $(PROJ_ISO) > $(PROJ_SHIPDIR)/$(PROJ_ISO_LONGNAME).sha256 2>&1 &
 
 $(PROJ_ISO_RD): $(HEX_INSTALL_RD) $(HEX_HWDETECT_FILES) $(HEX_DATADIR)/os/rc.mount.sh
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) ROOTDIR=@ROOTDIR@ iso_ramdisk_install' $< $@,"  GEN     $@")

@@ -40,9 +40,10 @@ ppu_build::
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME) $(PROJ_PPU)
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_rootfs.md5 $(PROJ_ROOTFS_MD5)
 	$(Q)chmod 0644 $(PROJ_PPU)
-	$(Q)nohup bash -c "md5sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5" &
-	$(Q)nohup bash -c "sha256sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256" &
-	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do chmod 0644 $$PKG ; (nohup bash -c "md5sum < $$PKG > $$PKG.md5 && chmod 0644 $$PKG.md5" &) ; (nohup bash -c "sha256sum < $$PKG > $$PKG.sha256 && chmod 0644 $$PKG.sha256" &) ; done
+	$(Q)nohup bash -c "md5sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).md5" 2>&1 &
+	$(Q)nohup bash -c "sha256sum < $(PROJ_PPU) > $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256 && chmod 0644 $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME).sha256" 2>&1 &
+	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do chmod 0644 $$PKG ; done
+	$(Q)nohup bash -c "for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 && chmod 0644 $$PKG.md5 ; sha256sum < $$PKG > $$PKG.sha256 && chmod 0644 $$PKG.sha256 ; done" >/dev/null 2>&1 &
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit $(PROJ_ROOTFS_COMMIT)
 	$(Q)echo $(PROJ_BUILD_COMMIT) > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit
 
@@ -96,9 +97,5 @@ ppuiso_build::
 	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)*$(PROJ_BUILD_DESC)_pkg.iso*
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makedataimg -p $(PROJ_PPUISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ ppuiso_install' iso $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME),"  GEN     $(PROJ_PPUISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME) $(PROJ_PPUISO)
-	$(Q)nohup md5sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).md5 &
-	$(Q)nohup sha256sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).sha256 &
-
-ppuiso_install::
-	$(Q)cp $(PROJ_SHIPDIR)/$(PROJ_NAME)*$(PROJ_BUILD_DESC)_*.pkg.md5 $(ROOTDIR)/
-	$(Q)sync
+	$(Q)nohup md5sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).md5 2>&1 &
+	$(Q)nohup sha256sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).sha256 2>&1 &
