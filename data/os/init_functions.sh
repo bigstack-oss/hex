@@ -172,7 +172,7 @@ WaitForCdrom()
         fi
     done
 
-    for i in $srdev; do echo $i; done
+    for i in $srdev; do ! blkid $i >/dev/null 2>&1 || echo $i; done
 }
 
 # Wait for up to 15 seconds for udev to fire and add usb drive
