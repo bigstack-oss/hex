@@ -103,10 +103,10 @@ else
         ExtractCgz $OLDIMG $BASEDIR
     fi
 
-    [ "x$(basename $BASEDIR)" = "x$ROOTDIR" ] || (rm -rf $ROOTDIR && mv $BASEDIR $ROOTDIR)
+    [ "x$(basename $BASEDIR)" = "x$ROOTDIR" ] || (rm -rf $ROOTDIR && mv $BASEDIR $ROOTDIR 2>/dev/null)
 
     # Remove half-baked static folders when interrupted by ctrl+c
-    trap "rm -rf $BASEDIR $ROOTDIR" INT TERM
+    trap "umount ${ROOTDIR}/proc ; rm -rf $BASEDIR $ROOTDIR" INT TERM
 fi
 
 [ ! -f $OLDDEBUGIMG -o $SKIPDEBUG -eq 1 ] || ExtractCgz $OLDDEBUGIMG $ROOTDIR

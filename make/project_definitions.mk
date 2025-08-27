@@ -54,6 +54,7 @@ PROJ_SETTINGS := $(wildcard $(SRCDIR)/settings.txt)
 # System settings
 PROJ_SYS_SETTINGS := $(wildcard $(SRCDIR)/settings.sys)
 
+FAKE_PPU := fake.pkg
 PROJ_PPU := proj.pkg
 PROJ_PPU_PADDING := 16M
 PROJ_ROOTFS_MD5 := proj_rootfs.md5

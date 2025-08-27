@@ -203,6 +203,8 @@ FIXPACK_ID="$1"
 FIXPACK_NAME="$1"
 FIXPACK_DESCRIPTION="Hotfix commit since ${1%_*} until ${1#*_}"
 SUPPORTED_FIRMWARES="${1:1:5}"
+REBOOT_REQUIRED="true"
+NOROLLBACK="false"
 EOF
 
 [ -e $HOTFIXDIR/remove.lst ] || touch $HOTFIXDIR/remove.lst

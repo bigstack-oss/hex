@@ -1596,15 +1596,19 @@ RootfsDisableDns()
 RootfsBind()
 {
     mkdir -p $1 $ROOTDIR/$2 && mount --bind $1 $ROOTDIR/$2
-    umount $ROOTDIR/proc || true
-    mount -t proc proc $ROOTDIR/proc
+    if mount | grep -q ${ROOTDIR}/proc ; then
+        need_to_umount_proc=false
+    else
+        need_to_umount_proc=true
+        mount -t proc proc $ROOTDIR/proc
+    fi
 }
 
 # RootfsUnbind $ROOTDIR/RPMS
 RootfsUnbind()
 {
     umount $ROOTDIR/$1 && rmdir $ROOTDIR/$1
-    umount $ROOTDIR/proc || true
+    [ "x$need_to_umount_proc" = "xfalse" ] || umount $ROOTDIR/proc
 }
 
 # RootfsEnableProxy $ROOTDIR

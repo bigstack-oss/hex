@@ -196,6 +196,11 @@ include $(HEX_MAKEDIR)/projpxeserveriso.mk
 FULL += $(PROJ_PXESERVER_ISO)
 endif
 
+ifeq ($(PROJ_BUILD_FAKE_PPU),1)
+include $(HEX_MAKEDIR)/fakeppu.mk
+FULL += $(FAKE_PPU)
+endif
+
 include $(HEX_MAKEDIR)/variable_targets.mk
 include $(HEX_MAKEDIR)/fakeroot_targets.mk
 include $(HEX_MAKEDIR)/compile_targets.mk
