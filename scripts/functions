@@ -931,7 +931,16 @@ MountOtherPartition()
 # List all nvme* and sd* on system
 ListAllDisks()
 {
-    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
+    for host in /sys/class/scsi_host/* ; do
+        if [ -e $host/rescan ] ; then
+            echo $host/rescan
+            echo "- - -" > $host/rescan
+        elif [ -e $host/scan ] ; then
+            echo $host/scan
+            echo "- - -" > $host/scan
+        fi
+    done
+
     local nvmes=$(ls /dev/nvme* 2>/dev/null| grep -oe '/dev/nvme[0-9]\+n[0-9]\+$')
     local ssds=$(ls /dev/sd* 2>/dev/null| grep -oe '/dev/sd[a-z]\+$')
 
