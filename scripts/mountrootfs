@@ -53,7 +53,7 @@ while getopts "iCrnlx:d:Ds" OPT ; do
         D) SKIPDEBUG=1 ;;
         s) SKIPNEWCGZ=1 ;;
         *) Usage ;;
-	esac
+    esac
 done
 shift $(($OPTIND - 1))
 
@@ -108,7 +108,7 @@ else
     # Remove half-baked static folders when interrupted by ctrl+c
     trap "umount ${ROOTDIR}/proc ; rm -rf $BASEDIR $ROOTDIR" INT TERM
 fi
-
+mount | grep -q ${ROOTDIR}/proc || mount -t proc proc $ROOTDIR/proc 2>/dev/null || true
 [ ! -f $OLDDEBUGIMG -o $SKIPDEBUG -eq 1 ] || ExtractCgz $OLDDEBUGIMG $ROOTDIR
 
 if [ $LIST -eq 1 ] ; then
@@ -126,6 +126,7 @@ elif [ $EXTRACT -eq 1 ] ; then
     if [ -d $TEMPDIR/var/www/lmi ] ; then
         chown -R www-data:www-data $TEMPDIR/var/www/lmi
     fi
+    umount ${ROOTDIR}/proc 2>/dev/null || true
     CreateCgz $NEWIMG $TEMPDIR
     exit 0
 elif [ $INTERACTIVE -eq 1 ] ; then
@@ -160,6 +161,7 @@ fi
 ldconfig -r $ROOTDIR >/dev/null 2>&1 || true
 
 # Create the debug Cgz
+umount ${ROOTDIR}/proc 2>/dev/null || true
 [ $SKIPDEBUG -eq 1 ] || CreateCgz $NEWDEBUGIMG $ROOTDIR "-name *.debug"
 find $ROOTDIR -name \*.debug | xargs rm -rf
 
