@@ -29,7 +29,7 @@ $(FAKE_PPU): $(PROJ_KERNEL) $(PROJ_INITRD) $(PROJ_ROOTFS)
 .PHONY: fake_ppu_build
 fake_ppu_build::
 	$(Q)[ -d $(PROJ_SHIPDIR) ] || mkdir -p $(PROJ_SHIPDIR)
-	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makeppu -p $(PROJ_PPU_PADDING) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ fake_ppu_install' $(PROJ_KERNEL) $(PROJ_INITRD) $(HEX_IMGDIR)/hex_base_rootfs.cgz $(PROJ_FIRMWARE) $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME),"  GEN     $(FAKE_PPU_LONGNAME)")
+	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makeppu -p $(PROJ_PPU_PADDING) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ fake_ppu_install' $(PROJ_KERNEL) $(PROJ_INITRD) $(HEX_IMGDIR)/hex_install_initramfs.cgz $(PROJ_FIRMWARE) $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME),"  GEN     $(FAKE_PPU_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME) $(FAKE_PPU)
 	$(Q)chmod 0644 $(FAKE_PPU)
 	$(Q)nohup bash -c "md5sum < $(FAKE_PPU) > $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).md5 && chmod 0644 $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).md5" >/dev/null 2>&1 &
