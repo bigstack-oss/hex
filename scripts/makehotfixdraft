@@ -89,7 +89,7 @@ while read L ; do
             if [ -e $HOTFIXDIR/backup.lst ] ; then
                 grep ".*$PATTERN" $HOTFIXDIR/backup.lst | xargs -i rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ | tee -a $OUTPUT
             else
-                find $FINDPTH $FINDFLG -regex ".*$PATTERN" -exec rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ \ ; | tee -a $OUTPUT
+                find $FINDPTH $FINDFLG -regex ".*$PATTERN" -exec rsync -aRI --out-format="RECOMMAND: %f" {} $NEW_ROOTFS/ \; | tee -a $OUTPUT
             fi
             popd
         fi
@@ -203,8 +203,8 @@ FIXPACK_ID="$1"
 FIXPACK_NAME="$1"
 FIXPACK_DESCRIPTION="Hotfix commit since ${1%_*} until ${1#*_}"
 SUPPORTED_FIRMWARES="${1:1:5}"
-REBOOT_REQUIRED="true"
-NOROLLBACK="false"
+REBOOT_REQUIRED="control,compute,storage"
+NOROLLBACK=0
 EOF
 
 [ -e $HOTFIXDIR/remove.lst ] || touch $HOTFIXDIR/remove.lst
