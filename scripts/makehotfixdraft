@@ -201,10 +201,10 @@ EOF
 [ -e $HOTFIXDIR/fixpack.info ] || cat <<EOF > $HOTFIXDIR/fixpack.info
 FIXPACK_ID="$1"
 FIXPACK_NAME="$1"
-FIXPACK_DESCRIPTION="Hotfix commit since ${1%_*} until ${1#*_}"
+FIXPACK_DESCRIPTION="patch commit since ${1%_*} until ${1#*_}"
 SUPPORTED_FIRMWARES="${1:1:5}"
-REBOOT_REQUIRED="control,compute,storage"
-NOROLLBACK=0
+REBOOT_REQUIRED="control compute storage"
+ROLLBACK="Yes"
 EOF
 
 [ -e $HOTFIXDIR/remove.lst ] || touch $HOTFIXDIR/remove.lst

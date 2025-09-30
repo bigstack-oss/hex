@@ -8,7 +8,7 @@ else
     echo "$PROG: functions not found" >&2
     exit 1
 fi
-
+. $HEX_SCRIPTSDIR/proj_functions 2>/dev/null || true
 ROLLBACK_DIR='/var/fixpack_rollback'
 
 ExitError()
@@ -80,6 +80,7 @@ Rollback()
     logger -t $PROG "$FIXPACK_NAME uninstall successful"
     echo "$FIXPACK_NAME uninstall successful"
     /usr/sbin/hex_config fixpack_add_history "$FIXPACK_ID" "$FIXPACK_NAME" "NO" "$FIXPACK_DESCRIPTION" "Uninstalled"
+    fixpack_sync uninstall
     exit 0
 }
 
@@ -99,6 +100,7 @@ Cleanup()
         exec 1>&3
         echo "$FIXPACK install successful"
         /usr/sbin/hex_config fixpack_add_history "$FIXPACK_ID" "$FIXPACK_NAME" "$ROLLBACK" "$FIXPACK_DESCRIPTION" "Installed"
+        fixpack_sync install
     else
         logger -t $PROG "$FIXPACK install failed"
         echo "$FIXPACK install failed"

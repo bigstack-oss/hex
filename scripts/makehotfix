@@ -159,7 +159,7 @@ if [ $CREATE_MODE -eq 1 ] ; then
 fi
 
 # Add the hex fix pack installer
-cp $HEX_SCRIPTSDIR/../data/hex_fixpack/install.sh $NEW_FIXPACKDIR
+cat $HEX_SCRIPTSDIR/../data/hex_fixpack/install.sh $SRCDIR/install.sh > $NEW_FIXPACKDIR/install.sh 2>/dev/null || true
 chmod 755 $NEW_FIXPACKDIR/install.sh
 
 cat ${SNDIR:-$HEX_SRCDIR/registered_sn}/*.sn 2>/dev/null | cut -d":" -f1 | sort | uniq >$NEW_FIXPACKDIR/sn.lst || true

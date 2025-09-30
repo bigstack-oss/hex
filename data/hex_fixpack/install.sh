@@ -35,22 +35,6 @@ mkdir -p $ROLLBACK_DIR
 tmpdir=$(mktemp -d $ROLLBACK_DIR/fixpack.XXXXXX)
 STATUS=1
 
-if hex_sdk | grep -q "license_check"; then
-    # Check license in v2.x
-    LC=$(hex_sdk -v license_check || true)
-    if echo $LC | grep -q -i "expired\|compromised\|Invalid license\|not installed"; then
-        echo "License check failed $LC, aborting installation"
-        exit $STATUS
-    fi
-else
-    # Verify if HW SN is registered
-    SN=$(dmidecode --type system | grep "System Information" -A 8 | grep "Serial Number" | awk '{print $3}')
-    if ! grep -q "${SN:-.*}" $FIXPACK_MNT/sn.lst; then
-        echo "Unable to verify SN: $SN, aborting installation"
-        exit $STATUS
-    fi
-fi
-
 # Pre-install
 (
     set -e
