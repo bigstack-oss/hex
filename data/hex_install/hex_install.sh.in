@@ -647,8 +647,10 @@ FormatDataHDD()
 {
     SYSDEV=$(basename $TEMP_HDD)
     for BLOCKDEV in /sys/block/sd* /sys/block/nvme* ; do
-        if readlink $BLOCKDEV | egrep -q -v "loop|usb|$SYSDEV"
-        then
+        # filter out unwanted devices
+        # rport: fc host
+        # session: iscsi host
+        if readlink $BLOCKDEV | egrep -q -v "loop|usb|rport|session|$SYSDEV" ; then
             DEV=/dev/$(basename $BLOCKDEV)
             [ -b $DEV ] || continue
             PrepareDataDisk $DEV

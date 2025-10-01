@@ -28,7 +28,7 @@ RestoreMain(int argc, const char** argv)
         std::string device;
         int index;
 
-        std::string cmd = "/bin/lsblk -dn --sort name -o NAME,SIZE,MODEL,TYPE,TRAN | /bin/grep disk | /bin/egrep -v 'disk usb|disk fc' | /usr/bin/awk ";
+        std::string cmd = "/bin/lsblk -dn --sort name -o NAME,SIZE,MODEL,TYPE,TRAN | /bin/grep disk | /bin/egrep -v 'disk usb|disk fc|disk iscsi' | /usr/bin/awk ";
         std::string optCmd = cmd + "'{print \"/dev/\"$1}'";
         std::string descCmd = cmd + "'{ printf \"%-8s %-8s %s\\n\", $1, $2, $3 }'";
 
