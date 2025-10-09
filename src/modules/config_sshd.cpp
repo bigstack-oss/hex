@@ -35,8 +35,6 @@ static const char rsaHostKeyPub[]="/etc/ssh/ssh_host_rsa_key.pub";
 static const char ecDsaHostKey[]="/etc/ssh/ssh_host_ecdsa_key";
 static const char ecDsaHostKeyPub[]="/etc/ssh/ssh_host_ecdsa_key.pub";
 // strict mode non-conformed key pairs
-static const char dsaHostKey[]="/etc/ssh/ssh_host_dsa_key";
-static const char dsaHostKeyPub[]="/etc/ssh/ssh_host_dsa_key.pub";
 static const char edHostKey[]="/etc/ssh/ssh_host_ed25519_key";
 static const char edHostKeyPub[]="/etc/ssh/ssh_host_ed25519_key.pub";
 
@@ -149,7 +147,7 @@ CheckKeys(const char* keyname, const char* pubkeyname)
 
     if (!sizeOK) {
         HexLogNotice("config_sshd: SSH key %s with key size %d does not meet required minimum key size of %d. Deleting key.",
-                      keyname, keySize, keyReq);
+                     keyname, keySize, keyReq);
         if (HexSystem(0, "rm -f", keyname, (const char *) 0) == 0) {
             HexSystem(0, "rm -f", pubkeyname, (const char *) 0);
         }
@@ -162,10 +160,6 @@ CheckKeys(const char* keyname, const char* pubkeyname)
 static void
 CreateKeys()
 {
-    int strictEnabled = HexStrictIsEnabled();
-
-    /* For the SSH2 protocol you need two keys, for rsa and dsa */
-
     // Check the size of RSA key pair
     if (access(rsaHostKey,F_OK) == 0) {
         CheckKeys(rsaHostKey, rsaHostKeyPub);
@@ -173,7 +167,7 @@ CreateKeys()
     // Generate RSA key pair if it doesn't exist
     if (access(rsaHostKey,F_OK)) {
         HexLogNotice("config_sshd: Generating %s", rsaHostKey);
-        if (HexSystemF(0, "/usr/bin/ssh-keygen -q -t rsa -b %d -f %s -N '' </dev/null >/dev/null 2>&1", s_rsaKeySize, rsaHostKey) != 0) {
+        if (HexUtilSystemF(0, 0, "/usr/bin/ssh-keygen -q -t rsa -b %d -f %s -N '' </dev/null >/dev/null 2>&1", s_rsaKeySize, rsaHostKey) != 0) {
             HexLogError("failed to generate %s", rsaHostKey);
         }
     }
@@ -192,32 +186,11 @@ CreateKeys()
         }
     }
 
-    // SSH DSA keys are 1024-bits so we cannot use in FIPS/NIST mode
-    if (strictEnabled) {
-        // Check the size of DSA key pair
-        if (access(dsaHostKey,F_OK) == 0) {
-            CheckKeys(dsaHostKey, dsaHostKeyPub);
-        }
-        // Check the size of DSA key pair
-        if (access(edHostKey,F_OK) == 0) {
-            CheckKeys(edHostKey, edHostKeyPub);
-        }
-    }
-    else {
-        // Generate DSA key pair if it doesn't exist
-        if (access(dsaHostKey,F_OK)) {
-            HexLogNotice("config_sshd: Generating %s", dsaHostKey);
-            if (HexSystemF(0, "/usr/bin/ssh-keygen -q -t dsa -b 1024 -f %s -N '' </dev/null >/dev/null 2>&1", dsaHostKey) != 0) {
-                HexLogError("failed to generate %s", dsaHostKey);
-            }
-        }
-
-        // Generate ED key pair if it doesn't exist
-        if (access(edHostKey,F_OK)) {
-            HexLogNotice("config_sshd: Generating %s", edHostKey);
-            if (HexSystemF(0, "/usr/bin/ssh-keygen -q -t ed25519 -f %s -N '' </dev/null >/dev/null 2>&1", edHostKey) != 0) {
-                HexLogError("failed to generate %s", edHostKey);
-            }
+    // Generate ED key pair if it doesn't exist
+    if (access(edHostKey,F_OK)) {
+        HexLogNotice("config_sshd: Generating %s", edHostKey);
+        if (HexSystemF(0, "/usr/bin/ssh-keygen -q -t ed25519 -f %s -N '' </dev/null >/dev/null 2>&1", edHostKey) != 0) {
+            HexLogError("failed to generate %s", edHostKey);
         }
     }
 }
@@ -234,11 +207,6 @@ ReCreateKeys()
     if (access(ecDsaHostKey,F_OK) == 0) {
         HexSystem(0, "rm -f", ecDsaHostKey, (const char *) 0);
         HexSystem(0, "rm -f", ecDsaHostKeyPub, (const char *) 0);
-    }
-
-    if (access(dsaHostKey,F_OK) == 0) {
-        HexSystem(0, "rm -f", dsaHostKey, (const char *) 0);
-        HexSystem(0, "rm -f", dsaHostKeyPub, (const char *) 0);
     }
 
     if (access(edHostKey,F_OK) == 0) {
@@ -322,7 +290,7 @@ UpdateConfig()
         if (ifa->ifa_addr->sa_family == AF_INET) {
             struct sockaddr_in* s4 = (struct sockaddr_in *)(ifa->ifa_addr);
             if (inet_ntop(ifa->ifa_addr->sa_family,
-                (void *)&(s4->sin_addr), buf, sizeof(buf)) == NULL) {
+                          (void *)&(s4->sin_addr), buf, sizeof(buf)) == NULL) {
                 HexLogWarning("inet_ntop failed");
                 continue;
             }
@@ -332,7 +300,7 @@ UpdateConfig()
         else if (ifa->ifa_addr->sa_family == AF_INET6) {
             struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)(ifa->ifa_addr);
             if (inet_ntop(ifa->ifa_addr->sa_family,
-                (void *)&(s6->sin6_addr), buf, sizeof(buf)) == NULL) {
+                          (void *)&(s6->sin6_addr), buf, sizeof(buf)) == NULL) {
                 HexLogWarning("inet_ntop failed");
                 continue;
             }
@@ -510,7 +478,6 @@ CONFIG_TRIGGER_WITH_SETTINGS(sshd, "ipv6_auto_address_active", Refresh);
 // Preserve ssh server identity across firmware updates
 CONFIG_MIGRATE(sshd, "/etc/ssh/ssh_host_rsa_key*");
 CONFIG_MIGRATE(sshd, "/etc/ssh/ssh_host_ecdsa_key*");
-CONFIG_MIGRATE(sshd, "/etc/ssh/ssh_host_dsa_key*");
 CONFIG_MIGRATE(sshd, "/etc/ssh/ssh_host_ed25519_key*");
 
 // CAUTION! Don't put customer keys in a support info
@@ -519,7 +486,6 @@ CONFIG_SUPPORT_FILE("/etc/ssh/sshd_config");
 // Files to zeroize in case of STRICT error
 CONFIG_STRICT_ZEROIZE(rsaHostKey);
 CONFIG_STRICT_ZEROIZE(ecDsaHostKey);
-CONFIG_STRICT_ZEROIZE(dsaHostKey);
 CONFIG_STRICT_ZEROIZE(edHostKey);
 
 CONFIG_COMMAND(generate_ssh_keys, GenerateKeysMain, GenerateKeysUsage);
