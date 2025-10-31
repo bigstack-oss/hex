@@ -104,7 +104,7 @@ RunTest()
         if [ -n "$TEST_HDD" ] ; then
             if [[ $TEST_HDD =~ qcow2 ]] ; then FMT="qcow2" ; fi
             [ -e ${TEST_HDD%/*} ] || mkdir -p ${TEST_HDD%/*}
-            [ -e $TEST_HDD ] || qemu-img create -f $FMT $TEST_HDD 200G
+            [ -e $TEST_HDD ] || qemu-img create -f $FMT $TEST_HDD 100G
             if [[ ${TEST_HDD%/hdd/*} =~ uefi ]] ; then [ -e ${TEST_HDD%/*}/$OVMF_VARS ] || cp -f $OVMF_PATH/$OVMF_VARS ${TEST_HDD%/*}/ ; fi
         fi
 
@@ -118,7 +118,7 @@ RunTest()
             elif [ -e $DATA_HDD_SRC ] ; then
                 [ -e $DATA_HDD_DST ] || cp $DATA_HDD_SRC $DATA_HDD_DST
             else
-                qemu-img create -f $FMT $DATA_HDD_SRC 100G
+                qemu-img create -f $FMT $DATA_HDD_SRC 50G
                 ln -sf $DATA_HDD_SRC $DATA_HDD_DST
             fi
         done
