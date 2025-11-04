@@ -1,15 +1,14 @@
 // HEX SDK
 
-#include <string>
-#include <signal.h>
-#include <vector>
-#include <sys/statvfs.h>
 #include <errno.h>
-#include <unistd.h>
+#include <signal.h>
+#include <string>
+#include <sys/statvfs.h>
+#include <vector>
 
 #include <hex/log.h>
-#include <hex/process.h>
 #include <hex/logrotate.h>
+#include <hex/process.h>
 #include <hex/process_util.h>
 #include <hex/tuning.h>
 
@@ -23,7 +22,13 @@ static const char RSYSLOG_CONF[] = "/etc/rsyslog.conf";
 static const char LOGDIR[] = "/var/log";
 
 // rotate daily and enable copytruncate
-static LogRotateConf log_conf("syslog", "/var/log/messages /var/log/secure /var/log/cron", DAILY, 128, 0, true);
+static LogRotateConf log_conf(
+    "syslog",
+    "/var/log/messages /var/log/secure /var/log/cron /var/log/maillog /var/log/spooler",
+    DAILY,
+    128,
+    0,
+    true);
 
 static bool s_bLogrotateChanged = false;
 
@@ -65,17 +70,17 @@ UpdateConfig(const char* filepath)
 static uint64_t
 GetDiskSizeKB(const char* absoluteFilePath)
 {
-   struct statvfs fs;
-   uint64_t diskSize = 5242880; // 5GB = 5 * 1024 * 1024 KB (minimum)
+    struct statvfs fs;
+    uint64_t diskSize = 5242880; // 5GB = 5 * 1024 * 1024 KB (minimum)
 
-   if (statvfs(absoluteFilePath, &fs) == -1) {
-       HexLogDebug("Failed to get disk size (errno=%d) using default", errno);
-       return diskSize;
-   }
+    if (statvfs(absoluteFilePath, &fs) == -1) {
+        HexLogDebug("Failed to get disk size (errno=%d) using default", errno);
+        return diskSize;
+    }
 
-   diskSize = fs.f_bsize * fs.f_blocks / 1024;
-   HexLogDebug("Disk size: %ld (KB) (%ld,%ld)", diskSize, fs.f_bsize, fs.f_blocks);
-   return diskSize;
+    diskSize = fs.f_bsize * fs.f_blocks / 1024;
+    HexLogDebug("Disk size: %ld (KB) (%ld,%ld)", diskSize, fs.f_bsize, fs.f_blocks);
+    return diskSize;
 }
 
 static bool
@@ -83,27 +88,27 @@ UpdateLogrotateConfig(unsigned percent)
 {
     // We should not have any problem of underflow becuase of the minimum disk size,
     // but we need to prevent integer overflow. So we do division first
+    std::uint64_t upperlimit = GetDiskSizeKB(LOGDIR) / 100 * percent;
 
-    char buf[64];
-    uint64_t upperlimit = GetDiskSizeKB(LOGDIR) / 100 * percent;
-
-    snprintf(buf, 64, "/usr/sbin/hex_trim_syslog %lu", upperlimit);
-    log_conf.postRotateCmds = buf;
+    std::stringstream cmd;
+    cmd << "/usr/sbin/hex_trim_syslog "
+        << upperlimit
+        << " || true; /usr/bin/systemctl -s HUP kill rsyslog.service >/dev/null 2>&1 || true";
+    log_conf.postRotateCmds = cmd.str();
     WriteLogRotateConf(log_conf);
 
     return true;
 }
 
 static bool
-Parse(const char *name, const char *value, bool isNew)
+Parse(const char* name, const char* value, bool isNew)
 {
     bool r = true;
 
     TuneStatus s = ParseTune(name, value, isNew);
     if (s == TUNE_INVALID_NAME) {
         HexLogWarning("Unknown settings name \"%s\" = \"%s\" ignored", name, value);
-    }
-    else if (s == TUNE_INVALID_VALUE) {
+    } else if (s == TUNE_INVALID_VALUE) {
         HexLogError("Invalid settings value \"%s\" = \"%s\"", name, value);
         r = false;
     }
@@ -147,4 +152,3 @@ CONFIG_MODULE(syslog, 0, Parse, NULL, Prepare, Commit);
 CONFIG_FIRST(syslog);
 
 CONFIG_SUPPORT_FILE("/etc/rsyslogd.conf");
-
