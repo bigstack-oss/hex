@@ -32,8 +32,22 @@ _tuning_dump()
         regx="$(echo $line | cut -d'`' -f7)"
         _name=$name             # save original name
 
-        for eth in $eths ; do
-            name=${_name/<name>/$eth}
+        if [[ "$name" =~ "<name>" ]] ; then
+            for eth in $eths ; do
+                name=${_name/<name>/$eth}
+                if [ "x$FORMAT" = "xjson" ] ; then
+                    [ $cnt -le 0 ] || printf ","
+                    (( cnt++ ))
+                    printf "{ "
+                    printf "\"name\": \"%s\"," "$name"
+                    printf "\"description\": \"%s\"," "$desc"
+                    printf "\"limitation\": { \"type\": \"%s\",\"default\": \"%s\",\"min\": \"%s\",\"max\": \"%s\",\"regex\": \"%s\" }" "$type" "$dflt" "$minv" "$maxv" "$regx"
+                    printf " }"
+                else
+                    printf "%-30s%-100s[%s|%s|%s|%s|%s]\n" "$name" "$desc" "$type" "$dflt" "$minv" "$maxv" "$regx"
+                fi
+            done
+        else
             if [ "x$FORMAT" = "xjson" ] ; then
                 [ $cnt -le 0 ] || printf ","
                 (( cnt++ ))
@@ -45,7 +59,7 @@ _tuning_dump()
             else
                 printf "%-30s%-100s[%s|%s|%s|%s|%s]\n" "$name" "$desc" "$type" "$dflt" "$minv" "$maxv" "$regx"
             fi
-        done
+        fi
     done < $TMP_TUNGINS_RAW
 
     if [ "x$FORMAT" = "xjson" ] ; then
