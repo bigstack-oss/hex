@@ -18,19 +18,7 @@
 
 static const char RSYSLOG[] = "rsyslog";
 static const char RSYSLOG_CONF[] = "/etc/rsyslog.conf";
-
-static const char LOGDIR[] = "/var/log";
-
-// rotate daily and enable copytruncate
-static LogRotateConf log_conf(
-    "syslog",
-    "/var/log/messages /var/log/secure /var/log/cron /var/log/maillog /var/log/spooler",
-    DAILY,
-    128,
-    0,
-    true);
-
-static bool s_bLogrotateChanged = false;
+static const char HEX_RSYSLOG_CONF[] = "/etc/rsyslog.d/hex.conf";
 
 // private tunings
 CONFIG_TUNING_UINT(SYSLOG_DISK_PERC, "syslog.disk_percentage", TUNING_UNPUB, "Set max (all) log file size to a percentage of the partition space.", 5, 1, 50);
@@ -66,6 +54,41 @@ UpdateConfig(const char* filepath)
     return true;
 }
 
+static bool
+updateHexLogConfig()
+{
+    FILE* fout = fopen(HEX_RSYSLOG_CONF, "w");
+    if (!fout) {
+        return false;
+    }
+
+    fprintf(fout, ":programname, isequal, \"hex_cli\"  /var/log/hex_cli.log\n");
+    fprintf(fout, ":programname, isequal, \"hex_config\"  /var/log/hex_config.log\n");
+    fprintf(fout, ":programname, isequal, \"hex_firsttime\"  /var/log/hex_firsttime.log\n");
+    fprintf(fout, ":programname, isequal, \"hex_sdk\"  /var/log/hex_sdk.log\n");
+    fprintf(fout, ":programname, isequal, \"hex_translate\"  /var/log/hex_translate.log\n");
+
+    fclose(fout);
+    return true;
+}
+
+static const char LOGDIR[] = "/var/log";
+
+// rotate daily and enable copytruncate
+static LogRotateConf logConf(
+    "syslog",
+    "/var/log/messages\n"
+    "/var/log/secure\n"
+    "/var/log/cron\n"
+    "/var/log/maillog\n"
+    "/var/log/spooler",
+    DAILY,
+    128,
+    0,
+    true);
+
+static bool s_bLogrotateChanged = false;
+
 // Determine the total disk size in KB
 static uint64_t
 GetDiskSizeKB(const char* absoluteFilePath)
@@ -94,10 +117,28 @@ UpdateLogrotateConfig(unsigned percent)
     cmd << "/usr/sbin/hex_trim_syslog "
         << upperlimit
         << " || true; /usr/bin/systemctl -s HUP kill rsyslog.service >/dev/null 2>&1 || true";
-    log_conf.postRotateCmds = cmd.str();
-    WriteLogRotateConf(log_conf);
+    logConf.postRotateCmds = cmd.str();
+    WriteLogRotateConf(logConf);
 
     return true;
+}
+
+static LogRotateConf hexLogrotateConf(
+    "hex",
+    "/var/log/hex_cli.log\n"
+    "/var/log/hex_config.log\n"
+    "/var/log/hex_firsttime.log\n"
+    "/var/log/hex_sdk.log\n"
+    "/var/log/hex_translate.log",
+    DAILY,
+    128,
+    0,
+    true);
+
+static bool
+writeHexLogrotateConfig()
+{
+    return WriteLogRotateConf(hexLogrotateConf);
 }
 
 static bool
@@ -136,9 +177,11 @@ Commit(bool modified, int dryLevel)
     HEX_DRYRUN_BARRIER(dryLevel, true);
 
     UpdateConfig(RSYSLOG_CONF);
+    updateHexLogConfig();
 
     if (s_bLogrotateChanged) {
         UpdateLogrotateConfig((unsigned)s_diskPercentage);
+        writeHexLogrotateConfig();
         HexUtilSystemF(FWD, 0, "systemctl restart %s", RSYSLOG);
     }
 
