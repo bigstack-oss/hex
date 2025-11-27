@@ -4,6 +4,7 @@
 #define CLI_SUPPORT_HELPER_H
 
 #include <hex/cli_util.h>
+#include <hex/process.h>
 
 #define SUPPORT_DIR "/var/support/"
 #define HEX_CFG "/usr/sbin/hex_config"
