@@ -12,7 +12,7 @@ else
     exit 1
 fi
 
-_T_="	"
+_T_="   "
 
 Usage()
 {
@@ -37,14 +37,14 @@ DOWNLOAD_FROM=
 
 while getopts "aru:t:d:wn" OPT ; do
     case $OPT in
-	a) AUTOSTART=1 ;;
-	r) CMD=reinstall ;;
-	u) PROXY_URL="$OPTARG" ;;
-	t) RPMDIR="$RPMDIR-$OPTARG" ;;
-	d) DOWNLOAD_FROM="$OPTARG" ;;
-	w) WEAK_DEP=1 ;;
-	n) NO_RESOLVE=1 ;;
-	*) Usage ;;
+        a) AUTOSTART=1 ;;
+        r) CMD=reinstall ;;
+        u) PROXY_URL="$OPTARG" ;;
+        t) RPMDIR="$RPMDIR-$OPTARG" ;;
+        d) DOWNLOAD_FROM="$OPTARG" ;;
+        w) WEAK_DEP=1 ;;
+        n) NO_RESOLVE=1 ;;
+        *) Usage ;;
     esac
 done
 shift $(($OPTIND - 1))
@@ -98,7 +98,21 @@ DownloadPkg()
     [ $NO_RESOLVE -eq 1 ] || DL_OPTIONS+=" --resolve"
 
     for pkg in $pkgs ; do
-        [ -e ${pkg}.rpm ] || missing_pkgs+="$pkg "
+        if grep $pkg -q $ROOTDIR/locked_rpms.txt ; then
+            pkg_files=$(ls -1 $HEX_SCRIPTSDIR/../../../RPMS/${pkg}* 2>/dev/null || true)
+            if [ "x$pkg_files" = "x" ] ; then
+                _pkg_name=$(echo $pkg | cut -d':' -f1)
+                pkg_name=${_pkg_name%-*}
+                pkg_files=$(ls -1 $HEX_SCRIPTSDIR/../../../RPMS/${pkg_name}* 2>/dev/null || true)
+            fi
+            if [ "x$pkg_files" = "x" ] ; then
+                missing_pkgs+="$pkg "
+            else
+                cp -f $pkg_files ./
+            fi
+        else
+            [ -e ${pkg}.rpm ] || missing_pkgs+="$pkg "
+        fi
     done
     if [ "x$missing_pkgs" != "x" ] ; then
         # downloading from elrepo tends to be time consuming. Skip it if no rpms from elrepo are needed
