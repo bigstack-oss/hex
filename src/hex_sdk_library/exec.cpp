@@ -86,15 +86,8 @@ Cmd::Cmd()
 {
 }
 
-/**
- * Create the command process and execute it.
- *
- * @param command
- * @param daemonize detach the process from parent or not
- * @return Process pid, error message, stdout pipe and stderr pipe read ends
- */
 const Process
-exec(const Cmd& command, bool daemonize)
+Exec(const Cmd& command, bool daemonize)
 {
     // [0] = read, [1] = write
     int stdoutPipe[2];
@@ -278,7 +271,7 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
         command.captureStderr = false;
     }
 
-    const Process p = exec(command, !shouldWait);
+    const Process p = Exec(command, !shouldWait);
     if (p.pid == -1) {
         // failed to create the process
         ExecSyncResult result;
@@ -378,4 +371,22 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
     }
 
     return result;
+}
+
+const ExecSyncResult
+ExecBashSync(
+    const int& timeoutSeconds,
+    const bool& captureStdout,
+    const bool& captureStderr,
+    const std::map<std::string, std::string>& env,
+    const std::string& command)
+{
+    Cmd c;
+    c.path = "/bin/bash";
+    c.args = { "-c", "set -o pipefail && " + command };
+    c.env = env;
+    c.captureStdout = captureStdout;
+    c.captureStderr = captureStderr;
+
+    return ExecSync(timeoutSeconds, c);
 }

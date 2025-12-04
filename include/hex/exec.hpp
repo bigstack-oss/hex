@@ -60,6 +60,17 @@ struct Process {
 };
 
 /**
+ * Create the command process and execute it.
+ * If called directly, the caller function should consume the stdout and stderr pipe directly.
+ *
+ * @param command
+ * @param daemonize detach the process from parent or not
+ * @return Process pid, error message, stdout pipe and stderr pipe read ends
+ */
+const Process
+Exec(const Cmd& command, bool daemonize);
+
+/**
  * Result container of function ExecSync.
  */
 struct ExecSyncResult {
@@ -83,9 +94,29 @@ struct ExecSyncResult {
  *
  * @param timeoutSeconds timeout in seconds
  * @param command
- * @return CommandSyncResult: stdout, stderr, and the exit code
+ * @return ExecSyncResult: stdout, stderr, and the exit code
  */
 const ExecSyncResult
 ExecSync(const int& timeoutSeconds, Cmd& command);
+
+/**
+ * Execute the command using bash and wait for the results.
+ *
+ * The timeout follows the implementation of @ref ExecSync(const int&, Cmd&) "ExecSync".
+ *
+ * @param timeoutSeconds timeout in seconds
+ * @param captureStdout capture stdout or not
+ * @param captureStderr capture stderr or not
+ * @param env environment in key value pairs
+ * @param command bash command
+ * @return ExecSyncResult: stdout, stderr, and the exit code
+ */
+const ExecSyncResult
+ExecBashSync(
+    const int& timeoutSeconds,
+    const bool& captureStdout,
+    const bool& captureStderr,
+    const std::map<std::string, std::string>& env,
+    const std::string& command);
 
 #endif /* endif HEX_EXEC_H */
