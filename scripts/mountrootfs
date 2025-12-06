@@ -172,14 +172,29 @@ if [ $SKIPNEWCGZ -eq 0 ] ; then
     FINDARGS=
     # fat32 has file size limit of 4GB
     if [ $ROOTFS_SIZE -gt 8388608 ] ; then
-        # first level folders > 1GB under / are compressed into seperate .cgz
-        SPLITCNT=0
-        for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 1024 { print $2 }') ; do
-            (( SPLITCNT+=1 ))
+        # second level folders > 1GB under / are compressed into seperate .cgz
+        SPLITCNT=1
+        for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 1024 { print $2 }' | grep -v -e docker -e "usr/share") ; do
             FINDARGS+=" -path $BDIR -prune -o"
-            SPLITIMG=${ROOTDIR}_${SPLITCNT}.cgz
+            SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
             CreateCgz $SPLITIMG $ROOTDIR "$BDIR"
         done
+        SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
+        (cd $ROOTDIR && find usr/share/opensearch usr/share/opensearch-dashboards | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+        FINDARGS+=" -path ./usr/share/opensearch-dashboards -prune -o"
+        FINDARGS+=" -path ./usr/share/opensearch -prune -o"
+
+        registry_dir="opt/docker/registry@2.tar"
+        if [ -e ${ROOTDIR}/${registry_dir} ] ; then
+            blobs_dir="opt/docker/registry/docker/registry/v2/blobs/sha256"
+            repo_dir="opt/docker/registry/docker/registry/v2/repositories"
+            half=$(expr $(ls -1d ${ROOTDIR}/${blobs_dir}/* | wc -l) / 2 + 1)
+            SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
+            (cd $ROOTDIR && find $repo_dir $(ls -d ${blobs_dir}/* | head -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+            SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
+            (cd $ROOTDIR && find $registry_dir $(ls -d ${blobs_dir}/* | tail -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+        fi
+        FINDARGS+=" -path ./opt/docker -prune -o"
 
         if [ $SPLITCNT -gt 0 ] ; then
             CreateCgz ${ROOTDIR}_0.cgz $ROOTDIR "$FINDARGS -print"
