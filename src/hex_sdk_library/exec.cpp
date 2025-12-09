@@ -36,14 +36,7 @@ void setNonblocking(int fd)
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-/**
- * Perform a non-blocking read using poll().
- *
- * It is required to have the file descriptor be set into non-blocking mode first.
- *
- * TODO: move this to fd.cpp after the refactor branch is rebased.
- */
-ssize_t readByNonblockingPoll(int fd, char* buffer, std::size_t maxLength)
+ssize_t ReadByNonblockingPoll(int fd, char* buffer, std::size_t maxLength)
 {
     if (!isNonblocking(fd)) {
         return -1;
@@ -312,7 +305,7 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
 
         // read from stdout
         if (command.captureStdout) {
-            ssize_t bytesRead = readByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
+            ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
             if (bytesRead > 0) {
                 stdoutStream.write(buffer, bytesRead);
             }
@@ -320,7 +313,7 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
 
         // read from stderr
         if (command.captureStderr) {
-            ssize_t bytesRead = readByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
+            ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
             if (bytesRead > 0) {
                 stderrStream.write(buffer, bytesRead);
             }
@@ -338,7 +331,7 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
 
     // read any remaining data
     if (command.captureStdout) {
-        ssize_t bytesRead = readByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
+        ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
         if (bytesRead > 0) {
             stdoutStream.write(buffer, bytesRead);
         }
@@ -349,7 +342,7 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
         result.stdoutOutput = stdoutStream.str();
     }
     if (command.captureStderr) {
-        ssize_t bytesRead = readByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
+        ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
         if (bytesRead > 0) {
             stderrStream.write(buffer, bytesRead);
         }

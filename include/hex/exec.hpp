@@ -16,6 +16,15 @@
 #include <vector>
 
 /**
+ * Perform a non-blocking read using poll().
+ *
+ * It is required to have the file descriptor be set into non-blocking mode first.
+ *
+ * TODO: move this to fd.cpp after the refactor branch is rebased.
+ */
+ssize_t ReadByNonblockingPoll(int fd, char* buffer, std::size_t maxLength);
+
+/**
  * Command object to be executed.
  */
 struct Cmd {
