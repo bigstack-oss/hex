@@ -645,18 +645,62 @@ FormatSysHDD()
 
 FormatDataHDD()
 {
-    SYSDEV=$(basename $TEMP_HDD)
-    for BLOCKDEV in /sys/block/sd* /sys/block/nvme* ; do
-        # filter out unwanted devices
-        # rport: fc host
-        # session: iscsi host
-        if readlink $BLOCKDEV | egrep -q -v "loop|usb|rport|session|$SYSDEV" ; then
-            DEV=/dev/$(basename $BLOCKDEV)
-            [ -b $DEV ] || continue
-            PrepareDataDisk $DEV
+    local sys_dev=$(/usr/bin/basename "$TEMP_HDD")
+
+    local block_dev
+    for block_dev in /sys/block/sd* /sys/block/nvme* ; do
+        # skip non-existing links
+        if [[ "$block_dev" == "/sys/block/sd*" ]] ; then
+            continue
         fi
+        if [[ "$block_dev" == "/sys/block/nvme*" ]] ; then
+            continue
+        fi
+
+        local device_basename="$(/usr/bin/basename "$block_dev")"
+
+        # exclude the system disk
+        if [[ "$device_basename" == "$sys_dev" ]] ; then
+            continue
+        fi
+
+        # exclude non-block devices
+        if [[ "$(/bin/lsblk -dn -o TYPE "/dev/${device_basename}")" != "disk" ]] ; then
+            continue
+        fi
+
+        # exclude unsupported devices
+        if [[ "$(/bin/lsblk -dn -o TRAN "/dev/${device_basename}")" == "usb" ]] ; then
+            continue
+        fi
+        if [[ "$(/bin/lsblk -dn -o TRAN "/dev/${device_basename}")" == "fc" ]] ; then
+            continue
+        fi
+        if [[ "$(/bin/lsblk -dn -o TRAN "/dev/${device_basename}")" == "iscsi" ]] ; then
+            continue
+        fi
+
+        # exclude not-writable devices
+        if [[ "$(/bin/lsblk -dn -o RO "/dev/${device_basename}")" =~ "1" ]] ; then
+            continue
+        fi
+
+        # exclude zero size devices
+        if [[ "$(/bin/lsblk -dn -o SIZE "/dev/${device_basename}")" == " 0B" ]] ; then
+            continue
+        fi
+
+        # ensure the device is a block device
+        local device="/dev/${device_basename}"
+        if [ ! -b "$device" ] ; then
+            continue
+        fi
+
+        PrepareDataDisk "$device"
     done
-    sync
+
+    # flush
+    /usr/bin/sync
 }
 
 # main()
