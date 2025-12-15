@@ -680,7 +680,7 @@ FormatDataHDD()
             continue
         fi
 
-        # exclude not-writable devices
+        # exclude not writable devices
         if [[ "$(/bin/lsblk -dn -o RO "/dev/${device_basename}")" =~ "1" ]] ; then
             continue
         fi
