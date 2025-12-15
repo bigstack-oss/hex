@@ -305,17 +305,27 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
 
         // read from stdout
         if (command.captureStdout) {
-            ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
-            if (bytesRead > 0) {
-                stdoutStream.write(buffer, bytesRead);
+            // drain the pipe
+            while (true) {
+                ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
+                if (bytesRead > 0) {
+                    stdoutStream.write(buffer, bytesRead);
+                } else {
+                    break;
+                }
             }
         }
 
         // read from stderr
         if (command.captureStderr) {
-            ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
-            if (bytesRead > 0) {
-                stderrStream.write(buffer, bytesRead);
+            // drain the pipe
+            while (true) {
+                ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
+                if (bytesRead > 0) {
+                    stderrStream.write(buffer, bytesRead);
+                } else {
+                    break;
+                }
             }
         }
 
@@ -331,9 +341,14 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
 
     // read any remaining data
     if (command.captureStdout) {
-        ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
-        if (bytesRead > 0) {
-            stdoutStream.write(buffer, bytesRead);
+        // drain the pipe
+        while (true) {
+            ssize_t bytesRead = ReadByNonblockingPoll(p.stdoutPipeReadEnd, buffer, sizeof(buffer));
+            if (bytesRead > 0) {
+                stdoutStream.write(buffer, bytesRead);
+            } else {
+                break;
+            }
         }
 
         // close the read-end
@@ -342,9 +357,14 @@ ExecSync(const int& timeoutSeconds, Cmd& command)
         result.stdoutOutput = stdoutStream.str();
     }
     if (command.captureStderr) {
-        ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
-        if (bytesRead > 0) {
-            stderrStream.write(buffer, bytesRead);
+        // drain the pipe
+        while (true) {
+            ssize_t bytesRead = ReadByNonblockingPoll(p.stderrPipeReadEnd, buffer, sizeof(buffer));
+            if (bytesRead > 0) {
+                stderrStream.write(buffer, bytesRead);
+            } else {
+                break;
+            }
         }
 
         // close the read-ends
