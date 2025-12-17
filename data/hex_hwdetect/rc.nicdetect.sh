@@ -106,15 +106,15 @@ cp -f $TMPSYS /etc/settings.sys
 #  sys.net.if.device.eth0 = 8139
 
 echo "# Network interfaces" >> /etc/settings.sys
-IDX=0
-for PCIID in $(for D in $(ls /sys/class/pci_bus/*\:*/device/*\:*/class); do echo "$D:$(cat $D)"; done | grep 0x020000 | awk -F'/' '{print $7}' | sort)
-do
+for PCIDEV in $(ls -d /sys/class/pci_bus/*\:*/device/*\:*/net/*) ; do
+    PCIID=$(echo $PCIDEV | awk -F'/' '{print $7}')
+    ETH=$(basename $PCIDEV)
+    IDX=${ETH//[^0-9]/}
     if WaitForIfn $PREFIX $IDX $PCIID 60 ; then
         UpdateNetworkSettings $IDX
     else
         echo "$PREFIX$IDX ($PCIID) detection timeout"
     fi
-    IDX=$(( $IDX + 1 ))
 done
 
 touch $NICDETECT_DONE
