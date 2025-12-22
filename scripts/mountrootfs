@@ -108,7 +108,8 @@ else
     # Remove half-baked static folders when interrupted by ctrl+c
     trap "umount ${ROOTDIR}/proc ; rm -rf $BASEDIR $ROOTDIR" INT TERM
 fi
-mount | grep -q ${ROOTDIR}/proc || mount -t proc proc $ROOTDIR/proc 2>/dev/null || true
+umount proc 2>/dev/null || true
+mount -t proc proc $ROOTDIR/proc 2>/dev/null || true
 [ ! -f $OLDDEBUGIMG -o $SKIPDEBUG -eq 1 ] || ExtractCgz $OLDDEBUGIMG $ROOTDIR
 
 if [ $LIST -eq 1 ] ; then

@@ -216,6 +216,7 @@ SourceListUpdate()
     DIST=$(cat /etc/hex.manifest | grep _HEX_DIST | awk -F'=' '{print $2}')
     OPTIONS="-y --nodocs"
 
+    umount proc 2>/dev/null || true
     mount -t proc proc $ROOTDIR/proc
     cp /etc/resolv.conf $ROOTDIR/etc
     echo "LANG=en_US.utf8" > $ROOTDIR/etc/locale.conf
@@ -231,7 +232,7 @@ SourceListUpdate()
 
     local XTRA_REPO=
     chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1'
-    chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*'
+    chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*' || true
     XTRA_REPO+="https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-9.noarch.rpm "
