@@ -25,12 +25,12 @@ sbom: $(PROJ_SBOM)
 
 $(PROJ_SBOM): syft-fs-cubecos.cdx.json
 	$(call RUN_CMD_TIMED, rm -f cosign.key cosign.pub ; COSIGN_PASSWORD= cosign generate-key-pair,"  GEN     cosign keypair")
-	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; cp -f cosign.pub  $(shell readlink $(PROJ_SHIPDIR)/$(PROJ_RELEASE))_pub.key,"  COPY    cosign pubkey")
-	$(call RUN_CMD_TIMED, COSIGN_PASSWORD= cosign sign-blob --key cosign.key --bundle=$(PROJ_SHIPDIR)/$(shell readlink $(PROJ_RELEASE))_bndl.json $<,"  SIGN    sbom")
-	$(call RUN_CMD_TIMED, COSIGN_PASSWORD= cosign verify-blob --key cosign.pub --bundle=$(shell readlink $(PROJ_RELEASE))_bndl.json $<,"  VERIFY  sbom + bundle")
-	$(call RUN_CMD_TIMED, grype sbom:$< --output=json > $(PROJ_SHIPDIR)/$(shell readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
-	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$(shell readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
-	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$(shell readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
+	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; cp -f cosign.pub $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_pub.key,"  COPY    cosign pubkey")
+	$(call RUN_CMD_TIMED, COSIGN_PASSWORD= cosign sign-blob --key cosign.key --bundle=$(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_bndl.json $<,"  SIGN    sbom")
+	$(call RUN_CMD_TIMED, COSIGN_PASSWORD= cosign verify-blob --key cosign.pub --bundle=$(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_bndl.json $<,"  VERIFY  sbom + bundle")
+	$(call RUN_CMD_TIMED, grype sbom:$< --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
+	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
+	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
 
 syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
 	$(call RUN_CMD_TIMED, dnf install -y $(SYFT_RPM) $(GRYPE_RPM) $(COSIGN_RPM),"  DNF     syft grype cosign")
