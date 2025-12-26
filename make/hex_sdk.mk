@@ -201,6 +201,12 @@ include $(HEX_MAKEDIR)/fakeppu.mk
 FULL += $(FAKE_PPU)
 endif
 
+ifeq ($(PROJ_BUILD_SBOM),1)
+include $(HEX_MAKEDIR)/projsbom.mk
+PROJ_BUILD_ROOTFS := 1
+FULL += $(PROJ_SBOM)
+endif
+
 include $(HEX_MAKEDIR)/variable_targets.mk
 include $(HEX_MAKEDIR)/fakeroot_targets.mk
 include $(HEX_MAKEDIR)/compile_targets.mk

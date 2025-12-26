@@ -30,7 +30,7 @@ GIT=git
 CMD=install
 PIPDIR=$(pwd)/PIPS
 CST_FILE=
-OPTIONS="--ignore-installed --cache-dir /PIPS"
+OPTIONS="--ignore-installed --use-deprecated=legacy-resolver --cache-dir /PIPS"
 DOWNLOAD_FROM=
 
 while getopts "nc:t:d:b:" OPT ; do

@@ -44,6 +44,7 @@ PROJ_BUILD_PXE      := 0
 PROJ_BUILD_PXESERVER     := 0
 PROJ_BUILD_PXESERVER_ISO := 0
 PROJ_BUILD_PXEDEPLOY     := 0
+PROJ_BUILD_SBOM          := 0
 
 # Location of project deliverables
 PROJ_SHIPDIR := $(BLDDIR)/ship
@@ -59,6 +60,8 @@ PROJ_PPU := proj.pkg
 PROJ_PPU_PADDING := 16M
 PROJ_ROOTFS_MD5 := proj_rootfs.md5
 PROJ_ROOTFS_COMMIT := proj_rootfs.commit
+
+PROJ_SBOM := proj.sbom
 
 PROJ_PPUISO := proj.pkgiso
 PROJ_PPUISO_PADDING := 1M
