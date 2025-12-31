@@ -928,23 +928,6 @@ MountOtherPartition()
     mount -t ext4 $OTHER /mnt/target
 }
 
-# List all mounted(in-use) disks
-ListMountedDisks()
-{
-    local nvmes=$(findmnt | grep -oe '/dev/nvme[0-9]\+n[0-9]\+' | sort | uniq)
-    local ssds=$(findmnt | grep -oe '/dev/sd[a-z]\+' | sort | uniq)
-    local lvms=$(ceph-volume lvm list --format json | jq -r ".[][].devices[]" | sort | uniq)
-
-    [ "x${nvmes}" = "x" ] || nvmes=$(readlink -e $nvmes)
-    [ "x${ssds}" = "x" ] || ssds=$(readlink -e $ssds)
-    [ "x${lvms}" = "x" ] || lvms=$(readlink -e $lvms)
-    local disks=
-    for d in $nvmes $ssds $lvms ; do
-        disks+="$d "
-    done
-    echo -n ${disks%% }
-}
-
 # Return free sectors by given disk
 GetFreeSectorsByDisk()
 {
@@ -973,56 +956,6 @@ ListPreparedDisks()
     fi
     local PREP_SCSI_DEVS=$(readlink -e /dev/disk/by-partlabel/hex_prep* | grep -oe '/dev/sd[a-z]\+' | sort | uniq)
     echo -n $PREP_SCSI_DEVS
-}
-
-# List all HDDs
-ListAllHDDs()
-{
-    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
-    echo -n $(lsblk -n -d -o name,rota | grep "^sd" | grep 1$ | grep -oe 'sd[a-z]\+' | sed -e 's@^@/dev/@g')
-}
-
-# List all free HDDs
-ListAvailHDDs()
-{
-    local ALL_DEVS=$(ListAllHDDs)
-    local BUSY_DEVS=$(ListMountedDisks)
-    local RET_DEVS=""
-    for h in ${ALL_DEVS} ; do
-        if [[ ${BUSY_DEVS} =~ ${h} ]] ; then
-            continue
-        fi
-        RET_DEVS+=" $h"
-    done
-    echo -n ${RET_DEVS}
-}
-
-# List all SSDs
-ListAllSSDs()
-{
-    for host in /sys/class/scsi_host/* ; do echo "- - -" > $host/scan ; done
-    local nvme=$(lsblk -n -d -o name,rota | grep ^nvme | grep 0$ | grep -oe 'nvme[0-9]\+n[0-9]\+' | sed -e 's@^@/dev/@g')
-    local hdd=$(lsblk -n -d -o name,rota | grep "^sd" | grep 0$ | grep -oe 'sd[a-z]\+' | sed -e 's@^@/dev/@g')
-    echo -n $nvme
-    if [ -n "$nvme" ] ; then
-        echo -n " "
-    fi
-    echo -n $hdd
-}
-
-# List all free SSDs
-ListAvailSSDs()
-{
-    local ALL_DEVS=$(ListAllSSDs)
-    local BUSY_DEVS=$(ListMountedDisks)
-    local RET_DEVS=""
-    for h in ${ALL_DEVS} ; do
-        if [[ ${BUSY_DEVS} =~ ${h} ]] ; then
-            continue
-        fi
-        RET_DEVS+=" $h"
-    done
-    echo -n ${RET_DEVS}
 }
 
 ListBlkByType()
