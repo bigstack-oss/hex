@@ -599,9 +599,9 @@ EOF
             efibootmgr -q -a -b 0000
         else
             if [ "$MODE" = "usb" ]; then
-                /usr/sbin/grub2-install $TEMP_HDD >/dev/null 2>&1
+                /usr/sbin/grub2-install --target=i386-pc $TEMP_HDD >/dev/null 2>&1
             else
-                /usr/sbin/grub2-install $HDD >/dev/null 2>&1
+                /usr/sbin/grub2-install --target=i386-pc $HDD >/dev/null 2>&1
             fi
         fi
     else
