@@ -64,15 +64,15 @@ PROJ_ROOTFS_COMMIT := proj_rootfs.commit
 PROJ_SBOM := proj.sbom
 
 PROJ_PPUISO := proj.pkgiso
-PROJ_PPUISO_PADDING := 1M
+PROJ_PPUISO_PADDING := 2M
 
 PROJ_ISO := proj.iso
 PROJ_ISO_RD := iso_initramfs.cgz
-PROJ_ISO_PADDING := 1M
+PROJ_ISO_PADDING := 2M
 
 PROJ_LIVE_ISO := live_proj.iso
 PROJ_LIVE_ISO_RD := live_iso_initramfs.cgz
-PROJ_LIVE_ISO_PADDING := 1M
+PROJ_LIVE_ISO_PADDING := 2M
 
 # Use .pxe.tgz instead of just .pxe so that its easier to unpack
 PROJ_PXE := proj.pxe.tgz
@@ -80,21 +80,21 @@ PROJ_PXE_RD := pxe_initramfs.cgz
 
 PROJ_PXESERVER := proj_pxeserver.img
 PROJ_PXESERVER_RD := pxeserver_initramfs.cgz
-PROJ_PXESERVER_PADDING := 1M
+PROJ_PXESERVER_PADDING := 2M
 
 PROJ_PXESERVER_ISO := proj_pxeserver.iso
 PROJ_PXESERVER_ISO_RD := pxeserver_iso_initramfs.cgz
-PROJ_PXESERVER_ISO_PADDING := 1M
+PROJ_PXESERVER_ISO_PADDING := 2M
 
 # Use .img instead of .usb since its compatible with Linux imagewriter
 PROJ_USB := proj.img
 PROJ_USB_RD := usb_initramfs.cgz
-PROJ_USB_PADDING := 1M
+PROJ_USB_PADDING := 2M
 
 # Use .img instead of .usb since its compatible with Linux imagewriter
 PROJ_LIVE_USB := live_proj.img
 PROJ_LIVE_USB_RD := live_usb_initramfs.cgz
-PROJ_LIVE_USB_PADDING := 1M
+PROJ_LIVE_USB_PADDING := 2M
 
 ifneq ($(PROJ_README_TEMPLATE),)
 PROJ_README := $(PROJ_SHIPDIR)/README.txt
@@ -115,13 +115,13 @@ PROJ_OVA_HARDWARE := vmware
 PROJ_OVA_SIZE := 8G
 
 # Amount of extra space to leave on ISO boot image
-PROJ_OVA_PADDING := 1M
+PROJ_OVA_PADDING := 2M
 
 PROJ_VAGRANT     := proj.box
 PROJ_VAGRANT_ISO := vagrant.iso
 PROJ_VAGRANT_RD  := vagrant_initramfs.cgz
 PROJ_VAGRANT_SIZE := 8G
-PROJ_VAGRANT_PADDING := 1M
+PROJ_VAGRANT_PADDING := 2M
 PROJ_VAGRANT_HARDWARE := vbox
 
 PROJ_ENABLE_ROOT_SHELL := 1
