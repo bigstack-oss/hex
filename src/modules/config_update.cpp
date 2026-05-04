@@ -26,7 +26,6 @@ struct UpdateRecord {
 using UpdateHistory = std::vector<UpdateRecord>;
 
 static const char UPDATE_HISTORY[] = "/var/appliance-db/update.history";
-static const char USER_SCRIPTS[] = "/opt/user-scripts";
 
 static bool s_bUpdateModified = false;
 
@@ -242,5 +241,4 @@ CONFIG_MODULE(update, 0, Parse, 0, 0, Commit);
 CONFIG_FIRST(update);
 
 CONFIG_MIGRATE(update, UPDATE_HISTORY);
-CONFIG_MIGRATE(update, USER_SCRIPTS);
 

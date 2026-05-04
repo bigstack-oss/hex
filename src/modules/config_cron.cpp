@@ -19,6 +19,7 @@ PARSE_TUNING_INT(s_debug_level, CRON_DEBUG);
 
 static const char CRND_NAME[] = "crond";
 static const char USER_CRON_FILES[] = "/etc/cron.d/user-*";
+static const char USER_CRON_SCRIPTS[] = "/opt/user-scripts";
 
 static bool
 Parse(const char *name, const char *value, bool isNew)
@@ -80,3 +81,4 @@ CONFIG_SUPPORT_FILE("/etc/cron.monthly");
 CONFIG_SUPPORT_FILE("/etc/cron.weekly");
 
 CONFIG_MIGRATE(cron, USER_CRON_FILES);
+CONFIG_MIGRATE(cron, USER_CRON_SCRIPTS);
