@@ -1663,7 +1663,7 @@ main(int argc, char **argv)
     }
 
     // Make sure path is set correctly
-    setenv("PATH", "/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin", 1);
+    setenv("PATH", "/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/opt/openstack-antelope/bin", 1);
 
     bool testMode = false;
     bool dumpCommitOrder = false;
