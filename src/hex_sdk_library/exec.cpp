@@ -126,13 +126,9 @@ Exec(const Cmd& command, bool daemonize)
 
     // child process
     if (pid == 0) {
-        // Detach stdin from any inherited controlling terminal. When a commit runs
-        // on a serial console (e.g. IPMI Serial-over-LAN, /dev/ttyS0), the child
-        // would otherwise inherit that UART as stdin; tools that initialize a
-        // terminal on stdin (such as mongosh) then block forever opening it in
-        // tty_port_block_til_ready (waiting for carrier, CLOCAL not set). Commit
-        // subprocesses never read stdin, so point it at /dev/null. Mirrors the
-        // stdout/stderr /dev/null handling below.
+        // Redirect stdin to /dev/null so the child doesn't inherit a serial console
+        // (e.g. IPMI SoL /dev/ttyS0) as stdin; tools like mongosh would otherwise
+        // block opening the controlling TTY. Mirrors the stdout/stderr handling below.
         int devNullIn = open("/dev/null", O_RDONLY);
         if (devNullIn == -1 || dup2(devNullIn, STDIN_FILENO) == -1) {
             _exit(EXIT_FAILURE);
