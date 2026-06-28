@@ -98,6 +98,8 @@ base_rootfs_install:
 	$(Q)ldconfig -r $(ROOTDIR)
 	$(Q)rm -f $(ROOTDIR)/etc/grub.d/01_menu_auto_hide
 	$(Q)chroot $(ROOTDIR) systemctl disable kdump
+	$(Q)chroot $(ROOTDIR) systemctl disable dnf-makecache.timer
+	$(Q)chroot $(ROOTDIR) systemctl mask dnf-makecache.service
 	$(Q)chroot $(ROOTDIR) systemctl disable NetworkManager
 	$(Q)chroot $(ROOTDIR) systemctl mask NetworkManager
 	$(Q)chroot $(ROOTDIR) systemctl mask console-getty
