@@ -141,6 +141,29 @@ SetNeedLmiRestart()
     s_lmiRestartNeeded = true;
 }
 
+struct TrigThreadArg {
+    TriggerInfo *info;
+    int argc;
+    char **argv;
+};
+
+static void *
+ThreadModuleTrigger(void *thargs)
+{
+    TrigThreadArg *a = (TrigThreadArg *)thargs;
+    HexLogInfo("Executing trigger for module %s", a->info->module.c_str());
+    auto t1 = high_resolution_clock::now();
+    int rc = a->info->trigger(a->argc, a->argv);
+    auto t2 = high_resolution_clock::now();
+    auto msInt = duration_cast<milliseconds>(t2 - t1);
+    HexLogInfo("%s trigger took %.1f secs", a->info->module.c_str(), (float)msInt.count() / 1000.0);
+    if (rc != 0) {
+        HexLogError("Trigger failed for module: %s", a->info->module.c_str());
+        pthread_exit((void *)-1);
+    }
+    pthread_exit((void *)0);
+}
+
 int
 ApplyTrigger(ArgVec argv)
 {
@@ -2664,20 +2687,34 @@ MainTrigger(int argc, char **argv)
     if (status != EXIT_SUCCESS)
         return status;
 
-    int i = 1;
-    size_t size = std::distance(ii.first, ii.second);
-    for (TriggerMap::iterator it = ii.first; it != ii.second; ++it, i++) {
+    // Fully parallel: launch every trigger at once, ignoring module order.
+    // Triggers run after the bootstrap/commit phase (all modules already
+    // committed), so dependency order doesn't matter here. Each thread logs
+    // "<module> trigger took <n> secs".
+    std::vector<pthread_t> tids;
+    std::vector<TrigThreadArg*> targs;
+    for (TriggerMap::iterator it = ii.first; it != ii.second; ++it) {
         if (s_withProgress)
-            printf("(%d/%lu) processing: %s\n", i, size, it->second.module.c_str());
-        HexLogInfo("Executing trigger '%s' for module %s", it->first.c_str(), it->second.module.c_str());
-        if (it->second.trigger(argc, argv) == 0) {
-            HexLogInfo("Trigger '%s' succeeded", it->first.c_str());
-        }
-        else {
-            HexLogError("Trigger '%s' failed for module: %s", it->first.c_str(), it->second.module.c_str());
+            printf("(parallel) processing: %s\n", it->second.module.c_str());
+        TrigThreadArg *a = new TrigThreadArg{ &it->second, argc, argv };
+        pthread_t tid;
+        if (pthread_create(&tid, NULL, ThreadModuleTrigger, (void *)a) != 0) {
+            HexLogError("Failed to start trigger thread for module %s", it->second.module.c_str());
+            delete a;
             status = EXIT_FAILURE;
+            continue;
         }
+        tids.push_back(tid);
+        targs.push_back(a);
     }
+    for (size_t c = 0; c < tids.size(); c++) {
+        void *st = 0;
+        pthread_join(tids[c], &st);
+        if (st != 0)
+            status = EXIT_FAILURE;
+    }
+    for (size_t c = 0; c < targs.size(); c++)
+        delete targs[c];
 
     return status;
 }
