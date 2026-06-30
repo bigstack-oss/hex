@@ -19,6 +19,9 @@ $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_install/grub2-detect2,./etc/gru
 $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_install/bigstack-logo.png,./root/bg.png)
 $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_fixpack/hex_fixpack_install.sh,./usr/sbin/hex_fixpack_install)
 
+# hex_log_event: event logging helper invoked by hex modules/cluster scripts
+$(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_syslogd/hex_log_event.sh,./usr/sbin/hex_log_event)
+
 # Add a utility script that does not seem to really fit anywhere else
 $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_uptime,./usr/sbin/hex_uptime)
 
