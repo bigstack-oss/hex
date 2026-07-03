@@ -1,0 +1,135 @@
+#!/bin/bash
+
+set -e
+
+PROG=$(basename $0)
+HEX_SCRIPTSDIR=$(dirname $0)
+if [ -f $HEX_SCRIPTSDIR/functions ] ; then
+    . $HEX_SCRIPTSDIR/functions
+else
+    echo "$PROG: functions not found" >&2
+    exit 1
+fi
+
+Usage() {
+    echo "Usage: $PROG <commitsince_commituntil>"
+    echo "   eg: $PROG v2.4.0-rc1_e8c5f9e"
+    exit 1
+}
+
+HOTFIXDIR=$(pwd)/$1
+ROOTFS=$TOP_BLDDIR/core/main/rootfs
+NEW_ROOTFS=$HOTFIXDIR/rootfs
+OUTPUT=$(pwd)/${1}.out
+
+mkdir -p ${NEW_ROOTFS}/boot/Part{1,2}
+rm -f  $OUTPUT
+touch $OUTPUT
+
+cat <<EOF >$HOTFIXDIR/backup.lst
+usr/lib/modules
+usr/lib/firmware
+EOF
+pushd ${ROOTFS}
+cat $HOTFIXDIR/backup.lst | xargs -i rsync -aRI --out-format="HAND-PICKED: %f" {} $NEW_ROOTFS/ | tee -a $OUTPUT
+popd
+
+cat <<EOF >>$HOTFIXDIR/backup.lst
+boot/Part1/bzImage
+boot/Part1/initramfs.cgz
+boot/Part1/initramfs.cgz.size
+boot/Part2/bzImage
+boot/Part2/initramfs.cgz
+boot/Part2/initramfs.cgz.size
+EOF
+pushd ${ROOTFS}/../
+rsync -aRI --out-format="HAND-PICKED: %f" bzImage initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part1/ | tee -a $OUTPUT
+rsync -aRI --out-format="HAND-PICKED: %f" bzImage initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part2/ | tee -a $OUTPUT
+popd
+
+[ -e $HOTFIXDIR/README ] || cat <<EOF > $HOTFIXDIR/README
+Files that can reside in this directory:
+
+fixpack.info [required]
+    Manifest file with security fix pack name and description
+
+post_install.sh [optional]
+post_rollback.sh [optional]
+pre_install.sh [optional]
+pre_rollback.sh [optional]
+    Scripts to run pre/post install and rollback
+
+backup.lst [optional]
+    List of files to backup before installing fix pack, and restore on rollback
+
+remove.lst [optional]
+    List of files to remove before installing fix pack
+    NOTE: These files should also be included in 'backup.lst'
+
+rootfs.cgz [optional]
+    Gzipped-cpio archive of files to install
+
+norollback [optional]
+    Marker file that indicates that this fix pack cannot be uninstalled
+
+Security fix pack can also include arbitrary files that are explicitly referenced by
+the pre_install.sh/post_install.sh scripts, but these files will not be available
+during rollback.
+EOF
+
+[ -e $HOTFIXDIR/pre_install.sh ] || cat <<EOF > $HOTFIXDIR/pre_install.sh
+#!/bin/sh
+
+FIXPACK_SRCDIR="\$1"
+
+exit 0
+EOF
+
+[ -e $HOTFIXDIR/post_install.sh ] || cat <<EOF > $HOTFIXDIR/post_install.sh
+#!/bin/sh
+
+FIXPACK_SRCDIR="\$1"
+
+# Uncomment to request reboot after fix pack install:
+#
+touch /var/fixpack/need_reboot
+
+exit 0
+EOF
+
+[ -e $HOTFIXDIR/pre_rollback.sh ] || cat <<EOF > $HOTFIXDIR/pre_rollback.sh
+#!/bin/sh
+
+FIXPACK_SRCDIR="\$1"
+
+# Uncomment to request reboot after fix pack install:
+#
+touch /var/fixpack/need_reboot
+
+exit 0
+EOF
+
+[ -e $HOTFIXDIR/post_rollback.sh ] || cat <<EOF > $HOTFIXDIR/post_rollback.sh
+#!/bin/sh
+
+FIXPACK_SRCDIR="\$1"
+
+# Uncomment to request reboot after fix pack install:
+#
+touch /var/fixpack/need_reboot
+
+exit 0
+
+EOF
+
+# Assuming COMMITSINCE tag label is like "v3.1.0"
+[ -e $HOTFIXDIR/fixpack.info ] || cat <<EOF > $HOTFIXDIR/fixpack.info
+FIXPACK_ID="$1"
+FIXPACK_NAME="$1"
+FIXPACK_DESCRIPTION="Security fixes: kernel ${KERNEL_VERS}"
+SUPPORTED_FIRMWARES="${1:1:5}"
+REBOOT_REQUIRED="control compute storage"
+ROLLBACK="Yes"
+EOF
+
+[ -e $HOTFIXDIR/remove.lst ] || touch $HOTFIXDIR/remove.lst
