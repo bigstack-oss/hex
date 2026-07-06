@@ -3,9 +3,17 @@
 #include <errno.h>
 #include <glob.h>
 #include <sys/stat.h>
+#include <fcntl.h>  // open
+#include <unistd.h> // close
 #include <getopt.h> // getopt_long
 #include <time.h>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <cstdlib>
 #include <arpa/inet.h>
 
 #include <hex/log.h>
@@ -29,6 +37,7 @@
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::milliseconds;
+using std::chrono::seconds;
 
 static const char PROGRAM[] = "hex_config";
 static const char PROGRAM_PATH[] = HEX_CFG;
@@ -1229,6 +1238,36 @@ PrepareModules()
     return true;
 }
 
+// Rotate per-module commit times: /run is fresh each boot, /var/lib keeps the
+// previous run for `hex_config -d` delta reporting. Runs once per invocation.
+static void
+RotateCommitTimes(void)
+{
+    mkdir("/var/lib/hex_config", 0755);
+    rename("/var/lib/hex_config/commit_times", "/var/lib/hex_config/commit_times.prev");
+    remove("/run/hex_config_commit_times");
+}
+
+static void
+RecordCommitTime(const std::string& mod, double secs)
+{
+    static std::once_flag s_rotateOnce;
+    std::call_once(s_rotateOnce, RotateCommitTimes);
+    const char* paths[2] = { "/run/hex_config_commit_times", "/var/lib/hex_config/commit_times" };
+    for (int i = 0; i < 2; i++) {
+        int fd = open(paths[i], O_WRONLY | O_APPEND | O_CREAT, 0644);
+        if (fd >= 0) {
+            FILE* f = fdopen(fd, "a");
+            if (f) {
+                fprintf(f, "%s %.1f\n", mod.c_str(), secs);
+                fclose(f);
+            } else {
+                close(fd);
+            }
+        }
+    }
+}
+
 void *
 ThreadModuleCommit(void *thargs)
 {
@@ -1250,6 +1289,7 @@ ThreadModuleCommit(void *thargs)
     auto msInt = duration_cast<milliseconds>(t2 - t1);
 
     HexLogInfo("%s commit(%c) took %.1f secs", mmit->first.c_str(), modified ? 'o' : 'x', (float)msInt.count() / 1000.0);
+    RecordCommitTime(mmit->first, (float)msInt.count() / 1000.0);
 
     if (!result) {
         HexLogError("Module %s failed to commit",  mmit->first.c_str());
@@ -1260,17 +1300,18 @@ ThreadModuleCommit(void *thargs)
     }
 }
 
+// Dependency-driven (DAG) commit scheduler: a bounded worker pool commits each
+// module the instant its prerequisites finish. Replaced the level-barrier walk.
 static bool
-CommitModules(const std::string& start, const std::string& end)
+CommitModulesDataflow(const std::string& start, const std::string& end)
 {
     ModuleMap& mm = s_staticsPtr->moduleMap;
     CommitOrderList& col = s_staticsPtr->commitOrderList;
 
-    // default to first and last module
+    // Same [start,end] range selection as the barrier version.
     CommitOrderList::iterator startIt = col.begin();
     CommitOrderList::iterator endIt = col.end();
     std::advance(endIt, -1);
-
     for (CommitOrderList::iterator colit = col.begin(); colit != col.end(); ++colit) {
         if (colit->module == start)
             startIt = colit;
@@ -1279,70 +1320,131 @@ CommitModules(const std::string& start, const std::string& end)
             break;
         }
     }
+    std::advance(endIt, 1);
+    std::set<std::string> inRange;
+    for (CommitOrderList::iterator it = startIt; it != endIt; ++it)
+        inRange.insert(it->module);
 
-    HexLogDebugN(FWD, "Committing modules (%s-%s)", (startIt->module).c_str(), (endIt->module).c_str());
+    // in-degree (unmet prerequisites) + successor lists from dependencyList
+    // (each module's prerequisites). Only edges between real modules count.
+    std::map<std::string, int> indeg;
+    std::map<std::string, std::vector<std::string> > succ;
+    for (ModuleMap::iterator it = mm.begin(); it != mm.end(); ++it) {
+        int d = 0;
+        for (DependencyList::iterator dit = it->second.dependencyList.begin();
+             dit != it->second.dependencyList.end(); ++dit) {
+            if (mm.find(dit->module) != mm.end()) {
+                d++;
+                succ[dit->module].push_back(it->first);
+            }
+        }
+        indeg[it->first] = d;
+    }
 
-    // Commit all modules in commit order
-    // Abort on first error
-    ModuleMap::iterator mmit;
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::deque<std::string> ready;
+    int remaining = (int)mm.size();
+    bool failed = false;
+    for (ModuleMap::iterator it = mm.begin(); it != mm.end(); ++it)
+        if (indeg[it->first] == 0)
+            ready.push_back(it->first);
 
-    // The stdout stream is line buffered by default,
-    // so will only display what's in the buffer after it reaches a newline
-    // disable stdout buffer to flush the output immediately
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    // move end iterator one step forward
-    std::advance(endIt, 1);
+    unsigned workers = std::thread::hardware_concurrency();
+    if (workers == 0) workers = 4;
+    if (workers > 16) workers = 16;
+    if (workers < 2) workers = 2;
 
-    CommitOrderList rangedCol(startIt, endIt);
-    ModuleList ml;
+    // Live progress: completed/total count plus the set of modules currently
+    // committing (the frontier).
+    int total = (int)mm.size();
+    std::set<std::string> inflight;
+    auto startT = high_resolution_clock::now();
+    std::function<void()> printProg = [&]() {   // call while holding mtx
+        if (!s_withProgress) return;
+        int done = total - remaining;
+        int el = (int)duration_cast<seconds>(high_resolution_clock::now() - startT).count();
+        std::string f;
+        for (const auto& x : inflight) f += x + " ";
+        printf("[%d/%d] %s \342\226\270 %-90.90s (%d:%02d)\r", done, total,
+               s_bootstrapOnly ? "bootstrapping" : "committing", f.c_str(), el / 60, el % 60);
+    };
 
-    for (auto r: rangedCol) {
-        ml.push_back(r.module);
-    }
+    std::function<void()> worker = [&]() {
+        for (;;) {
+            std::string m;
+            {
+                std::unique_lock<std::mutex> lk(mtx);
+                cv.wait(lk, [&]{ return !ready.empty() || failed || remaining == 0; });
+                if (failed || remaining == 0)
+                    return;
+                m = ready.front();
+                ready.pop_front();
+                inflight.insert(m);
+                printProg();
+            }
 
-    CommitOrderLevel& colvl = s_staticsPtr->commitOrderLevel;
-    for (auto i = 0 ; i < (int)colvl.size() ; i++) {
-        if (colvl[i].size() == 0)
-            continue;
+            bool ok = true;
+            ModuleMap::iterator mmit = mm.find(m);
+            // Only commit real, in-range modules; others are no-ops that still
+            // release their successors (preserves FIRST/LAST ordering).
+            if (mmit->second.commit != NULL && inRange.count(m)) {
+                bool modified = IsModuleModified(mmit);
+                auto t1 = high_resolution_clock::now();
+                ok = mmit->second.commit(modified, GetDryRunLevel());
+                auto t2 = high_resolution_clock::now();
+                HexLogInfo("%s commit(%c) took %.1f secs", m.c_str(),
+                           modified ? 'o' : 'x',
+                           (float)duration_cast<milliseconds>(t2 - t1).count() / 1000.0);
+                RecordCommitTime(m, (float)duration_cast<milliseconds>(t2 - t1).count() / 1000.0);
+                if (!ok)
+                    HexLogError("Module %s failed to commit", m.c_str());
+            }
 
-        pthread_t thread_id[colvl.size()];
-        std::string modules = "";
-        int active = 0;
-
-        for (auto m : colvl[i]) {
-            mmit = mm.find(m);
-            // this must never occur
-            assert(mmit != mm.end());
-
-            modules += m + " ";
-
-            if (mmit->second.commit != NULL && std::find(ml.begin(), ml.end(), m) != ml.end()) {
-                if (pthread_create(&thread_id[active++], NULL, ThreadModuleCommit, (void *)mmit->first.c_str()) != 0) {
-                    HexLogError("Failed to start thread for module %s.", m.c_str());
-                    return -1;
+            {
+                std::unique_lock<std::mutex> lk(mtx);
+                remaining--;
+                inflight.erase(m);
+                if (!ok) {
+                    failed = true;
+                    cv.notify_all();
+                    return;
                 }
+                std::map<std::string, std::vector<std::string> >::iterator sit = succ.find(m);
+                if (sit != succ.end())
+                    for (size_t i = 0; i < sit->second.size(); i++)
+                        if (--indeg[sit->second[i]] == 0)
+                            ready.push_back(sit->second[i]);
+                printProg();
+                cv.notify_all();
             }
         }
+    };
 
-        if (s_withProgress)
-            printf("(%02d/%02lu) %s: %-150s\r", i + 1, colvl.size(), s_bootstrapOnly ? "bootstrapping" : "committing", modules.c_str());
-
-        for (int c = 0 ; c < active ; c++) {
-            void *status = 0;
-            pthread_join(thread_id[c], &status);
-            if (status != 0) {
-                if (s_withProgress)
-                    printf("\n");
-                return false;
-            }
-        }
-    }
-
+    HexLogInfo("hex_config: DATAFLOW commit scheduler (%u workers)", workers);
     if (s_withProgress)
-        printf("\n");
+        printf("Committing modules in dependency (dataflow) order \342\200\224 %u workers\n", workers);
+    std::vector<std::thread> pool;
+    for (unsigned i = 0; i < workers; i++)
+        pool.push_back(std::thread(worker));
+    for (size_t i = 0; i < pool.size(); i++)
+        pool[i].join();
 
-    return true;
+    if (s_withProgress) {
+        int el = (int)duration_cast<seconds>(high_resolution_clock::now() - startT).count();
+        printf("[%d/%d] done \342\200\224 %d modules committed in %d:%02d\n",
+               total, total, total, el / 60, el % 60);
+    }
+    return !failed;
+}
+
+static bool
+CommitModules(const std::string& start, const std::string& end)
+{
+    // Commit via the dependency-DAG dataflow scheduler.
+    return CommitModulesDataflow(start, end);
 }
 
 static int
@@ -1773,8 +1875,13 @@ main(int argc, char **argv)
     }
 
     if (testMode || dumpCommitOrder || dumpSnapshotCommandOrder || dumpTuning) {
-        // Test/dump modes take no other arguments
-        if (optind != argc)
+        // Test/dump modes take no other arguments, except `-d tree|flat` and
+        // `-d tree <module>`.
+        bool dumpSubArg = dumpCommitOrder &&
+                          ( (optind + 1 == argc && (std::string(argv[optind]) == "tree" ||
+                                                    std::string(argv[optind]) == "flat"))
+                          || (optind + 2 == argc && std::string(argv[optind]) == "tree") );
+        if (optind != argc && !dumpSubArg)
             Usage();
     } else {
         // Non-test mode requires a least one command argument
@@ -1837,19 +1944,152 @@ main(int argc, char **argv)
         }
         */
 
-        // Dump modules names in commit order level to stdout
+        // Dump the commit DAG in topological order to stdout.
+        // Each line: "L<level>  <module>  <-  <prereq> <prereq> ..."
+        ModuleMap& mm = s_staticsPtr->moduleMap;
+        CommitOrderList& col = s_staticsPtr->commitOrderList;
         CommitOrderLevel& colvl = s_staticsPtr->commitOrderLevel;
-        for (auto i = 0 ; i < (int)colvl.size() ; i++) {
-            if (colvl[i].size() == 0)
-                continue;
 
-            printf("%2d: ", i);
-            for (auto it : colvl[i]) {
-                printf("%s ", it.c_str());
+        // `hex_config -d tree`: critical-chain from the last-finishing module down
+        // each module's slowest prereq. Falls back to deepest dependency path when
+        // no commit times are recorded.
+        if (commandIndex < argc && std::string(argv[commandIndex]) == "tree") {
+            std::map<std::string, double> dur;
+            bool haveTimes = false;
+            FILE* tf = fopen("/run/hex_config_commit_times", "r");
+            if (tf) {
+                char nm[256]; double sc;
+                while (fscanf(tf, "%255s %lf", nm, &sc) == 2) { dur[nm] = sc; haveTimes = true; }
+                fclose(tf);
             }
-            printf("\n");
+            std::map<std::string, double> prev;
+            {
+                FILE* pf = fopen("/var/lib/hex_config/commit_times.prev", "r");
+                if (pf) { char nm[256]; double sc; while (fscanf(pf, "%255s %lf", nm, &sc) == 2) prev[nm] = sc; fclose(pf); }
+            }
+
+            std::map<std::string, double> finish;
+            std::map<std::string, std::string> gate;
+            std::function<double(const std::string&)> F = [&](const std::string& m) -> double {
+                std::map<std::string, double>::iterator fit = finish.find(m);
+                if (fit != finish.end()) return fit->second;
+                finish[m] = 0.0;   // cycle guard
+                double best = 0.0; std::string g;
+                ModuleMap::iterator mit = mm.find(m);
+                if (mit != mm.end())
+                    for (DependencyList::iterator d = mit->second.dependencyList.begin();
+                         d != mit->second.dependencyList.end(); ++d)
+                        if (mm.count(d->module)) {
+                            double fd = F(d->module);
+                            if (fd > best) { best = fd; g = d->module; }
+                        }
+                double d = haveTimes ? (dur.count(m) ? dur[m] : 0.0) : 1.0;
+                finish[m] = best + d; gate[m] = g;
+                return finish[m];
+            };
+
+            // `-d tree <module>`: show that module's dependency path (its
+            // slowest/deepest prereq chain). Otherwise, the global critical chain.
+            std::string end;
+            if (commandIndex + 1 < argc) {
+                std::string want = argv[commandIndex + 1];
+                if (!mm.count(want)) {
+                    fprintf(stderr, "hex_config -d tree: unknown module '%s'\n", want.c_str());
+                    return EXIT_FAILURE;
+                }
+                end = want;
+                F(end);   // populate finish/gate for end's prereq chain
+            } else {
+                double mx = -1.0;
+                for (CommitOrderList::iterator it = col.begin(); it != col.end(); ++it) {
+                    double f = F(it->module);
+                    if (f > mx) { mx = f; end = it->module; }
+                }
+            }
+
+            std::vector<std::string> chain;
+            for (std::string cur = end; !cur.empty(); ) {
+                chain.push_back(cur);
+                std::map<std::string, std::string>::iterator git = gate.find(cur);
+                cur = (git != gate.end()) ? git->second : std::string();
+            }
+            std::reverse(chain.begin(), chain.end());
+
+            if (haveTimes)
+                printf("hex_config critical-chain \342\200\224 target %s (@ = finished, + = commit time)\n", end.c_str());
+            else
+                printf("hex_config critical chain (structural \342\200\224 deepest dependency path; no timing recorded)\n");
+            for (size_t i = 0; i < chain.size(); i++) {
+                const std::string& m = chain[i];
+                std::string ind;
+                if (i > 0) {
+                    for (size_t k = 0; k + 1 < i; k++) ind += "  ";
+                    ind += "\342\224\224\342\224\200";   // "|-" box-drawing
+                }
+                if (haveTimes) {
+                    int fin = (int)(finish[m] + 0.5);
+                    char at[32];
+                    if (fin >= 60) snprintf(at, sizeof at, "%dmin %ds", fin / 60, fin % 60);
+                    else           snprintf(at, sizeof at, "%ds", fin);
+                    double cur = dur.count(m) ? dur[m] : 0.0;
+                    if (prev.count(m))
+                        printf("%s%s @%s +%.1fs (%+.1fs vs prev)\n", ind.c_str(), m.c_str(), at, cur, cur - prev[m]);
+                    else
+                        printf("%s%s @%s +%.1fs\n", ind.c_str(), m.c_str(), at, cur);
+                } else {
+                    printf("%s%s\n", ind.c_str(), m.c_str());
+                }
+            }
+            return EXIT_SUCCESS;
         }
 
+        // hex_config -d : one line per module, "L<level> <module> [+<commit>s] <- <prereqs>".
+        // Commit time shown when recorded (/run/hex_config_commit_times).
+        std::map<std::string, double> dur;
+        {
+            FILE* tf = fopen("/run/hex_config_commit_times", "r");
+            if (tf) {
+                char nm[256]; double sc;
+                while (fscanf(tf, "%255s %lf", nm, &sc) == 2) dur[nm] = sc;
+                fclose(tf);
+            }
+        }
+        std::map<std::string, double> prev;
+        {
+            FILE* pf = fopen("/var/lib/hex_config/commit_times.prev", "r");
+            if (pf) {
+                char nm[256]; double sc;
+                while (fscanf(pf, "%255s %lf", nm, &sc) == 2) prev[nm] = sc;
+                fclose(pf);
+            }
+        }
+        for (auto it : col) {
+            int lvl = -1;
+            for (auto i = 0 ; i < (int)colvl.size() && lvl < 0 ; i++)
+                for (auto e : colvl[i])
+                    if (e == it.module) { lvl = i; break; }
+
+            printf("L%-2d  %-22s", lvl, it.module.c_str());
+            if (dur.count(it.module)) {
+                char cell[48];
+                if (prev.count(it.module))
+                    snprintf(cell, sizeof cell, "+%.1fs (%+.1fs)", dur[it.module], dur[it.module] - prev[it.module]);
+                else
+                    snprintf(cell, sizeof cell, "+%.1fs", dur[it.module]);
+                printf(" %-21s", cell);
+            } else {
+                printf(" %-21s", "");
+            }
+            printf("  <-");
+            ModuleMap::iterator mit = mm.find(it.module);
+            DependencyList& dl = mit->second.dependencyList;
+            if (dl.empty())
+                printf(" (none)");
+            else
+                for (auto dlit : dl)
+                    printf(" %s", dlit.module.c_str());
+            printf("\n");
+        }
         return EXIT_SUCCESS;
     }
     else if (dumpSnapshotCommandOrder) {
