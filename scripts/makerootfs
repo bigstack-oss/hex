@@ -231,7 +231,18 @@ SourceListUpdate()
     chroot $ROOTDIR rm -f /var/lib/rpm/.rpm.lock
 
     local XTRA_REPO=
-    chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1'
+    # issue#77: append hybrid PQC KEX for SSH only (scoped; no TLS impact, no removals)
+    # NOTE(2027 Ubuntu migration): Ubuntu rejected crypto-policies (builds its own
+    # crypto-config framework), and 26.04 LTS ships hybrid PQC KEX by default.
+    # At migration, port only the hardening delta (removals/aes192-ctr/sntrup alias)
+    # via crypto-config profiles or an /etc/ssh/sshd_config.d/ drop-in.
+    mkdir -p $ROOTDIR/etc/crypto-policies/policies/modules
+    cat <<EOF >$ROOTDIR/etc/crypto-policies/policies/modules/CUBE-PQ.pmod
+key_exchange@SSH = +KEM-ECDH
+key_exchange@SSH = +SNTRUP
+group@SSH = +MLKEM768-X25519
+EOF
+    chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1:CUBE-PQ'
     chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*' || true
     XTRA_REPO+="https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm "
