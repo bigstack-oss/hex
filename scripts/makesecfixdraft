@@ -43,8 +43,13 @@ boot/Part2/initramfs.cgz
 boot/Part2/initramfs.cgz.size
 EOF
 pushd ${ROOTFS}/../
-rsync -aRI --out-format="HAND-PICKED: %f" bzImage initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part1/ | tee -a $OUTPUT
-rsync -aRI --out-format="HAND-PICKED: %f" bzImage initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part2/ | tee -a $OUTPUT
+rsync -aRI --out-format="HAND-PICKED: %f" initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part1/ | tee -a $OUTPUT
+rsync -aRI --out-format="HAND-PICKED: %f" initramfs.cgz{,.size} $NEW_ROOTFS/boot/Part2/ | tee -a $OUTPUT
+popd
+
+pushd ${HEX_IMGDIR}
+rsync -aRI --out-format="HAND-PICKED: %f" bzImage $NEW_ROOTFS/boot/Part1/ | tee -a $OUTPUT
+rsync -aRI --out-format="HAND-PICKED: %f" bzImage $NEW_ROOTFS/boot/Part2/ | tee -a $OUTPUT
 popd
 
 [ -e $HOTFIXDIR/README ] || cat <<EOF > $HOTFIXDIR/README
