@@ -242,7 +242,15 @@ key_exchange@SSH = +KEM-ECDH
 key_exchange@SSH = +SNTRUP
 group@SSH = +MLKEM768-X25519
 EOF
-    chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1:CUBE-PQ'
+    # issue#77: ssh-audit hardening — drop NIST-curve/group14 KEX, ssh-rsa and
+    # ecdsa-nistp521 host keys, non-ETM MACs; add aes192-ctr (SSH scope only)
+    cat <<EOF >$ROOTDIR/etc/crypto-policies/policies/modules/CUBE-HARDEN.pmod
+cipher@SSH = +AES-192-CTR
+group@SSH = -SECP256R1 -SECP384R1 -SECP521R1 -FFDHE-2048
+sign@SSH = -RSA-SHA1 -ECDSA-SHA2-512
+etm@SSH = DISABLE_NON_ETM
+EOF
+    chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1:CUBE-PQ:CUBE-HARDEN'
     chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*' || true
     XTRA_REPO+="https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm "

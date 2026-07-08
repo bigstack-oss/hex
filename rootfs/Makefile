@@ -137,7 +137,9 @@ base_rootfs_install:
 	$(Q)chroot $(ROOTDIR) bash -c "rmdir /home /media /srv /usr/games /usr/local/games"
 	$(Q)chroot $(ROOTDIR) bash -c "rm -rf /usr/local/share/* /usr/share/{man,doc,licenses} /usr/src /usr/local/src /var/{log,cache}/* /tmp/* /lib/.build-id /root/buildinfo"
 	$(Q)[ ! -e $(ROOTDIR)/etc/selinux/config ] || sed -i "s/^SELINUX=.*/SELINUX=disabled/" $(ROOTDIR)/etc/selinux/config
-	$(Q)sed -i -e 's/diffie-hellman-group-exchange-sha1,//' -e 's/hmac-sha1-etm@openssh.com,//' -e 's/hmac-sha1,umac-128@openssh.com,//' $(ROOTDIR)/etc/crypto-policies/back-ends/{openssh,opensshserver}.config
+	# SHA-1 kex/MAC removals moved into the CUBE-HARDEN crypto-policies subpolicy (makerootfs);
+	# only the sntrup761 alias (not emitted by the policy generator) is patched in post-generation
+	$(Q)sed -i -e 's/sntrup761x25519-sha512@openssh.com/sntrup761x25519-sha512,&/' $(ROOTDIR)/etc/crypto-policies/back-ends/{openssh,opensshserver}.config
 
 $(call HEX_CHECKROOTFS,$(HEX_BASE_ROOTFS))
 
