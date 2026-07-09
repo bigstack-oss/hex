@@ -38,7 +38,11 @@ static const char ecDsaHostKeyPub[]="/etc/ssh/ssh_host_ecdsa_key.pub";
 static const char edHostKey[]="/etc/ssh/ssh_host_ed25519_key";
 static const char edHostKeyPub[]="/etc/ssh/ssh_host_ed25519_key.pub";
 
-static int s_rsaKeySize = 2048;
+static int s_rsaKeySize = 3072;
+// Minimum acceptable size for an existing RSA host key. Kept below
+// s_rsaKeySize so that upgrades do not regenerate the host key (which would
+// invalidate every client's known_hosts); only new installs get 3072-bit keys.
+static int s_rsaKeyMinSize = 2048;
 static int s_ecDsaKeySize = 521;
 
 // private tunings
@@ -110,8 +114,8 @@ CheckKeys(const char* keyname, const char* pubkeyname)
 {
     HexLogDebug("(config_sshd): Checking key: %s", keyname);
 
-    // Remove keys that are less than 2048-bits so
-    // that they will be regenerated as 2048-bit
+    // Remove keys below the minimum acceptable size so that
+    // they will be regenerated at the current generation size
     // (except for ECDSA keys that are 521-bits)
 
     bool sizeOK = false;
@@ -134,7 +138,7 @@ CheckKeys(const char* keyname, const char* pubkeyname)
                 if (strstr(keySizeStr, " ECDSA,"))
                     keyReq = s_ecDsaKeySize;
                 else
-                    keyReq = s_rsaKeySize;
+                    keyReq = s_rsaKeyMinSize;
 
                 if (keySize >= keyReq)
                     sizeOK = true;
