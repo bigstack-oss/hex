@@ -1311,6 +1311,7 @@ DumpInterface()
     I=0
     FAILED=0
     declare -A ORIG_STATE=()
+    declare -A PROBED=()
     while true ; do
         eval HWADDR=\${T_sys_net_if_mac_eth${I}}
         if [ -z "$HWADDR" ] ; then
@@ -1326,13 +1327,17 @@ DumpInterface()
             if cat /sys/class/net/eth$I/carrier >/dev/null 2>&1 ; then
                 ORIG_STATE[$I]="UP"
             else
-                /usr/sbin/ip link set eth$I up >/dev/null 2>&1
                 ORIG_STATE[$I]="DOWN"
-                for S in $(seq $wait_sec) ; do
-                    SPEED=$(cat /sys/class/net/eth$I/speed 2>/dev/null)
-                    [ "x$SPEED" = "x" ] || break
-                    sleep 1
-                done
+                # only up-probe down NICs interactively; json pollers must not bounce links
+                if [ "x$FORMAT" != "xjson" ] ; then
+                    /usr/sbin/ip link set eth$I up >/dev/null 2>&1
+                    PROBED[$I]=1
+                    for S in $(seq $wait_sec) ; do
+                        SPEED=$(cat /sys/class/net/eth$I/speed 2>/dev/null)
+                        [ "x$SPEED" = "x" ] || break
+                        sleep 1
+                    done
+                fi
             fi
         fi
         I=$(expr $I + 1)
@@ -1375,7 +1380,7 @@ DumpInterface()
                 SPEED=""
             fi
             STATE=${ORIG_STATE[$I]}
-            if [ "$STATE" == "DOWN" ] ; then
+            if [ -n "${PROBED[$I]}" ] ; then
                 /usr/sbin/ip link set eth$I down >/dev/null 2>&1
             fi
         else

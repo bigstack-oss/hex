@@ -1745,7 +1745,7 @@ LicenseCheck(const std::string& app, const std::string& filename)
 
     int result = HexLicenseCheck(app, &type, &serial, filename);
     if (result > 0) {
-        HexLogNotice("License (type: %s) is still valid for %d days", type.c_str(), result);
+        HexLogDebug("License (type: %s) is still valid for %d days", type.c_str(), result);
     }
     else if (result == LICENSE_BADSYS) {
         HexLogNotice("License system is compromised");
@@ -1757,7 +1757,7 @@ LicenseCheck(const std::string& app, const std::string& filename)
         HexLogNotice("Invalid license files for this hardware (serial: %s)", serial.c_str());
     }
     else if (result == LICENSE_NOEXIST) {
-        HexLogNotice("License files are not installed");
+        HexLogDebug("License files are not installed");
     }
     else if (result == LICENSE_EXPIRED) {
         HexLogNotice("License files has been expired");
@@ -2145,7 +2145,7 @@ main(int argc, char **argv)
     else if (s_lmiRestartNeeded)
         status |= CONFIG_EXIT_NEED_LMI_RESTART;
 
-    HexLogInfo("Command %s exited with status: %d", fullCmd.c_str(), status);
+    HexLogDebug("Command %s exited with status: %d", fullCmd.c_str(), status);
 
     // Execute post script associating to the sub-command if command is succeed
     if (status == EXIT_SUCCESS)
@@ -3001,7 +3001,7 @@ MainLicenseCheck(int argc, char** argv)
     if (argc >= 3)
         license = std::string(argv[2]);
 
-    HexLogNotice("Checking license App(%s) File(%s)", app.c_str(), license.c_str());
+    HexLogDebug("Checking license App(%s) File(%s)", app.c_str(), license.c_str());
     int result = LicenseCheck(app, license);
     if (result > 0) {
         printf("%d", result);
