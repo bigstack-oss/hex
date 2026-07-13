@@ -79,10 +79,6 @@ Init()
     s_defSettings.push_back(std::make_pair("PermitRootLogin","yes"));
     s_defSettings.push_back(std::make_pair("PasswordAuthentication","yes"));
 
-    // CBC mode ciphers and weak MAC algorithms (MD5 and -96) should be disbaled
-    s_defSettings.push_back(std::make_pair("Ciphers","aes128-ctr,aes192-ctr,aes256-ctr"));
-    s_defSettings.push_back(std::make_pair("MACs","hmac-sha1,hmac-sha2-256,hmac-sha2-512"));
-
     // config to allow sftp
     s_defSettings.push_back(std::make_pair("Subsystem sftp","internal-sftp"));
     s_defSettings.push_back(std::make_pair("Match User","admin"));
@@ -91,7 +87,6 @@ Init()
     s_defSettings.push_back(std::make_pair("ForceCommand","NO_SFTP"));
 
     s_strictSettings.push_back(std::make_pair("ReKeyLimit","1G 3600"));
-    s_strictSettings.push_back(std::make_pair("KexAlgorithms","diffie-hellman-group14-sha1"));
 
     return true;
 }
@@ -381,6 +376,12 @@ Commit(bool modified, int dryLevel)
 
     // Load the SSH settings
     Init();
+
+    // Algorithm selection is owned by crypto-policies; strip the pins written
+    // into sshd_config by older releases so they do not linger after upgrade
+    RemoveSetting("Ciphers", CONFFILE);
+    RemoveSetting("MACs", CONFFILE);
+    RemoveSetting("KexAlgorithms", CONFFILE);
 
     for (SSHSettingList::const_iterator iter=s_strictSettings.begin() ; iter!=s_strictSettings.end() ; ++iter) {
         RemoveSetting(iter->first.c_str(), CONFFILE);
