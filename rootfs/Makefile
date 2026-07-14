@@ -139,7 +139,10 @@ base_rootfs_install:
 	$(Q)[ ! -e $(ROOTDIR)/etc/selinux/config ] || sed -i "s/^SELINUX=.*/SELINUX=disabled/" $(ROOTDIR)/etc/selinux/config
 	# SHA-1 kex/MAC removals moved into the CUBE-HARDEN crypto-policies subpolicy (makerootfs);
 	# only the sntrup761 alias (not emitted by the policy generator) is patched in post-generation
-	$(Q)sed -i -e 's/sntrup761x25519-sha512@openssh.com/sntrup761x25519-sha512,&/' $(ROOTDIR)/etc/crypto-policies/back-ends/{openssh,opensshserver}.config
+	$(Q)sed -i -e '/^KexAlgorithms /s/sntrup761x25519-sha512@openssh.com/sntrup761x25519-sha512,&/' $(ROOTDIR)/etc/crypto-policies/back-ends/{openssh,opensshserver}.config
+	# fail the build if the PQC KEX or the injected alias is missing from the generated policy
+	$(Q)grep -q 'mlkem768x25519-sha256' $(ROOTDIR)/etc/crypto-policies/back-ends/opensshserver.config
+	$(Q)grep -q 'sntrup761x25519-sha512,' $(ROOTDIR)/etc/crypto-policies/back-ends/opensshserver.config
 
 $(call HEX_CHECKROOTFS,$(HEX_BASE_ROOTFS))
 

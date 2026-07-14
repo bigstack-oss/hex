@@ -243,11 +243,14 @@ key_exchange@SSH = +SNTRUP
 group@SSH = +MLKEM768-X25519
 EOF
     # issue#77: ssh-audit hardening — drop NIST-curve/group14 KEX, ssh-rsa and
-    # ecdsa-nistp521 host keys, non-ETM MACs; add aes192-ctr (SSH scope only)
+    # ecdsa-nistp521 host keys, SHA-1 (gex-sha1, hmac-sha1) and non-ETM MACs;
+    # add aes192-ctr (SSH scope only)
     cat <<EOF >$ROOTDIR/etc/crypto-policies/policies/modules/CUBE-HARDEN.pmod
 cipher@SSH = +AES-192-CTR
 group@SSH = -SECP256R1 -SECP384R1 -SECP521R1 -FFDHE-2048
 sign@SSH = -RSA-SHA1 -ECDSA-SHA2-512
+mac@SSH = -HMAC-SHA1
+hash@SSH = -SHA1
 etm@SSH = DISABLE_NON_ETM
 EOF
     chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1:CUBE-PQ:CUBE-HARDEN'
