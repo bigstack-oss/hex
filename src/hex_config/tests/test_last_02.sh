@@ -1,17 +1,17 @@
 
-
+# Assert commit order only -- the --dump line format (levels, dependency
+# lists, padding) is presentation and has changed before.
 cat <<EOF >test.in
- 0: sys
- 1: first
- 2: b
- 3: last
- 4: c
- 5: a
- 6: done
+sys
+first
+b
+last
+c
+a
+done
 EOF
 
-./$TEST --dump > test.out
+./$TEST --dump | awk '{print $2}' > test.out
 diff -w test.in test.out
 
 rm -f test.*
-

@@ -1336,6 +1336,13 @@ CommitModulesDataflow(const std::string& start, const std::string& end)
         }
     }
     std::advance(endIt, 1);
+
+    // Resolved range: an unrecognised module name clamps to the full range.
+    CommitOrderList::iterator lastIt = endIt;
+    --lastIt;
+    HexLogInfo("Committing modules (%s-%s)",
+               startIt->module.c_str(), lastIt->module.c_str());
+
     std::set<std::string> inRange;
     for (CommitOrderList::iterator it = startIt; it != endIt; ++it)
         inRange.insert(it->module);
