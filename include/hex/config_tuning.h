@@ -365,68 +365,68 @@ struct TuneMapping {
 
 #define PARSE_TUNING_X_INT(var, spec, idx) \
     CONFIG_TUNING_SPEC_INT(spec); \
-    static TuningInt var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningInt var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_INT_ARRAY(var, spec, idx) \
     CONFIG_TUNING_SPEC_INT(spec); \
-    static TuningIntArray var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningIntArray var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_INT_MAP(var, spec, idx) \
     CONFIG_TUNING_SPEC_INT(spec); \
-    static TuningIntMap var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningIntMap var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_UINT(var, spec, idx) \
     CONFIG_TUNING_SPEC_UINT(spec); \
-    static TuningUInt var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningUInt var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_UINT_ARRAY(var, spec, idx) \
     CONFIG_TUNING_SPEC_UINT(spec); \
-    static TuningUIntArray var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningUIntArray var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_UINT_MAP(var, spec, idx) \
     CONFIG_TUNING_SPEC_UINT(spec); \
-    static TuningUIntMap var(spec.def, spec.min, spec.max, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningUIntMap var(spec().def, spec().min, spec().max, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_BOOL(var, spec, idx) \
     CONFIG_TUNING_SPEC_BOOL(spec); \
-    static TuningBool var(spec.def, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningBool var(spec().def, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_BOOL_ARRAY(var, spec, idx) \
     CONFIG_TUNING_SPEC_BOOL(spec); \
-    static TuningBoolArray var(spec.def, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningBoolArray var(spec().def, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_BOOL_MAP(var, spec, idx) \
     CONFIG_TUNING_SPEC_BOOL(spec); \
-    static TuningBoolMap var(spec.def, spec.format.c_str()); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningBoolMap var(spec().def, spec().format.c_str()); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_STR(var, spec, idx) \
     CONFIG_TUNING_SPEC_STR(spec); \
-    static TuningString var(spec.def.c_str(), spec.format.c_str(), spec.type); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningString var(spec().def.c_str(), spec().format.c_str(), spec().type); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_STR_ARRAY(var, spec, idx) \
     CONFIG_TUNING_SPEC_STR(spec); \
-    static TuningStringArray var(spec.def.c_str(), spec.format.c_str(), spec.type); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningStringArray var(spec().def.c_str(), spec().format.c_str(), spec().type); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_STR_MAP(var, spec, idx) \
     CONFIG_TUNING_SPEC_STR(spec); \
-    static TuningStringMap var(spec.def.c_str(), spec.format.c_str(), spec.type); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningStringMap var(spec().def.c_str(), spec().format.c_str(), spec().type); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_X_STR_MATRIX(var, spec, idx) \
     CONFIG_TUNING_SPEC_STR(spec); \
-    static TuningStringMatrix var(spec.def.c_str(), spec.format.c_str(), spec.type); \
-    static TuneMapping tune_mapping_##var(s_tunes, spec.format.c_str(), &var, idx)
+    static TuningStringMatrix var(spec().def.c_str(), spec().format.c_str(), spec().type); \
+    static TuneMapping tune_mapping_##var(s_tunes, spec().format.c_str(), &var, idx)
 
 #define PARSE_TUNING_INT(var, spec)         PARSE_TUNING_X_INT(var, spec, 0)
 #define PARSE_TUNING_INT_ARRAY(var, spec)   PARSE_TUNING_X_INT_ARRAY(var, spec, 0)

@@ -442,7 +442,7 @@ static bool NetAddressParse(const char *name, const char *value, bool isNew)
 {
     const char* p = 0;
     bool success = true;
-    if (strcmp(name, NET_DEFAULT_INTERFACE.format.c_str()) == 0) {
+    if (strcmp(name, NET_DEFAULT_INTERFACE().format.c_str()) == 0) {
         NetworkInterface &i = ifc[value];
         success = i.default_interface.parse("true", isNew);
     }

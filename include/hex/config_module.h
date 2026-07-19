@@ -186,19 +186,23 @@ int ApplyTrigger(ArgVec argv);
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 #define CONFIG_TUNING_BOOL(key, name, publish, description, def) \
-    hex_config::TuningSpecBool key(name, def); \
+    hex_config::TuningSpecBool& key() \
+    { static hex_config::TuningSpecBool s(name, def); return s; } \
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 #define CONFIG_TUNING_INT(key, name, publish, description, def, min, max) \
-    hex_config::TuningSpecInt key(name, def, min, max); \
+    hex_config::TuningSpecInt& key() \
+    { static hex_config::TuningSpecInt s(name, def, min, max); return s; } \
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 #define CONFIG_TUNING_UINT(key, name, publish, description, def, min, max) \
-    hex_config::TuningSpecUInt key(name, def, min, max); \
+    hex_config::TuningSpecUInt& key() \
+    { static hex_config::TuningSpecUInt s(name, def, min, max); return s; } \
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 #define CONFIG_TUNING_STR(key, name, publish, description, def, type, regex)	\
-    hex_config::TuningSpecString key(name, def, type, regex);		\
+    hex_config::TuningSpecString& key() \
+    { static hex_config::TuningSpecString s(name, def, type, regex); return s; } \
     static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
 
 /**
@@ -213,16 +217,16 @@ int ApplyTrigger(ArgVec argv);
         extern const char* key
 
 #define CONFIG_TUNING_SPEC_BOOL(key) \
-        extern hex_config::TuningSpecBool key
+        hex_config::TuningSpecBool& key()
 
 #define CONFIG_TUNING_SPEC_INT(key) \
-        extern hex_config::TuningSpecInt key
+        hex_config::TuningSpecInt& key()
 
 #define CONFIG_TUNING_SPEC_UINT(key) \
-        extern hex_config::TuningSpecUInt key
+        hex_config::TuningSpecUInt& key()
 
 #define CONFIG_TUNING_SPEC_STR(key) \
-        extern hex_config::TuningSpecString key
+        hex_config::TuningSpecString& key()
 //@}
 
 /** @name Commit and Parse Order Macros  */

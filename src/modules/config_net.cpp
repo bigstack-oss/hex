@@ -316,10 +316,10 @@ Parse(const char *name, const char *value, bool isNew)
     if (strcmp(name, NET_HOSTNAME) == 0) {
         s_Conf.hostname.parse(value, isNew);
     }
-    else if (strcmp(name, NET_DEFAULT_INTERFACE.format.c_str()) == 0) {
+    else if (strcmp(name, NET_DEFAULT_INTERFACE().format.c_str()) == 0) {
         s_Conf.defaultInterface.parse(value, isNew);
     }
-    else if (strcmp(name, NET_IPV4_TCP_SYNCOOKIES.format.c_str()) == 0 && isNew) {
+    else if (strcmp(name, NET_IPV4_TCP_SYNCOOKIES().format.c_str()) == 0 && isNew) {
         s_Conf.synCookies.parse(value, isNew);
     }
     /* dns settings */
@@ -344,7 +344,7 @@ Parse(const char *name, const char *value, bool isNew)
         InterfaceDev& i = s_Dev[p];
         i.type.parse(value, isNew);
     }
-    else if (HexMatchPrefix(name, NET_IF_MTU.format.c_str(), &p)) {
+    else if (HexMatchPrefix(name, NET_IF_MTU().format.c_str(), &p)) {
         ConfigUInt& m = s_Mtu[p];
         m.parse(value, isNew);
     }
@@ -367,7 +367,7 @@ Parse(const char *name, const char *value, bool isNew)
             i.duplex = hex_string_util::toLower(i.duplex.newValue());
         }
     }
-    else if (strcmp(name, NET_LACP_DEF_RATE.format.c_str()) == 0) {
+    else if (strcmp(name, NET_LACP_DEF_RATE().format.c_str()) == 0) {
         s_Conf.defaultLacpRate.parse(value, isNew);
         if (s_Conf.defaultLacpRate.newValue() != "fast" &&
             s_Conf.defaultLacpRate.newValue() != "slow") {
@@ -375,7 +375,7 @@ Parse(const char *name, const char *value, bool isNew)
             return false;
         }
     }
-    else if (strcmp(name, NET_LACP_DEF_XMIT.format.c_str()) == 0) {
+    else if (strcmp(name, NET_LACP_DEF_XMIT().format.c_str()) == 0) {
         s_Conf.defaultLacpXmit.parse(value, isNew);
         if (s_Conf.defaultLacpXmit.newValue() != "layer2" &&
             s_Conf.defaultLacpXmit.newValue() != "layer2+3" &&
