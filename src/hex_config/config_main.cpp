@@ -267,6 +267,7 @@ Module::Module(const char *module, InitFunc init, ParseFunc parse, ValidateFunc 
 
     info.commitFirst = false;
     info.commitLast = false;
+    info.providesGlobals = false;
 
     info.currentDigest.ctx = EVP_MD_CTX_new();
     info.newDigest.ctx = EVP_MD_CTX_new();
@@ -387,6 +388,20 @@ Requires::Requires(const char *module, const char *state)
     // Delay check for module and state until MatchStates() due to unpredictable order of static initialization
     s_staticsPtr->requiresMap[state].push_back(module);
     HexLogDebugN(RRA, "CONFIG_REQUIRES(%s, %s)", module, state);
+}
+
+ProvidesGlobals::ProvidesGlobals(const char *module)
+{
+    StaticsInit();
+
+    ModuleMap& mm = s_staticsPtr->moduleMap;
+
+    ModuleMap::iterator it = mm.find(module);
+    if (it == mm.end())
+        HexLogFatal("CONFIG_PROVIDES_GLOBALS(%s): module not found", module);
+
+    it->second.providesGlobals = true;
+    HexLogDebugN(RRA, "CONFIG_PROVIDES_GLOBALS(%s)", module);
 }
 
 First::First(const char *module)
@@ -1324,6 +1339,14 @@ CommitModulesDataflow(const std::string& start, const std::string& end)
     std::set<std::string> inRange;
     for (CommitOrderList::iterator it = startIt; it != endIt; ++it)
         inRange.insert(it->module);
+
+    // Always include globals providers; a scoped range omitting them would
+    // regenerate consumers' configs from unset globals.
+    for (ModuleMap::iterator it = mm.begin(); it != mm.end(); ++it) {
+        if (it->second.providesGlobals && inRange.insert(it->first).second)
+            HexLogDebugN(RRA, "including globals provider %s in scoped commit",
+                         it->first.c_str());
+    }
 
     // in-degree (unmet prerequisites) + successor lists from dependencyList
     // (each module's prerequisites). Only edges between real modules count.

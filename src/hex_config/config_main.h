@@ -64,6 +64,7 @@ struct ModuleInfo
     CommitFunc commit;
     ModifiedList modifiedList;
     bool commitFirst;               // True if module should be committed first
+    bool providesGlobals;           // True if module populates globals other modules read
     bool commitLast;                // True if module should be committed last
     DependencyList dependencyList;  // List of modules that require this module to be committed first
     DfsColor color;                 // Color for topological sort using depth-first search

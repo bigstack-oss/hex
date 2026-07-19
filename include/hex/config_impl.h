@@ -49,6 +49,10 @@ struct Requires {
     Requires(const char *module, const char *state);
 };
 
+struct ProvidesGlobals {
+    ProvidesGlobals(const char *module);
+};
+
 struct First {
     First(const char *module);
 };

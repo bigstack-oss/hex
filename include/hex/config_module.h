@@ -263,6 +263,18 @@ int ApplyTrigger(ArgVec argv);
 
 /**
  *  @hideinitializer
+ *  @brief Declare that a module populates config globals other modules read.
+ *
+ *  Such a module is always committed, even when a scoped commit selects a range
+ *  that excludes it. Commit order is unchanged: still ahead of its consumers.
+ *
+ *  @param module
+ */
+#define CONFIG_PROVIDES_GLOBALS(module) \
+    static hex_config::ProvidesGlobals HEX_CAT(s_provides_globals_, __LINE__)(#module)
+
+/**
+ *  @hideinitializer
  *  @brief Declare that a module must be committed after all other modules.
  *
  *  @param module
