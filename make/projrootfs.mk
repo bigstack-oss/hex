@@ -18,7 +18,10 @@ rootfs: $(PROJ_ROOTFS)
 
 $(call HEX_CHECKROOTFS,$(PROJ_ROOTFS))
 
-$(PROJ_ROOTFS): $(PROJ_BASE_ROOTFS) $(PROJ_BOOTSTRAP) $(PROGRAMS)
+# ROOTFS_DEPS: source files a module copies in during rootfs_install, so the
+# rootfs rebuilds when they change. Second expansion so later modules contribute.
+.SECONDEXPANSION:
+$(PROJ_ROOTFS): $(PROJ_BASE_ROOTFS) $(PROJ_BOOTSTRAP) $(PROGRAMS) $$(ROOTFS_DEPS)
 	$(Q)$(RM) $(PROJ_RELEASE)
 	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/mountrootfs -D '$(MAKECMD) ROOTDIR=@ROOTDIR@ PROJ_BUILD_LABEL="$(PROJ_BUILD_LABEL)" rootfs_install' $(PROJ_BASE_ROOTFS) $@, "  GEN     $@")
 	@[ $(VERBOSE) -gt 0 ] && echo "Build label: $(PROJ_BUILD_LABEL)" || echo "  BUILD   $(PROJ_BUILD_LABEL)"
