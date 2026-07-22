@@ -173,9 +173,9 @@ if [ $SKIPNEWCGZ -eq 0 ] ; then
     FINDARGS=
     # fat32 has file size limit of 4GB
     if [ $ROOTFS_SIZE -gt 8388608 ] ; then
-        # second level folders > 1GB under / are compressed into seperate .cgz
+        # second level folders > 512 MiB under / are compressed into seperate .cgz
         SPLITCNT=1
-        for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 1024 { print $2 }' | grep -v -e docker -e "usr/share") ; do
+        for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 512 { print $2 }' | grep -v -e docker -e "usr/share") ; do
             FINDARGS+=" -path $BDIR -prune -o"
             SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
             CreateCgz $SPLITIMG $ROOTDIR "$BDIR"
