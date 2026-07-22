@@ -95,8 +95,10 @@ FIXPACK_SRCDIR="\$1"
 hex_sdk cmd -v git add -A
 hex_sdk cmd -v git stash
 hex_sdk cmd -v git stash drop
-hex_sdk cmd -v git pull
-hex_sdk cmd -v rm -rf /usr/lib/modules /usr/lib/firmware
+hex_sdk cmd -vo git pull
+
+rsync -avr /boot/Part1 /mnt/cephfs/backup/
+rsync -avr /boot/Part2 /mnt/cephfs/backup/
 
 exit 0
 EOF
@@ -106,10 +108,12 @@ EOF
 
 FIXPACK_SRCDIR="\$1"
 
-cubectl node rsync /usr/lib/modules
-cubectl node rsync /usr/lib/firmware
-cubectl node rsync /boot/Part1
-cubectl node rsync /boot/Part2
+PARTN=\$(hex_cli -c firmware list | grep ACTIVE | cut -d":" -f1)
+cubectl node rsync /boot/Part\${PARTN}
+rm -rf /mnt/cephfs/backup/Part\${PARTN}
+cp -rf /mnt/cephfs/backup/Part* /boot/
+rm -rf /mnt/cephfs/backup/Part*
+
 pushd /
 git add -A && git status && git commit -m "Security fixes: kernel ${KERNEL_VERS}" -a && git push -q && hex_sdk cmd "git stash ; git pull"
 popd
@@ -126,8 +130,7 @@ FIXPACK_SRCDIR="\$1"
 hex_sdk cmd -v git add -A
 hex_sdk cmd -v git stash
 hex_sdk cmd -v git stash drop
-hex_sdk cmd -v git pull
-hex_sdk cmd -v rm -rf /usr/lib/modules /usr/lib/firmware
+hex_sdk cmd -vo git pull
 
 exit 0
 EOF
@@ -137,12 +140,10 @@ EOF
 
 FIXPACK_SRCDIR="\$1"
 
-cubectl node rsync /usr/lib/modules
-cubectl node rsync /usr/lib/firmware
 cubectl node rsync /boot/Part1
 cubectl node rsync /boot/Part2
 pushd /
-git add -A && git status && git commit -m "Security fixes: kernel ${KERNEL_VERS}" -a && git push -q && hex_sdk cmd "git stash ; git pull"
+git add -A && git status && git commit -m "Rollback security fixes: kernel ${KERNEL_VERS}" -a && git push -q && hex_sdk cmd "git stash ; git pull"
 popd
 touch /var/fixpack/need_reboot
 
