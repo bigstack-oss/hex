@@ -2842,16 +2842,9 @@ MainApplySnapshot(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    // Remove the existing system files that will be replaced by the snapshot
-    SnapshotFileRemove(backupFiles);
-
-    // Apply the files from the snapshot
-    if (!SnapshotFileInstall("/", tmpDir, managedFiles)) {
-        HexLogError("Could not restore snapshot files.");
-        if (!SnapshotFileRevert(managedFiles, backupDir, backupFiles))
-            HexLogError("Could not revert to previous system state.");
-        return EXIT_FAILURE;
-    }
+    // Managed state-marker files are installed after a successful commit (see
+    // below) so the module commits observe the node's real state — a fresh
+    // reimage runs first-time setup instead of skipping it.
 
     SnapshotCommandList& snapshotCmds = s_staticsPtr->snapshotCommands;
 
@@ -2899,13 +2892,21 @@ MainApplySnapshot(int argc, char** argv)
         // HexLogEventNoArg("Reverting snapshot changes.");
         HexLogDebugN(FWD, "Reverting snapshot changes.");
 
-        SnapshotFileRevert(managedFiles, backupDir, backupFiles);
+        // Managed files were not installed yet — only roll back module config.
         for (SnapshotCommandList::const_iterator iter = snapshotCmds.begin();
              iter != snapshotCmds.end(); ++iter) {
             if (iter->rollback != NULL && (iter->rollback(backupDir) & EXIT_FAILURE) != 0) {
                 // HexLogEventNoArg("Error performing rollback for %s component.", iter->name.c_str());
                 HexLogError("Error performing rollback for %s component.", iter->name.c_str());
             }
+        }
+    }
+    else {
+        // Commit succeeded — stamp the snapshot's managed state markers now.
+        SnapshotFileRemove(backupFiles);
+        if (!SnapshotFileInstall("/", tmpDir, managedFiles)) {
+            HexLogError("Could not install snapshot managed files.");
+            status = EXIT_FAILURE;
         }
     }
 
