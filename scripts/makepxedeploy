@@ -95,25 +95,28 @@ if [ -n "$PXE_NET_BUSID" ] ; then
     cat >>$TEMPDIR/pxelinux.cfg/default <<EOF
 label $NAME
 KERNEL /$NAME/$KERNEL
-APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
+APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable ${PXE_EXTRA_KERNEL_ARGS:-} pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
 EOF
 else
     cat >>$TEMPDIR/pxelinux.cfg/default <<EOF
 label $NAME
 KERNEL /$NAME/$KERNEL
-APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
+APPEND initrd=/$NAME/$INITRD rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable ${PXE_EXTRA_KERNEL_ARGS:-} pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME}
 EOF
 fi
 
 # UEFI configurations
+# The entry is deleted + regenerated on every deploy, so custom kernel args set
+# by editing grub.cfg would be lost. PXE_EXTRA_KERNEL_ARGS (profile or env,
+# e.g. "autoinstall driver_server=<url>") survives redeploys instead.
 sed -i "/linuxefi \/$NAME\//d" $TEMPDIR/grub.cfg
 if [ -n "$PXE_NET_BUSID" ] ; then
     cat >>$TEMPDIR/grub.cfg <<EOF
-menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD}
+menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable ${PXE_EXTRA_KERNEL_ARGS:-} pxe_net_busid=$PXE_NET_BUSID pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD}
 EOF
 else
     cat >>$TEMPDIR/grub.cfg <<EOF
-menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD }
+menuentry  '$NAME (UEFI)' { linuxefi /$NAME/$KERNEL rw root=/dev/ram0 ramdisk_size=$RAMDISK_SIZE net.ifnames=0 init= console=tty0 console=ttyS0 $QUIET_KERNEL_ARG erst_disable ${PXE_EXTRA_KERNEL_ARGS:-} pxe_via_nfs=${SERVER}:${SRVDIR}/${NAME} ; initrdefi /$NAME/$INITRD }
 EOF
 fi
 

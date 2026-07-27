@@ -17,7 +17,7 @@ PROJ_BASE_ROOTFS = $(HEX_INSTALL_RD)
 # Install directly to final ramdisk image
 PROJ_ROOTFS = $(HEX_PXE_RD)
 
-PXE_RD_PKGS := net-tools iproute wget curl dhcp-client vim-enhanced tftp nfs-utils rsync
+PXE_RD_PKGS := net-tools iproute iputils util-linux wget curl dhcp-client vim-enhanced tftp nfs-utils rsync openssh-server tcpdump ethtool
 
 $(call PROJ_INSTALL_DNF,,$(PXE_RD_PKGS))
 

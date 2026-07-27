@@ -29,7 +29,7 @@ pxe_build:
 	$(Q)nohup md5sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).md5 2>&1 &
 	$(Q)nohup sha256sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).sha256 2>&1 &
 
-$(PROJ_PXE_RD): $(HEX_PXE_RD) $(HEX_HWDETECT_FILES) $(PROJ_PPU) $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in
+$(PROJ_PXE_RD): $(HEX_PXE_RD) $(HEX_HWDETECT_FILES) $(PROJ_PPU) $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in $(HEX_DATADIR)/hex_install/hex_pxe_fetch.sh.in
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) PPU=$$(readlink $(PROJ_RELEASE)).pkg ROOTDIR=@ROOTDIR@ pxe_ramdisk_install' $< $@,"  GEN     $@")
 
 pxe_ramdisk_install::
@@ -37,29 +37,22 @@ pxe_ramdisk_install::
 	$(Q)echo "if [ -d /sys/firmware/efi ]; then /usr/bin/hostname uefi-installer; else /usr/bin/hostname bios-installer; fi" >> $(ROOTDIR)/etc/rc.sysinit
 	$(Q)sed -e 's/@IMAGE_NAME@/$(PROJ_RELEASE_LONGNAME)\*.pkg/' $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in > $(ROOTDIR)/usr/sbin/hex_pxe_install
 	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_pxe_install
+	$(Q)sed -e 's|@HEX_AGENT_ENV_DIR@|$(HEX_AGENT_ENV_DIR)|g' -e 's|@HEX_INSTALL_DATA_LABEL_PREFIX@|$(HEX_INSTALL_DATA_LABEL_PREFIX)|g' -e 's|@HEX_INSTALL_SKIP_TRANSPORTS@|$(HEX_INSTALL_SKIP_TRANSPORTS)|g' $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in > $(ROOTDIR)/usr/sbin/hex_autoinstall
+	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_autoinstall
+	@# Ship the preflight agent into the installer so hex_autoinstall can run
+	@# --preflight before restore (agent binary provided by the build).
+	$(Q)if [ -f $(TOP_BLDDIR)/core/phone-home-agent/phone-home-agent ]; then \
+		cp -f $(TOP_BLDDIR)/core/phone-home-agent/phone-home-agent $(ROOTDIR)/usr/sbin/phone-home-agent && \
+		chmod 755 $(ROOTDIR)/usr/sbin/phone-home-agent ; \
+	else echo "  WARN    phone-home-agent not built; installer preflight disabled" ; fi
 	$(Q)chroot $(ROOTDIR) bash -c "rm -f /etc/systemd/system/NetworkManager.service"
 	$(Q)chroot $(ROOTDIR) bash -c "systemctl enable NetworkManager"
-	$(Q)echo "for i in \$$(cat /proc/cmdline); do if [[ \$$i =~ pxe_via_nfs= ]]; then eval \$$i ; fi ; done" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "if [ -z \$${pxe_via_nfs+x} ]; then" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    for i in {1..10}; do" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "        if timeout 2 ping -c 1 $(HEX_COMPANY_DN); then" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "            timeout 180 /usr/bin/wget -r -np --cut-dirs=3 -nH -R --show-progress -P /mnt/install -A "$(PROJ_RELEASE_LONGNAME)\*.pkg*" $(HEX_COMPANY_DN)/" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "            break" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "        elif timeout 2 ping -c 1 $(PXESERVER_IP); then" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "            timeout 180 /usr/bin/wget -r -np --cut-dirs=3 -nH -R --show-progress -P /mnt/install -A "$(PROJ_RELEASE_LONGNAME)\*.pkg*" $(PXESERVER_IP)/" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "            break" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "        else" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "            sleep 1" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "        fi" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    done" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "else" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    /bin/mkdir -p /mnt/nfs" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    timeout 10 /bin/mount -t nfs -o nolock \$$pxe_via_nfs /mnt/nfs" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    timeout 180 /usr/bin/rsync --progress /mnt/nfs/$(PROJ_RELEASE_LONGNAME)*.pkg /mnt/install/" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    sync" >> $(ROOTDIR)/etc/rc.d/rc.local
-	$(Q)echo "    timeout 10 umount /mnt/nfs || umount -l /mnt/nfs" >> $(ROOTDIR)/etc/rc.d/rc.local
+	@# Ship the image-fetch + autoinstall logic as a standalone script; rc.local
+	@# only invokes it. @TOKEN@ placeholders are filled at build time.
+	$(Q)sed -e 's|@HEX_COMPANY_DN@|$(HEX_COMPANY_DN)|g' -e 's|@PXESERVER_IP@|$(PXESERVER_IP)|g' -e 's|@PROJ_RELEASE_LONGNAME@|$(PROJ_RELEASE_LONGNAME)|g' $(HEX_DATADIR)/hex_install/hex_pxe_fetch.sh.in > $(ROOTDIR)/usr/sbin/hex_pxe_fetch
+	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_pxe_fetch
+	$(Q)echo "/usr/sbin/hex_pxe_fetch" >> $(ROOTDIR)/etc/rc.d/rc.local
 	$(Q)chroot $(ROOTDIR) bash -c "chmod 755 /etc/rc.d/rc.local"
-	$(Q)echo "fi" >> $(ROOTDIR)/etc/rc.d/rc.local
 
 # Install project build label into installer image
 pxe_ramdisk_install:: build_label_install

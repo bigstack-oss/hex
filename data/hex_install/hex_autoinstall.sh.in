@@ -1,0 +1,152 @@
+#!/bin/bash
+#
+# Unattended appliance install for zero-touch deploy.
+#
+# Inert unless the kernel cmdline carries `autoinstall` (optionally
+# `autoinstall=/dev/sdX`). Called from the PXE installer's rc.local AFTER the
+# install .pkg has been fetched to /mnt/install. When armed, it restores the
+# image to the target disk non-interactively and reboots into the installed
+# system — the same operation an operator does by hand via `hex_pxe_install`,
+# just gated on a kernel arg so normal/manual installs are unaffected.
+#
+set -e
+
+# Mirror progress to the VGA (/dev/tty0 — the BMC KVM) and serial consoles.
+# /dev/tty0 is required: userspace writes to /dev/console only reach the last
+# console= (serial), never the VGA screen.
+say() { m="[autoinstall $(date +%H:%M:%S)] $*"; echo "$m" >> /run/autoinstall.log 2>/dev/null; echo "$m" | tee /dev/tty0 /dev/console >/dev/null 2>&1 || echo "$m"; }
+
+want=""
+disk=""
+for tok in $(cat /proc/cmdline); do
+    case "$tok" in
+        autoinstall) want=1 ;;
+        autoinstall=*) want=1; disk="${tok#autoinstall=}" ;;
+    esac
+done
+[ -n "$want" ] || exit 0
+
+say "AUTO-INSTALL MODE — press Alt-F2 / Alt-F3 for a login shell (root/admin) to investigate"
+
+# Reflect auto-install mode on the console login prompt (getty re-reads /etc/issue
+# per prompt). Set here — only when auto-install is armed — so a plain manual
+# install never shows it.
+printf '\n  *** AUTO-INSTALL MODE ***\n  A background job is installing this node (progress on tty1).\n  Press Alt-F2 / Alt-F3 here for a login shell to investigate.  Login: root / admin\n  Live progress: tail -f /run/autoinstall.log\n\n' > /etc/issue
+
+# Auto-detect the local system disk when not explicitly given: the first fixed,
+# non-removable, local disk. SAN/remote LUNs are skipped by transport
+# (HEX_INSTALL_SKIP_TRANSPORTS); a project can also skip its own data disks by
+# partition-label prefix (HEX_INSTALL_DATA_LABEL_PREFIX, empty = off).
+if [ -z "$disk" ] || [ "$disk" = "1" ]; then
+    disk=""
+    for d in /sys/block/sd* /sys/block/nvme*; do
+        [ -e "$d" ] || continue
+        n=$(basename "$d")
+        [ "$(cat "$d/removable" 2>/dev/null)" = "1" ] && continue
+        # Skip SAN/remote LUNs by transport (local OS disks are sata/nvme/sas).
+        tran=$(/bin/lsblk -dno TRAN "/dev/$n" 2>/dev/null)
+        if [ -n "$tran" ]; then
+            case " @HEX_INSTALL_SKIP_TRANSPORTS@ " in *" $tran "*) continue ;; esac
+        fi
+        # Skip disks carrying a project data-partition label (e.g. OSD disks).
+        if [ -n "@HEX_INSTALL_DATA_LABEL_PREFIX@" ] && /bin/lsblk -no PARTLABEL "/dev/$n" 2>/dev/null | grep -q "^@HEX_INSTALL_DATA_LABEL_PREFIX@"; then
+            continue
+        fi
+        disk="/dev/$n"
+        break
+    done
+fi
+
+if [ -z "$disk" ]; then
+    say "no eligible target disk found; leaving installer at prompt"
+    exit 1
+fi
+
+# Optional pre-restore hook: when driver_server= is set and a preflight agent is
+# installed, run it and abort on non-zero exit — validate before reimaging.
+# What the agent checks is the deploy driver's concern.
+driver_server=""
+for tok in $(cat /proc/cmdline); do
+    case "$tok" in
+        driver_server=*) driver_server="${tok#driver_server=}" ;;
+    esac
+done
+if [ -n "$driver_server" ] && [ -x /usr/sbin/phone-home-agent ]; then
+    # Ensure the tools/modules the preflight needs are present in the installer.
+    /usr/sbin/modprobe bonding 2>/dev/null || true
+    /usr/sbin/modprobe 8021q 2>/dev/null || true
+    /usr/sbin/modprobe ipmi_si 2>/dev/null || true
+    /usr/sbin/modprobe ipmi_devintf 2>/dev/null || true
+    say "network preflight: nic bringup + bond/vlan/ip + carrier + peer ping (waits for green light 1) ..."
+    SECONDS=0
+    if ! /usr/sbin/phone-home-agent --preflight --server "$driver_server"; then
+        say "PREFLIGHT FAILED (${SECONDS}s); leaving installer at prompt for inspection"
+        exit 1
+    fi
+    say "network preflight ... green light 1 (${SECONDS}s)"
+    # If the preflight agent stamped a target disk to /run/os-disk, it overrides
+    # the auto-detected disk above.
+    if [ -s /run/os-disk ]; then
+        picked=$(head -n1 /run/os-disk | tr -d '[:space:]')
+        if [ -b "$picked" ]; then
+            disk="$picked"
+            say "using appointed OS disk $disk (from snapshot server)"
+        else
+            say "appointed OS disk '$picked' is not a block device; keeping $disk"
+        fi
+    fi
+fi
+
+say "restoring $(basename "$disk") image to $disk ..."
+SECONDS=0
+echo "sys.install.hdd=$disk" > /etc/extra_settings.sys
+/usr/sbin/hex_install -v -w -t /etc/extra_settings.sys restore 2>&1 | tee /dev/tty0 /dev/console >/dev/null 2>&1
+rc=${PIPESTATUS[0]}
+if [ "$rc" != 0 ]; then
+    say "RESTORE FAILED (exit $rc, ${SECONDS}s) — leaving installer at prompt; check the .pkg fetch"
+    exit 1
+fi
+say "restore ... complete (${SECONDS}s)"
+
+# The kernel cmdline may not survive the reboot into the installed GRUB, so
+# persist driver_server= into the restored rootfs for the installed agent to
+# read (EnvironmentFile). Best effort.
+if [ -n "$driver_server" ]; then
+    mnt=/mnt/restored
+    mkdir -p "$mnt"
+    for part in $(/bin/lsblk -lnpo NAME "$disk" 2>/dev/null | tail -n +2); do
+        if mount "$part" "$mnt" 2>/dev/null; then
+            if [ -d "$mnt/etc/appliance" ]; then
+                mkdir -p "$mnt@HEX_AGENT_ENV_DIR@"
+                echo "DRIVER_SERVER=$driver_server" > "$mnt@HEX_AGENT_ENV_DIR@/phone-home-agent.env"
+                # Carry over any identity the preflight agent stamped for the
+                # installed agent to reuse.
+                if [ -f /run/phone-home-agent.env ]; then
+                    cat /run/phone-home-agent.env >> "$mnt@HEX_AGENT_ENV_DIR@/phone-home-agent.env"
+                fi
+                say "wrote snapshot server + identity to installed rootfs ($part)"
+                # /run does not survive the reboot but the rootfs does: carry any
+                # payload the agent pre-fetched during preflight into the rootfs.
+                if [ -f /run/appointed.snapshot ]; then
+                    mkdir -p "$mnt/var/support"
+                    if cp -f /run/appointed.snapshot "$mnt/var/support/appointed.snapshot"; then
+                        say "staged snapshot into rootfs for local apply ($(stat -c%s /run/appointed.snapshot 2>/dev/null) bytes)"
+                    fi
+                fi
+                umount "$mnt"
+                break
+            fi
+            umount "$mnt"
+        fi
+    done
+fi
+
+# While the preflight network is still up, notify the driver that the restore
+# finished, then reboot.
+if [ -n "$driver_server" ] && [ -x /usr/sbin/phone-home-agent ]; then
+    say "reporting restore-complete to $driver_server"
+    /usr/sbin/phone-home-agent --restore-done --server "$driver_server" || true
+fi
+
+say "install complete, rebooting into $disk"
+/sbin/reboot

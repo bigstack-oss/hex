@@ -1,0 +1,73 @@
+#!/bin/bash
+# PXE installer image-fetch script — installed as /usr/sbin/hex_pxe_fetch and
+# invoked from rc.local. Fetches the install .pkg (HTTP from the company mirror
+# / pxeserver, or NFS via a pxe_via_nfs= cmdline arg), then hands off to
+# hex_autoinstall. The @TOKEN@ placeholders are substituted at build time.
+
+for i in $(cat /proc/cmdline); do if [[ $i =~ pxe_via_nfs= ]]; then eval $i ; fi ; done
+
+# Zero-touch diagnostics: on an unattended boot (autoinstall / driver_server=),
+# bring up sshd (root/admin) + spare-VT login shells so an operator can
+# investigate a headless install — remotely or via Alt-F2/F3 — while it runs on
+# tty1. Skipped on a plain manual install. Diagnostic aid, not hardened for prod.
+if grep -qw autoinstall /proc/cmdline || grep -q 'driver_server=' /proc/cmdline; then
+    echo root:admin | chpasswd 2>/dev/null || true
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/; s/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || true
+    systemctl restart sshd 2>/dev/null || true
+    # --no-block: a waiting start from inside rc-local.service deadlocks the boot
+    # (rc-local waits on the getty job, whose ordering waits on boot completion).
+    systemctl --no-block start getty@tty2.service getty@tty3.service 2>/dev/null || true
+fi
+
+# Optional pre-fetch hook: if a deploy driver is configured, let the agent
+# decide whether to short-circuit this boot before fetching the image.
+if grep -q 'driver_server=' /proc/cmdline && [ -x /usr/sbin/phone-home-agent ]; then
+    echo '[rc.local] inspect-check (powers off here if this is an inspect boot) ...' | tee /dev/tty0 /dev/console >/dev/null 2>&1
+    /usr/sbin/phone-home-agent --inspect-check
+fi
+
+if [ -z ${pxe_via_nfs+x} ]; then
+    echo '[rc.local] waiting for pxeserver + fetching image via HTTP ...' | tee /dev/tty0 /dev/console >/dev/null 2>&1
+    SECONDS=0
+    for i in {1..10}; do
+        if timeout 2 ping -c 1 @HEX_COMPANY_DN@; then
+            timeout 7200 /usr/bin/wget -c -r -np --cut-dirs=3 -nH -R --show-progress -P /mnt/install -A "@PROJ_RELEASE_LONGNAME@*.pkg*" @HEX_COMPANY_DN@/ 2>&1 | tee /dev/tty0 >/dev/null 2>&1
+            break
+        elif timeout 2 ping -c 1 @PXESERVER_IP@; then
+            timeout 7200 /usr/bin/wget -c -r -np --cut-dirs=3 -nH -R --show-progress -P /mnt/install -A "@PROJ_RELEASE_LONGNAME@*.pkg*" @PXESERVER_IP@/ 2>&1 | tee /dev/tty0 >/dev/null 2>&1
+            break
+        else
+            sleep 1
+        fi
+    done
+    echo "[rc.local] image fetch via HTTP ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+else
+    /bin/mkdir -p /mnt/nfs
+    # NetworkManager may not have the interface up when rc.local first runs, so
+    # the NFS mount must wait for the network AND retry — a one-shot mount races
+    # ahead of DHCP, leaving /mnt/nfs empty so rsync finds no pkg.
+    nfshost=${pxe_via_nfs%%:*}
+    for a in $(seq 1 60); do
+        grep -q " /mnt/nfs " /proc/mounts || { timeout 3 ping -c1 $nfshost >/dev/null 2>&1 && timeout 15 /bin/mount -t nfs -o nolock $pxe_via_nfs /mnt/nfs 2>/dev/null; }
+        pkg=$(basename $(ls /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg 2>/dev/null | head -1) 2>/dev/null)
+        [ -n "$pkg" ] && break
+        echo "[rc.local] waiting for network + NFS pkg (attempt $a) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 3
+    done
+    echo "[rc.local] fetching ${pkg:-image} via NFS (retry until complete) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1
+    SECONDS=0
+    # --append resumes a killed transfer from the current length instead of a
+    # delta restart — safe because the source .pkg is static for a given name
+    # (a swapped pkg yields a corrupt file that hex_install rejects).
+    for a in $(seq 1 12); do
+        timeout 7200 /usr/bin/rsync --partial --append --info=progress2 /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg /mnt/install/ 2>&1 | tee /dev/tty0 >/dev/null 2>&1
+        [ ${PIPESTATUS[0]} -eq 0 ] && break
+        echo "[rc.local] ${pkg:-image} fetch attempt $a incomplete (${SECONDS}s); retrying" | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 5
+    done
+    echo "[rc.local] ${pkg:-image} ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+    sync
+    timeout 10 umount /mnt/nfs || umount -l /mnt/nfs
+fi
+
+# After the image is fetched, unattended-install if the kernel cmdline carries
+# `autoinstall` (inert otherwise).
+/usr/sbin/hex_autoinstall
