@@ -26,6 +26,7 @@ mkdir -p ${NEW_ROOTFS}/boot/Part{1,2}
 rm -f  $OUTPUT
 touch $OUTPUT
 
+touch $HOTFIXDIR/norollback
 cat <<EOF >$HOTFIXDIR/backup.lst
 usr/lib/modules
 usr/lib/firmware
@@ -157,7 +158,7 @@ FIXPACK_NAME="$1"
 FIXPACK_DESCRIPTION="Security fixes: kernel ${KERNEL_VERS}"
 SUPPORTED_FIRMWARES="${1:1:5}"
 REBOOT_REQUIRED="control compute storage"
-ROLLBACK="Yes"
+ROLLBACK="No"
 EOF
 
 [ -e $HOTFIXDIR/remove.lst ] || touch $HOTFIXDIR/remove.lst
