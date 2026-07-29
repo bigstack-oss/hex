@@ -15,7 +15,9 @@
 static const char* MSG_INSERT_USB = "Insert a USB device into the USB port on the appliance.";
 static const char* MSG_AVAIL_PKG = "Available Firmware Updates:";
 static const char* ERR_NO_PKG = "no updates found in the inserted USB device.";
-static const char* CMD_LIST_USB_PKG = "/usr/sbin/hex_config list_usb_files | grep \".*[.]pkg\" | sed -E 's/_[0-9]+[.]pkg$//' | sed -E 's/[.]pkg$//' | sort | uniq";
+// Split index is bounded to two digits so an all-numeric git short sha at the end
+// of the version string is not mistaken for one (see makeppu split naming).
+static const char* CMD_LIST_USB_PKG = "/usr/sbin/hex_config list_usb_files | grep \".*[.]pkg\" | sed -E 's/_[0-9]{1,2}[.]pkg$//' | sed -E 's/[.]pkg$//' | sort | uniq";
 
 static const char* CMD_LIST_LOCAL_PKG = "/usr/sbin/hex_install list";
 static const char* ERR_NO_LOCAL_PKG = "no updates found in local folder %s";
