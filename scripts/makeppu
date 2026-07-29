@@ -130,7 +130,9 @@ mv $TEMPPKGFILE $PKGFILE
     UnmountRemoveLoop $LOOPDEV
 )
 
-# $SPKGFILE structure (first tier folder under / (except for /usr) that is larger than 1GB)
+# One $SPKGFILE per split .cgz produced by mountrootfs (second level folders under /
+# larger than 512 MiB, plus the separately handled usr/share and opt/docker trees).
+# _0 is the residual archive and also carries the kernel, initrd and firmware.
 # |
 # |-rootfs_0.cgz
 # |-rootfs_1.cgz
