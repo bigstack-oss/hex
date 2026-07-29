@@ -78,7 +78,7 @@ CheckImageVersion()
 
 ListImages()
 {
-    local IMAGES=$(find -L $SRC -type f -regex ".*[.]pkg$" | sed "s;.*/;;g" | sed -E "s/_.[.]pkg//" | sed -E "s/[.]pkg//" | sort | uniq)
+    local IMAGES=$(find -L $SRC -type f -regex ".*[.]pkg$" | sed "s;.*/;;g" | sed -E "s/_[0-9]+[.]pkg$//" | sed -E "s/[.]pkg$//" | sort | uniq)
     if [ -n "$IMAGES" ]; then
         for i in $IMAGES; do
             echo $(basename $i)
