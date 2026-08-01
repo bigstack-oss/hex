@@ -119,23 +119,16 @@ if [ -n "$driver_server" ]; then
             if [ -d "$mnt/etc/appliance" ]; then
                 mkdir -p "$mnt@HEX_AGENT_ENV_DIR@"
                 echo "DRIVER_SERVER=$driver_server" > "$mnt@HEX_AGENT_ENV_DIR@/phone-home-agent.env"
-                # Hot-update the installed OS-phase agent from the driver, so an
-                # agent fix ships without a full image rebuild. Best-effort,
-                # checksum-verified; on any failure the baked-in agent stays.
-                # Targets this restored root (the one that boots) — same as the
-                # env file above — so the A/B layout needs no special handling.
-                new="$mnt/usr/sbin/phone-home-agent.new"
-                if wget -q -T 60 -O "$new" "$driver_server/api/v1/agents/binary" 2>/dev/null && [ -s "$new" ]; then
-                    want=$(wget -q -T 10 -O - "$driver_server/api/v1/agents/binary.sha256" 2>/dev/null | awk '{print $1}')
-                    got=$(sha256sum "$new" 2>/dev/null | awk '{print $1}')
-                    if [ -n "$want" ] && [ "$want" = "$got" ]; then
-                        chmod 0755 "$new" && mv -f "$new" "$mnt/usr/sbin/phone-home-agent"
-                        say "hot-updated installed agent from driver (${got:0:12})"
-                    else
-                        rm -f "$new"; say "agent hot-update checksum mismatch; keeping baked-in agent"
-                    fi
-                else
-                    rm -f "$new" 2>/dev/null; say "no driver-packed agent (or fetch failed); keeping baked-in agent"
+                # Install the hot-fetched agent into the restored rootfs (OS
+                # phase). It was already fetched from the driver BEFORE preflight
+                # (hex_pxe_fetch), over the pre-preflight connection — so this is
+                # a local copy, no network needed here (preflight may have torn
+                # down the route to the driver). Only replaces the baked-in agent
+                # when a fresh one was actually fetched; targets this restored
+                # root (same as the env file), so A/B needs no special handling.
+                if [ -s /run/phone-home-agent.fresh ]; then
+                    install -m 0755 /run/phone-home-agent.fresh "$mnt/usr/sbin/phone-home-agent" \
+                        && say "installed hot-fetched agent into rootfs (OS phase)"
                 fi
                 # Carry over any identity the preflight agent stamped for the
                 # installed agent to reuse.

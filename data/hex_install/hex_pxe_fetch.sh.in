@@ -68,6 +68,36 @@ else
     timeout 10 umount /mnt/nfs || umount -l /mnt/nfs
 fi
 
+# Hot-update the phone-home-agent from the driver NOW — before preflight, over
+# the same connection that just fetched the .pkg. Preflight reconfigures the
+# network (bond/vlan/static IP) and may tear down the route to the driver, so we
+# can't rely on fetching later. The fresh agent is used for preflight and
+# restore-done immediately (installed over the installer's own), and stashed at
+# /run/phone-home-agent.fresh for hex_autoinstall to copy into the restored
+# rootfs (OS phase). Best-effort + checksum-verified; on any failure the
+# baked-in agent stays.
+if grep -q 'driver_server=' /proc/cmdline && [ -x /usr/sbin/phone-home-agent ]; then
+    ds=""
+    for i in $(cat /proc/cmdline); do case "$i" in driver_server=*) ds="${i#driver_server=}" ;; esac; done
+    if [ -n "$ds" ]; then
+        f=/run/phone-home-agent.fresh
+        if wget -q -T 60 -O "$f" "$ds/api/v1/agents/binary" 2>/dev/null && [ -s "$f" ]; then
+            want=$(wget -q -T 10 -O - "$ds/api/v1/agents/binary.sha256" 2>/dev/null | awk '{print $1}')
+            got=$(sha256sum "$f" 2>/dev/null | awk '{print $1}')
+            if [ -n "$want" ] && [ "$want" = "$got" ]; then
+                chmod 0755 "$f" && cp -f "$f" /usr/sbin/phone-home-agent
+                echo "[rc.local] hot-updated phone-home-agent from driver (${got:0:12})" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+            else
+                rm -f "$f"
+                echo "[rc.local] agent hot-update checksum mismatch; keeping baked-in agent" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+            fi
+        else
+            rm -f "$f" 2>/dev/null
+            echo "[rc.local] no driver-packed agent (or fetch failed); keeping baked-in agent" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        fi
+    fi
+fi
+
 # After the image is fetched, unattended-install if the kernel cmdline carries
 # `autoinstall` (inert otherwise).
 /usr/sbin/hex_autoinstall
