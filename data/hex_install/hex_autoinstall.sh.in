@@ -146,6 +146,15 @@ if [ -n "$driver_server" ]; then
                         say "staged snapshot into rootfs for local apply ($(stat -c%s /run/appointed.snapshot 2>/dev/null) bytes)"
                     fi
                 fi
+                # Stage the operator's set_ready params too (pre-fetched before
+                # preflight, like the snapshot): the OS agent reads them locally
+                # and runs cluster set_ready with no network to the driver.
+                if [ -f /run/set-ready.json ]; then
+                    mkdir -p "$mnt/var/support"
+                    if cp -f /run/set-ready.json "$mnt/var/support/set-ready.json"; then
+                        say "staged set_ready params into rootfs for offline set_ready"
+                    fi
+                fi
                 umount "$mnt"
                 break
             fi
