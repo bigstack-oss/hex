@@ -6,6 +6,10 @@
 
 for i in $(cat /proc/cmdline); do if [[ $i =~ pxe_via_nfs= ]]; then eval $i ; fi ; done
 
+# Install consoles can boot in raw mode (no \n->\r\n), staircasing status lines;
+# enable onlcr on the VGA + serial consoles so tee'd output prints cleanly.
+for _t in /dev/tty0 /dev/ttyS0 /dev/console ; do stty -F "$_t" onlcr 2>/dev/null || true ; done
+
 # Zero-touch diagnostics: on an unattended boot (autoinstall / driver_server=),
 # bring up sshd (root/admin) + spare-VT login shells so an operator can
 # investigate a headless install — remotely or via Alt-F2/F3 — while it runs on

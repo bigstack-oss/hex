@@ -34,6 +34,12 @@ GetKernelConsoleDevices()
     local devices=
     for C in $(GetKernelConsoles) ; do
         devices="$devices /dev/$C"
+        # Install/boot consoles can come up in raw mode (-onlcr), which staircases
+        # \n-terminated status lines. Enable onlcr so every writer to these devices
+        # (bootstrap, hwdetect, support, proj_functions, ...) prints cleanly.
+        # Best-effort + silent: must not touch this function's stdout, which is the
+        # device list consumed via $(GetKernelConsoleDevices).
+        stty -F "/dev/$C" onlcr >/dev/null 2>&1 || true
     done
     echo $devices
 }

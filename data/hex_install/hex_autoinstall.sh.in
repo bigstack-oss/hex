@@ -11,6 +11,11 @@
 #
 set -e
 
+# Install consoles can boot in raw mode (no \n->\r\n mapping), which staircases
+# tee'd status lines (new line, no return to column 0). Enable onlcr on the VGA +
+# serial consoles so plain echo/tee output prints cleanly.
+for _t in /dev/tty0 /dev/ttyS0 /dev/console ; do stty -F "$_t" onlcr 2>/dev/null || true ; done
+
 # Mirror progress to the VGA (/dev/tty0 — the BMC KVM) and serial consoles.
 # /dev/tty0 is required: userspace writes to /dev/console only reach the last
 # console= (serial), never the VGA screen.
@@ -79,7 +84,16 @@ if [ -n "$driver_server" ] && [ -x /usr/sbin/phone-home-agent ]; then
     /usr/sbin/modprobe ipmi_devintf 2>/dev/null || true
     say "network preflight: nic bringup + bond/vlan/ip + carrier + peer ping (waits for green light 1) ..."
     SECONDS=0
-    if ! /usr/sbin/phone-home-agent --preflight --server "$driver_server"; then
+    # Route the agent's log through the (onlcr) consoles so its lines print
+    # cleanly instead of staircasing like the say() status lines did. Disable
+    # errexit around the pipe and read PIPESTATUS[0] so tee's status doesn't mask
+    # the agent's real exit.
+    set +e
+    /usr/sbin/phone-home-agent --preflight --server "$driver_server" 2>&1 \
+        | tee -a $(/usr/sbin/hex_sdk GetKernelConsoleDevices) >/dev/null
+    _pf_rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$_pf_rc" != 0 ]; then
         say "PREFLIGHT FAILED (${SECONDS}s); leaving installer at prompt for inspection"
         exit 1
     fi
