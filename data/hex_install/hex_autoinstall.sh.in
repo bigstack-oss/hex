@@ -126,8 +126,10 @@ if [ -n "$driver_server" ]; then
                 # down the route to the driver). Only replaces the baked-in agent
                 # when a fresh one was actually fetched; targets this restored
                 # root (same as the env file), so A/B needs no special handling.
-                if [ -s /run/phone-home-agent.fresh ]; then
-                    install -m 0755 /run/phone-home-agent.fresh "$mnt/usr/sbin/phone-home-agent" \
+                # NOTE: the OS image installs the agent to /usr/local/bin (see
+                # the systemd unit ExecStart) — NOT /usr/sbin like the installer.
+                if [ -s /run/phone-home-agent.fresh ] && [ -d "$mnt/usr/local/bin" ]; then
+                    install -m 0755 /run/phone-home-agent.fresh "$mnt/usr/local/bin/phone-home-agent" \
                         && say "installed hot-fetched agent into rootfs (OS phase)"
                 fi
                 # Carry over any identity the preflight agent stamped for the
