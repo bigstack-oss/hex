@@ -106,9 +106,11 @@ EOF
 fi
 
 # UEFI configurations
-# The entry is deleted + regenerated on every deploy, so custom kernel args set
-# by editing grub.cfg would be lost. PXE_EXTRA_KERNEL_ARGS (profile or env,
-# e.g. "autoinstall driver_server=<url>") survives redeploys instead.
+# Entries are deleted + regenerated on every deploy — always CLEAN (no arming
+# args baked in). The zero-touch driver injects "autoinstall driver_server=<url>"
+# into the selected entry when a deploy starts and strips it after the nodes
+# boot, so arming is transient and driver-owned and can't go stale across
+# redeploys. PXE_EXTRA_KERNEL_ARGS still works as a manual/profile override.
 sed -i "/linuxefi \/$NAME\//d" $TEMPDIR/grub.cfg
 if [ -n "$PXE_NET_BUSID" ] ; then
     cat >>$TEMPDIR/grub.cfg <<EOF
