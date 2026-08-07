@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# Serialize per target branch: two PRs labeled at once would race, and the loser's
+# push is rejected as non-fast-forward with no retry. Never cancel-in-progress —
+# a cancelled run can leave the label set on an unmerged PR.
+concurrency:
+  group: fast-forward-merge-${{ github.event.pull_request.base.ref }}
+  cancel-in-progress: false
+
 jobs:
   merge:
     permissions:
@@ -30,8 +37,7 @@ jobs:
           TOPIC_BRANCH: ${{ github.head_ref }}
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
-          git fetch origin $TOPIC_BRANCH
-          git checkout $BASE_BRANCH
-          git branch
-          git merge --ff-only origin/$TOPIC_BRANCH
-          git push origin $BASE_BRANCH
+          git fetch origin "$TOPIC_BRANCH"
+          git checkout "$BASE_BRANCH"
+          git merge --ff-only "origin/$TOPIC_BRANCH"
+          git push origin "$BASE_BRANCH"
