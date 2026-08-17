@@ -169,6 +169,14 @@ if [ -n "$driver_server" ]; then
                         say "staged set_ready params into rootfs for offline set_ready"
                     fi
                 fi
+                # Stage the preflight report: /run is tmpfs, so the booted
+                # OS can only show it (`phone-home-agent --report`) from here.
+                if [ -f /run/preflight-report.json ]; then
+                    mkdir -p "$mnt/var/support"
+                    if cp -f /run/preflight-report.json "$mnt/var/support/preflight-report.json"; then
+                        say "staged preflight report into rootfs"
+                    fi
+                fi
                 umount "$mnt"
                 break
             fi
