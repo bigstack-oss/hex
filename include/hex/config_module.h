@@ -188,22 +188,22 @@ int ApplyTrigger(ArgVec argv);
 #define CONFIG_TUNING_BOOL(key, name, publish, description, def) \
     hex_config::TuningSpecBool& key() \
     { static hex_config::TuningSpecBool s(name, def); return s; } \
-    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
+    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description, [](){ (void)key(); })
 
 #define CONFIG_TUNING_INT(key, name, publish, description, def, min, max) \
     hex_config::TuningSpecInt& key() \
     { static hex_config::TuningSpecInt s(name, def, min, max); return s; } \
-    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
+    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description, [](){ (void)key(); })
 
 #define CONFIG_TUNING_UINT(key, name, publish, description, def, min, max) \
     hex_config::TuningSpecUInt& key() \
     { static hex_config::TuningSpecUInt s(name, def, min, max); return s; } \
-    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
+    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description, [](){ (void)key(); })
 
 #define CONFIG_TUNING_STR(key, name, publish, description, def, type, regex)	\
     hex_config::TuningSpecString& key() \
     { static hex_config::TuningSpecString s(name, def, type, regex); return s; } \
-    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description)
+    static hex_config::Tuning HEX_CAT(s_tuning_, __LINE__)(name, publish, description, [](){ (void)key(); })
 
 /**
  *  @hideinitializer

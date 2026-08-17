@@ -121,6 +121,9 @@ struct TuningSpecString {
 
 struct Tuning {
     Tuning(const char *name, bool publish, const char *description);
+    // ensureSpec forces this tuning's construct-on-first-use spec into existence
+    // at declaration time; see the ctor in config_main.cpp for why.
+    Tuning(const char *name, bool publish, const char *description, void (*ensureSpec)());
 };
 
 struct SupportFile {

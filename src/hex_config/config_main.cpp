@@ -713,6 +713,36 @@ Tuning::Tuning(const char *name, bool publish, const char *description)
     s_staticsPtr->tuningList.push_back(info);
 }
 
+// Same, but also materialises the tuning's spec.
+//
+// Specs became construct-on-first-use to break a cross-translation-unit static
+// initialisation cycle: two modules parsing each other's specs could not both be
+// satisfied by any link order. That is still the right shape -- but it silently
+// changed an invariant. A spec used to be a namespace-scope object, so *declaring*
+// a tuning registered it; now only a PARSE_TUNING_*/CONFIG_TUNING_SPEC_* consumer
+// calling the accessor does. A tuning nobody parses therefore had no entry in
+// tuningSpecMap at all, and MainValidateTuningValue() reports exactly that case as
+// type "mix" and returns failure -- so `hex_config validate_tuning_value` failed on
+// a perfectly well-formed published tuning (keystone.debug.enabled, glance.debug.enabled).
+//
+// Calling the accessor here restores the old invariant without reintroducing the
+// cycle: the accessor is defined in the *same* translation unit as this Tuning
+// object, so this is an ordinary call that constructs the local static on demand,
+// not a load-time read of another TU's object. Cross-TU references stay lazy.
+Tuning::Tuning(const char *name, bool publish, const char *description, void (*ensureSpec)())
+{
+    StaticsInit();
+
+    if (ensureSpec)
+        ensureSpec();
+
+    TuningInfo info;
+    info.name = name;
+    info.publish = publish;
+    info.description = description;
+    s_staticsPtr->tuningList.push_back(info);
+}
+
 SupportFile::SupportFile(const char *pattern)
 {
     StaticsInit();
