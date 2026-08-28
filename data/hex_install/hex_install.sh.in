@@ -201,10 +201,12 @@ fi
 HDD=$T_sys_install_hdd
 [ -n "$HDD" ] || HDD="/dev/$(lsblk -no pkname $(findmnt -n -o SOURCE / ))"
 [ -e $HDD -a ${#HDD} -gt 5 ] || HDD="/dev/sda"
+# Partition naming: the kernel inserts a "p" separator when the disk name ends
+# in a digit (nvme0n1p1, mmcblk0p1, md0p1) and not otherwise (sda1, vda1).
+# Keying on the trailing digit covers every device type; matching "nvme" by name
+# only ever covered one.
 HDD_PART=$HDD
-if echo $HDD | grep -q nvme; then
-    HDD_PART=${HDD_PART}p
-fi
+case "$HDD" in *[0-9]) HDD_PART=${HDD_PART}p ;; esac
 
 GRUB_HD="$T_sys_install_grub_hd"
 [ -n "$GRUB_HD" ] || GRUB_HD="hd0"
@@ -214,9 +216,7 @@ GRUB_TIMEOUT="$T_sys_install_grub_timeout"
 
 [ -n "$TEMP_HDD" ] || TEMP_HDD="$HDD"
 TEMP_HDD_PART=$TEMP_HDD
-if echo $TEMP_HDD | grep -q nvme; then
-    TEMP_HDD_PART=${TEMP_HDD_PART}p
-fi
+case "$TEMP_HDD" in *[0-9]) TEMP_HDD_PART=${TEMP_HDD_PART}p ;; esac
 
 [ -n "$GRUB_TEMP_HD" ] || GRUB_TEMP_HD="$GRUB_HD"
 

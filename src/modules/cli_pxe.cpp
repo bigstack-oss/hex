@@ -56,9 +56,9 @@ PxeRestoreMain(int argc, const char** argv)
     }
 
     if (!device.length()) {
-        cmd = "/bin/lsblk -dn --sort name -o NAME,SIZE,MODEL,TYPE,TRAN | /bin/grep disk | /bin/grep -v usb | /usr/bin/awk ";
-        optCmd = cmd + "'{print \"/dev/\"$1}'";
-        descCmd = cmd + "'{ printf \"%-8s %-8s %s\\n\", $1, $2, $3 }'";
+        // Shared eligibility rule (hex_install_disks), same list as `restore`.
+        optCmd = "/usr/sbin/hex_install_disks --paths";
+        descCmd = "/usr/sbin/hex_install_disks";
 
         if(CliMatchCmdDescHelper(argc, argv, argidx++, optCmd, descCmd, &index, &device, "Select install drive: ") != CLI_SUCCESS) {
             CliPrintf("device name is missing or not found");

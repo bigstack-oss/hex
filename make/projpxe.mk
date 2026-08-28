@@ -29,7 +29,7 @@ pxe_build:
 	$(Q)nohup md5sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).md5 2>&1 &
 	$(Q)nohup sha256sum < $(PROJ_PXE) > $(PROJ_SHIPDIR)/$(PROJ_PXE_LONGNAME).sha256 2>&1 &
 
-$(PROJ_PXE_RD): $(HEX_PXE_RD) $(HEX_HWDETECT_FILES) $(PROJ_PPU) $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in $(HEX_DATADIR)/hex_install/hex_pxe_fetch.sh.in
+$(PROJ_PXE_RD): $(HEX_PXE_RD) $(HEX_HWDETECT_FILES) $(PROJ_PPU) $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in $(HEX_DATADIR)/hex_install/hex_install_disks.sh.in $(HEX_DATADIR)/hex_install/hex_pxe_fetch.sh.in
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/mountinitramfs '$(MAKECMD) PPU=$$(readlink $(PROJ_RELEASE)).pkg ROOTDIR=@ROOTDIR@ pxe_ramdisk_install' $< $@,"  GEN     $@")
 
 pxe_ramdisk_install::
@@ -37,8 +37,10 @@ pxe_ramdisk_install::
 	$(Q)echo "if [ -d /sys/firmware/efi ]; then /usr/bin/hostname uefi-installer; else /usr/bin/hostname bios-installer; fi" >> $(ROOTDIR)/etc/rc.sysinit
 	$(Q)sed -e 's/@IMAGE_NAME@/$(PROJ_RELEASE_LONGNAME)\*.pkg/' $(HEX_DATADIR)/hex_install/hex_pxe_install.sh.in > $(ROOTDIR)/usr/sbin/hex_pxe_install
 	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_pxe_install
-	$(Q)sed -e 's|@HEX_AGENT_ENV_DIR@|$(HEX_AGENT_ENV_DIR)|g' -e 's|@HEX_INSTALL_DATA_LABEL_PREFIX@|$(HEX_INSTALL_DATA_LABEL_PREFIX)|g' -e 's|@HEX_INSTALL_SKIP_TRANSPORTS@|$(HEX_INSTALL_SKIP_TRANSPORTS)|g' $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in > $(ROOTDIR)/usr/sbin/hex_autoinstall
+	$(Q)sed -e 's|@HEX_AGENT_ENV_DIR@|$(HEX_AGENT_ENV_DIR)|g' $(HEX_DATADIR)/hex_install/hex_autoinstall.sh.in > $(ROOTDIR)/usr/sbin/hex_autoinstall
 	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_autoinstall
+	$(Q)sed -e 's|@HEX_INSTALL_SKIP_TRANSPORTS@|$(HEX_INSTALL_SKIP_TRANSPORTS)|g' $(HEX_DATADIR)/hex_install/hex_install_disks.sh.in > $(ROOTDIR)/usr/sbin/hex_install_disks
+	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_install_disks
 	@# Ship the preflight agent into the installer so hex_autoinstall can run
 	@# --preflight before restore (agent binary provided by the build).
 	$(Q)if [ -f $(TOP_BLDDIR)/core/phone-home-agent/phone-home-agent ]; then \

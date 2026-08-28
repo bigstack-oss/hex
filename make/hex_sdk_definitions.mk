@@ -63,8 +63,7 @@ HEX_AGENT_ENV_DIR ?= /etc/appliance
 # Installer disk auto-detect: skip SAN/remote LUNs by transport (local OS disks
 # are sata/nvme/sas). Projects may also skip their own data disks by partition-
 # label prefix (empty = off); both overridable in project.mk.
-HEX_INSTALL_SKIP_TRANSPORTS   ?= fc iscsi fcoe
-HEX_INSTALL_DATA_LABEL_PREFIX ?=
+HEX_INSTALL_SKIP_TRANSPORTS   ?= usb fc iscsi fcoe
 HEX_EXPORT_VARS += HEX_PKGDIR HEX_DISTDIR HEX_REPODIR HEX_OSSDIR HEX_THIRDPARTYDIR HEX_MIRROR HEX_PROXY_URL
 
 # Link dynamically against SDK if compiled for release

@@ -38,38 +38,13 @@ say "AUTO-INSTALL MODE — press Alt-F2 / Alt-F3 for a login shell (root/admin) 
 # install never shows it.
 printf '\n  *** AUTO-INSTALL MODE ***\n  A background job is installing this node (progress on tty1).\n  Press Alt-F2 / Alt-F3 here for a login shell to investigate.  Login: root / admin\n  Live progress: tail -f /run/autoinstall.log\n\n' > /etc/issue
 
-# Auto-detect the local system disk when not explicitly given: the first fixed,
-# non-removable, local disk. SAN/remote LUNs are skipped by transport
-# (HEX_INSTALL_SKIP_TRANSPORTS); a project can also skip its own data disks by
-# partition-label prefix (HEX_INSTALL_DATA_LABEL_PREFIX, empty = off).
-if [ -z "$disk" ] || [ "$disk" = "1" ]; then
-    disk=""
-    for d in /sys/block/sd* /sys/block/nvme*; do
-        [ -e "$d" ] || continue
-        n=$(basename "$d")
-        [ "$(cat "$d/removable" 2>/dev/null)" = "1" ] && continue
-        # Skip SAN/remote LUNs by transport (local OS disks are sata/nvme/sas).
-        tran=$(/bin/lsblk -dno TRAN "/dev/$n" 2>/dev/null)
-        if [ -n "$tran" ]; then
-            case " @HEX_INSTALL_SKIP_TRANSPORTS@ " in *" $tran "*) continue ;; esac
-        fi
-        # Skip disks carrying a project data-partition label (e.g. OSD disks).
-        if [ -n "@HEX_INSTALL_DATA_LABEL_PREFIX@" ] && /bin/lsblk -no PARTLABEL "/dev/$n" 2>/dev/null | grep -q "^@HEX_INSTALL_DATA_LABEL_PREFIX@"; then
-            continue
-        fi
-        disk="/dev/$n"
-        break
-    done
-fi
-
-if [ -z "$disk" ]; then
-    say "no eligible target disk found; leaving installer at prompt"
-    exit 1
-fi
-
 # Optional pre-restore hook: when driver_server= is set and a preflight agent is
 # installed, run it and abort on non-zero exit — validate before reimaging.
 # What the agent checks is the deploy driver's concern.
+#
+# This runs BEFORE the target disk is settled: the driver appoints the disk and
+# the agent stamps it to /run/os-disk, so giving up on "no eligible disk" any
+# earlier would discard the operator's own choice unread.
 driver_server=""
 for tok in $(cat /proc/cmdline); do
     case "$tok" in
@@ -98,17 +73,29 @@ if [ -n "$driver_server" ] && [ -x /usr/sbin/phone-home-agent ]; then
         exit 1
     fi
     say "network preflight ... green light 1 (${SECONDS}s)"
-    # If the preflight agent stamped a target disk to /run/os-disk, it overrides
-    # the auto-detected disk above.
+    # The disk the driver appointed wins over the kernel cmdline: in a zero-touch
+    # deploy the operator picked it in the UI, and that is the later intent.
     if [ -s /run/os-disk ]; then
         picked=$(head -n1 /run/os-disk | tr -d '[:space:]')
         if [ -b "$picked" ]; then
             disk="$picked"
             say "using appointed OS disk $disk (from snapshot server)"
         else
-            say "appointed OS disk '$picked' is not a block device; keeping $disk"
+            say "appointed OS disk '$picked' is not a block device; ignoring"
         fi
     fi
+fi
+
+# Nothing explicit and nothing appointed: fall back to the first eligible local
+# disk. hex_install_disks is the shared eligibility rule — the same list the
+# restore CLI offers an operator, so hand and zero-touch installs agree.
+if [ -z "$disk" ] || [ "$disk" = "1" ]; then
+    disk=$(/usr/sbin/hex_install_disks --paths 2>/dev/null | head -n1)
+fi
+
+if [ -z "$disk" ]; then
+    say "no eligible target disk found; leaving installer at prompt"
+    exit 1
 fi
 
 say "restoring $(basename "$disk") image to $disk ..."

@@ -71,7 +71,7 @@ rootfs_install::
 	$(Q)mkdir -p $(ROOTDIR)/var/fixpack
 	$(Q)mkdir -p $(ROOTDIR)/var/update || true
 
-$(PROJ_ROOTFS): $(HEX_DATADIR)/hex_install/hex_install.sh.in
+$(PROJ_ROOTFS): $(HEX_DATADIR)/hex_install/hex_install.sh.in $(HEX_DATADIR)/hex_install/hex_install_disks.sh.in
 
 rootfs_install::
 	$(Q)sed -e 's/@QUIET_KERNEL_ARG@/$(QUIET_KERNEL_ARG)/' \
@@ -80,5 +80,8 @@ rootfs_install::
 	        $(HEX_DATADIR)/hex_install/hex_install.sh.in >$(ROOTDIR)/usr/sbin/hex_install
 	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_install
 	$(Q)touch --reference=$(HEX_DATADIR)/hex_install/hex_install.sh.in $(ROOTDIR)/usr/sbin/hex_install
+	$(Q)sed -e 's|@HEX_INSTALL_SKIP_TRANSPORTS@|$(HEX_INSTALL_SKIP_TRANSPORTS)|g' \
+	        $(HEX_DATADIR)/hex_install/hex_install_disks.sh.in >$(ROOTDIR)/usr/sbin/hex_install_disks
+	$(Q)chmod 755 $(ROOTDIR)/usr/sbin/hex_install_disks
 
 

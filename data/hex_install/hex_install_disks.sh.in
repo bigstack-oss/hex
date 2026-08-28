@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# List the block devices eligible as an OS install target, one per line.
+#
+# Single source of truth for every install path — the `restore` CLI, the PXE
+# install CLI and the zero-touch autoinstall auto-detect. They used to carry
+# three different filters, so a disk an operator could restore to by hand was
+# not always one zero-touch would accept, and vice versa.
+#
+#   (no args)  "NAME SIZE MODEL" columns, for a CLI picker
+#   --paths    /dev/NAME, for scripts
+#
+# A disk is eligible unless it is: not a whole disk, on a transport that is
+# never a local system disk (removable media or a SAN LUN), read-only, or
+# zero-sized. Nothing here inspects partition contents: an install target is
+# about to be overwritten, so what it currently holds cannot make it
+# ineligible.
+
+# Transports that are never a local system disk.
+SKIP_TRANSPORTS="@HEX_INSTALL_SKIP_TRANSPORTS@"
+
+paths=0
+[ "$1" = "--paths" ] && paths=1
+
+# -P (key="value") so a MODEL containing spaces can't shift the fields.
+/bin/lsblk -dn -P -o NAME,SIZE,MODEL,TYPE,TRAN,RO 2>/dev/null | while read -r line; do
+    NAME=""; SIZE=""; MODEL=""; TYPE=""; TRAN=""; RO=""
+    eval "$line" 2>/dev/null || continue
+
+    [ "$TYPE" = "disk" ] || continue
+    case " $SKIP_TRANSPORTS " in *" $TRAN "*) continue ;; esac
+    [ "$RO" = "1" ] && continue
+    [ "$SIZE" = "0B" ] && continue
+    [ -b "/dev/$NAME" ] || continue
+
+    if [ "$paths" = 1 ]; then
+        echo "/dev/$NAME"
+    else
+        printf '%-8s %-8s %s\n' "$NAME" "$SIZE" "$MODEL"
+    fi
+done
