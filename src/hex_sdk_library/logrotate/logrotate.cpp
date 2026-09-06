@@ -83,6 +83,19 @@ WriteLogRotateConf(LogRotateConf conf)
     if (conf.retention > 0)
         fprintf(fout, "  rotate %u\n", conf.retention);
 
+    // sharedscripts: run the pre/postrotate scripts once per rotation cycle rather
+    // than once per matched file. Without it logrotate's documented behaviour is
+    // per-file, and every script we generate is a "signal the service once"
+    // operation -- so a glob matching N files fired N reloads in the same second.
+    //
+    // /var/log/httpd/*.log matches 13 files on a control node, 11 of them non-empty:
+    // eleven overlapping `systemctl reload httpd.service` calls raced each other in
+    // the master's worker lifecycle and could take httpd down outright, 503ing
+    // Horizon and Keystone on whichever node held the VIP (cubecos#1192). The same
+    // shape applied to syslog (5 files) and prometheus.
+    if (!conf.preRotateCmds.empty() || !conf.postRotateCmds.empty())
+        fprintf(fout, "  sharedscripts\n");
+
     if (!conf.preRotateCmds.empty()) {
         fprintf(fout, "  prerotate\n");
         fprintf(fout, "    %s\n", conf.preRotateCmds.c_str());
