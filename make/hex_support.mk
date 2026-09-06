@@ -22,6 +22,12 @@ $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_fixpack/hex_fixpack_install.sh,
 # hex_log_event: event logging helper invoked by hex modules/cluster scripts
 $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_syslogd/hex_log_event.sh,./usr/sbin/hex_log_event)
 
+# hex_trim_syslog: drops /var/log/messages.N retentions when the set exceeds the
+# size budget. config_syslogd writes it into the syslog logrotate postrotate, so
+# without this line every nightly rotation logs "No such file or directory" and
+# the size budget it is supposed to enforce is never applied.
+$(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_syslogd/hex_trim_syslog.sh,./usr/sbin/hex_trim_syslog)
+
 # Add a utility script that does not seem to really fit anywhere else
 $(call PROJ_INSTALL_SCRIPT,-f,$(HEX_DATADIR)/hex_uptime,./usr/sbin/hex_uptime)
 
