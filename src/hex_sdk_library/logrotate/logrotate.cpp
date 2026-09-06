@@ -99,9 +99,17 @@ WriteLogRotateConf(LogRotateConf conf)
         fprintf(fout, "  %s\n", conf.extraArgs.c_str());
 
     // common configs
+    //
+    // No delaycompress: it exists for the case where the writing process keeps
+    // its old file descriptor and must be signalled to reopen, so the newest
+    // rotated generation has to stay uncompressed. Every LogRotateConf in hex
+    // and cubecos sets copytruncate, which means the rotated file is already a
+    // finished copy that nothing is still writing to -- so delaying only kept
+    // the largest generation uncompressed for no benefit. Measured on
+    // accept-3cc: logstash.log.1 1.4G uncompressed against logstash.log.2.gz
+    // at 25M, a ~56x difference on the generation that dominates the footprint.
     fprintf(fout, "  missingok\n");
     fprintf(fout, "  compress\n");
-    fprintf(fout, "  delaycompress\n");
     fprintf(fout, "  notifempty\n");
 
     fprintf(fout, "}\n");
