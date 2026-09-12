@@ -18,9 +18,24 @@ WriteDefLogRotateConf(int retention = 4)
         return false;
     }
 
+    // retention is a number of DAYS -- that is what cubesys.log.default.retention
+    // promises operators ("Set log file retention policy in days") and what the
+    // audit expectation is built on. logrotate's `rotate` is a number of
+    // GENERATIONS, so the two only coincide while every log rotates exactly once a
+    // day. They stopped coinciding when the logrotate timer moved to hourly: every
+    // generated config pairs `daily` with `maxsize 128M`, which rotates on
+    // whichever comes first, so a log that passes the cap every hour used to keep
+    // `rotate` hours rather than `rotate` days.
+    //
+    // So bound the window by age and let the count be the safety net, not the
+    // policy: maxage is the days promise, and rotate is sized for the worst case
+    // the hourly timer allows (24 rotations a day) so it cannot bind first. A log
+    // that rotates once a day is unaffected -- maxage removes its 15th day exactly
+    // as `rotate 14` used to.
     fprintf(fout, "daily\n");
     fprintf(fout, "su root syslog\n");
-    fprintf(fout, "rotate %d\n", retention);
+    fprintf(fout, "rotate %d\n", retention * 24);
+    fprintf(fout, "maxage %d\n", retention);
     fprintf(fout, "create\n");
     fprintf(fout, "include /etc/logrotate.d\n");
 

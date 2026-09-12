@@ -164,7 +164,6 @@ full_rootfs_install::
 	$(Q)sed -i -e "s/.*PermitRootLogin .*/PermitRootLogin yes/" -e "s/.*PasswordAuthentication .*/PasswordAuthentication yes/" $(ROOTDIR)/etc/ssh/sshd_config
 	$(Q)ln -sf /lib/systemd/system/systemd-hexctl-user.service $(ROOTDIR)/etc/systemd/system/multi-user.target.wants/systemd-hexctl-user.service
 	$(Q)chroot $(ROOTDIR) systemctl disable crond sshd
-	$(Q)chroot $(ROOTDIR) mv /etc/cron.daily/logrotate /etc/cron.hourly/ || true
 	$(Q)chroot $(ROOTDIR) mv /etc/logrotate.d/rsyslog /etc/logrotate.d/rsyslog.disabled
 	$(Q)chroot $(ROOTDIR) bash -c "rm -rf /usr/local/share/* /usr/share/{man,doc,licenses} /usr/src /usr/local/src /var/{log,cache}/* /tmp/* /lib/.build-id"
 
