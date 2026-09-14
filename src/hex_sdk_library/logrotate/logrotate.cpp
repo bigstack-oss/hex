@@ -20,21 +20,31 @@ WriteDefLogRotateConf(int retention = 4)
 
     // retention is a number of DAYS -- that is what cubesys.log.default.retention
     // promises operators ("Set log file retention policy in days") and what the
-    // audit expectation is built on. logrotate's `rotate` is a number of
-    // GENERATIONS, so the two only coincide while every log rotates exactly once a
-    // day. They stopped coinciding when the logrotate timer moved to hourly: every
-    // generated config pairs `daily` with `maxsize 128M`, which rotates on
-    // whichever comes first, so a log that passes the cap every hour used to keep
-    // `rotate` hours rather than `rotate` days.
+    // audit expectation is built on. logrotate's `rotate` counts GENERATIONS, so
+    // on its own it only ever approximates that promise, and the approximation
+    // holds exactly while a log rotates once per day and no more.
     //
-    // So bound the window by age and let the count be the safety net, not the
-    // policy: maxage is the days promise, and rotate is sized for the worst case
-    // the hourly timer allows (24 rotations a day) so it cannot bind first. A log
-    // that rotates once a day is unaffected -- maxage removes its 15th day exactly
-    // as `rotate 14` used to.
+    // The two bounds do different work, which is why both are emitted:
+    //
+    //   rotate  caps the number of files a busy log can leave behind. On the
+    //           shipped daily schedule that is also its age, one generation per
+    //           day.
+    //   maxage  caps their age directly, and is the only one of the two that says
+    //           anything about a log that rotates *rarely*. `notifempty` and a
+    //           quiet service mean generations can sit for months and still be
+    //           well inside a count of 14 -- without maxage they are kept
+    //           indefinitely, long past the window the tuning advertises.
+    //
+    // What neither covers, and is worth knowing rather than papering over: if
+    // something rotates a log more than once in a day -- an operator's
+    // `logrotate -f`, a fixpack or enabler driving a rotation -- `rotate` spends a
+    // generation without spending a day and the window shrinks below the
+    // advertised days. That is long-standing behaviour and this does not change
+    // it; sizing `rotate` past the count needed for a daily schedule would, at the
+    // cost of keeping far more files than the schedule can ever produce.
     fprintf(fout, "daily\n");
     fprintf(fout, "su root syslog\n");
-    fprintf(fout, "rotate %d\n", retention * 24);
+    fprintf(fout, "rotate %d\n", retention);
     fprintf(fout, "maxage %d\n", retention);
     fprintf(fout, "create\n");
     fprintf(fout, "include /etc/logrotate.d\n");
