@@ -45,7 +45,7 @@ endif
 # $(1): target
 ifneq ($(SUBDIRS),)
 define RECURSE
-$(Q)$(MAKE) TARGET=$(1) $(SUBDIRS)
++$(Q)$(MAKE) TARGET=$(1) $(SUBDIRS)
 endef
 else
 define RECURSE

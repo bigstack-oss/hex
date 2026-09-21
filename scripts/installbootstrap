@@ -1,0 +1,28 @@
+#!/bin/sh
+# HEX SDK
+#
+# Install the project bootstrap fragments into <rootdir>/usr/sbin/bootstrap,
+# replacing everything from the marker down (idempotent on re-runs).
+
+PROG=$(basename $0)
+MARKER='# --- project bootstrap (installbootstrap) ---'
+
+Usage()
+{
+    echo "Usage: $PROG <rootdir> <fragment> ..." >&2
+    exit 1
+}
+
+[ $# -ge 2 ] || Usage
+ROOTDIR=$1
+shift
+TARGET=$ROOTDIR/usr/sbin/bootstrap
+[ -d "$ROOTDIR/usr/sbin" ] || { echo "$PROG: $ROOTDIR/usr/sbin: not a directory" >&2; exit 1; }
+for f in "$@" ; do
+    [ -f "$f" ] || { echo "$PROG: $f: not a file" >&2; exit 1; }
+done
+
+if [ -f "$TARGET" ] && grep -qF -- "$MARKER" "$TARGET" ; then
+    sed -i "/^$(printf '%s' "$MARKER" | sed 's/[][\/.*^$]/\\&/g')\$/,\$d" "$TARGET"
+fi
+{ echo "$MARKER"; cat "$@"; } >> "$TARGET"

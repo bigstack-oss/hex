@@ -42,7 +42,7 @@ endif
 rootfs_install::
 	$(Q)[ -z "$(PROJ_SYS_SETTINGS)" ] || $(INSTALL_DATA) -f $(ROOTDIR) $(PROJ_SYS_SETTINGS) ./etc/settings.sys
 	$(Q)[ -z "$(PROJ_SETTINGS)" ] || $(INSTALL_DATA) -f $(ROOTDIR) $(PROJ_SETTINGS) ./etc/settings.txt
-	$(Q)[ -z "$(PROJ_BOOTSTRAP)" ] || cat $(PROJ_BOOTSTRAP) >>$(ROOTDIR)/usr/sbin/bootstrap
+	$(Q)[ -z "$(PROJ_BOOTSTRAP)" ] || $(SHELL) $(HEX_SCRIPTSDIR)/installbootstrap $(ROOTDIR) $(PROJ_BOOTSTRAP)
 	$(Q)sed -i '/GRUB_DEVICE=/s; /`; /boot`;' $(ROOTDIR)/usr/sbin/grub2-mkconfig
 
 # Add version and build info to settings.sys and rootfs
