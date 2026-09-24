@@ -7,8 +7,8 @@ pwconv
 echo 'test1:abc123' | chpasswd
 
 
-#$TESTRUNNER ../pamauth test1 abc123
-! $TESTRUNNER ../pamauth test1 badpass
+#$TESTRUNNER ./pamauth test1 abc123
+! $TESTRUNNER ./pamauth test1 badpass
 
 passwd -d test1
 userdel test1

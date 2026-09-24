@@ -12,12 +12,7 @@ LIB_SRCS := \
 
 COMPILE_FOR_SHARED_LIB = 1
 
-PROGRAMS := checkauth
-checkauth_SRCS := checkauth.c
-checkauth_LDLIBS = -lcrypt
-
-PROGRAMS += pamauth
-pamauth_SRCS := pamauth.c
-pamauth_LDLIBS = -lpam
+# checkauth and pamauth used to be built here; they are test drivers, and a program cannot
+# be built in a directory that feeds the archive it links against. See tests/Makefile.
 
 include $(HEX_MAKEDIR)/hex_sdk.mk
