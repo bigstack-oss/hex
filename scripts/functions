@@ -119,9 +119,16 @@ Quiet()
 #    or  LOOPDEV=$(SetupLoop -o <offset> <img>)
 SetupLoop()
 {
-    local LOOPDEV=$(losetup -f 2>/dev/null || true)
+    # Find and bind in one call; a separate `losetup -f` races other loop mounts.
+    local LOOPDEV=$(losetup -f --show $* 2>/dev/null || true)
     if [ -n "$LOOPDEV" -a -e "$LOOPDEV" ] ; then
-        # Mounting signed PPUs/Fixpacks causes losetup to complain about not fitting into a 512-byte sector so redirect stdout/stderr
+        echo $LOOPDEV
+        return 0
+    fi
+
+    # losetup without --show (e.g. busybox)
+    LOOPDEV=$(losetup -f 2>/dev/null || true)
+    if [ -n "$LOOPDEV" -a -e "$LOOPDEV" ] ; then
         Quiet losetup $LOOPDEV $* || Error "Failed to setup loop device"
     else
         Error "No more free loop devices"
