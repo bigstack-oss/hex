@@ -35,6 +35,7 @@ ppu_build::
 	$(Q)[ -d $(PROJ_SHIPDIR) ] || mkdir -p $(PROJ_SHIPDIR)
 	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.pkg $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.pkg.md5 $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.pkg.sha256 $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_rootfs.md5
 	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_debug.cgz $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.commit
+	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.pkg$(PROJ_COSIGN_BUNDLE_EXT) $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_debug.cgz$(PROJ_COSIGN_BUNDLE_EXT) $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*.commit$(PROJ_COSIGN_BUNDLE_EXT)
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makeppu -p $(PROJ_PPU_PADDING) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ ppu_install' $(PROJ_KERNEL) $(PROJ_INITRD) $(PROJ_ROOTFS) $(PROJ_FIRMWARE) $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME),"  GEN     $(PROJ_PPU_LONGNAME)")
 	$(Q)[ ! -e $(PROJ_ROOTFS_DEBUG) ] || cp $(PROJ_ROOTFS_DEBUG) $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_debug.cgz
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME) $(PROJ_PPU)
@@ -46,6 +47,7 @@ ppu_build::
 	$(Q)nohup bash -c "for PKG in $(PROJ_SHIPDIR)/$$(basename $(PROJ_PPU_LONGNAME) .pkg)_*.pkg ; do md5sum < $$PKG > $$PKG.md5 && chmod 0644 $$PKG.md5 ; sha256sum < $$PKG > $$PKG.sha256 && chmod 0644 $$PKG.sha256 ; done" $(QEND) &
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit $(PROJ_ROOTFS_COMMIT)
 	$(Q)echo $(PROJ_BUILD_COMMIT) > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit
+	$(call PROJ_COSIGN,$(PROJ_SHIPDIR)/$(PROJ_PPU_LONGNAME) $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_debug.cgz $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE)).commit,$(PROJ_PPU_LONGNAME))
 
 # Install additional files into PPU
 ppu_install::
@@ -97,5 +99,6 @@ ppuiso_build::
 	$(Q)$(RM) $(PROJ_SHIPDIR)/$(PROJ_NAME)*$(PROJ_BUILD_DESC)_pkg.iso*
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makedataimg -p $(PROJ_PPUISO_PADDING) -b $(PROJ_PPU) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ ppuiso_install' iso $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME),"  GEN     $(PROJ_PPUISO_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME) $(PROJ_PPUISO)
+	$(call PROJ_COSIGN,$(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME))
 	$(Q)nohup md5sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).md5 2>&1 &
 	$(Q)nohup sha256sum < $(PROJ_PPUISO) > $(PROJ_SHIPDIR)/$(PROJ_PPUISO_LONGNAME).sha256 2>&1 &

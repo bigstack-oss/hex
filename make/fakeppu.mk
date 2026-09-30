@@ -32,6 +32,7 @@ fake_ppu_build::
 	$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/makeppu -p $(PROJ_PPU_PADDING) -c '$(MAKECMD) ROOTDIR=@ROOTDIR@ fake_ppu_install' $(PROJ_KERNEL) $(PROJ_INITRD) $(HEX_IMGDIR)/hex_pxe_server_iso_initramfs.cgz $(PROJ_FIRMWARE) $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME),"  GEN     $(FAKE_PPU_LONGNAME)")
 	$(Q)ln -sf $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME) $(FAKE_PPU)
 	$(Q)chmod 0644 $(FAKE_PPU)
+	$(call PROJ_COSIGN,$(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME))
 	$(Q)nohup bash -c "md5sum < $(FAKE_PPU) > $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).md5 && chmod 0644 $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).md5" >/dev/null 2>&1 &
 	$(Q)nohup bash -c "sha256sum < $(FAKE_PPU) > $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).sha256 && chmod 0644 $(PROJ_SHIPDIR)/$(FAKE_PPU_LONGNAME).sha256" >/dev/null 2>&1 &
 	$(Q)for PKG in $(PROJ_SHIPDIR)/$$(basename $(FAKE_PPU_LONGNAME) .pkg)_*.pkg ; do chmod 0644 $$PKG ; done
