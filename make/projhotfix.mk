@@ -18,6 +18,7 @@ $(PROJ_SHIPDIR)/$(1): $(HEX_IMGDIR)/test_hotfixes/$(1)
 ifeq ($(wildcard $(HEX_HOTFIXES)/test_hotfixes/$(1).do_not_resign),)
 	$$(call RUN_CMD_TIMED,$(SHELL) $(HEX_SCRIPTSDIR)/signfixpack $$@,"  SIGN    $(1)")
 endif
+	$$(call PROJ_COSIGN,$$@)
 
 endef # GEN_TEST_FIXPACK_TARGET
 

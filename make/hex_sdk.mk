@@ -137,6 +137,9 @@ include $(HEX_MAKEDIR)/projrootfs.mk
 include $(HEX_MAKEDIR)/projinitramfs.mk
 endif
 
+# Before every makefile that ships an artifact: they sign it with PROJ_COSIGN
+include $(HEX_MAKEDIR)/projsign.mk
+
 ifeq ($(PROJ_BUILD_PPU),1)
 include $(HEX_MAKEDIR)/projppu.mk
 ALL += $(PROJ_PPU) $(PROJ_PPUISO)
@@ -205,6 +208,13 @@ ifeq ($(PROJ_BUILD_SBOM),1)
 include $(HEX_MAKEDIR)/projsbom.mk
 PROJ_BUILD_ROOTFS := 1
 FULL += $(PROJ_SBOM)
+endif
+
+# Every shipped artifact is signed as it is built, so the signing key has to exist first. Order-only:
+# a newly generated key must not rebuild images that are already signed.
+ifeq ($(PROJ_BUILD_SIGN),1)
+PROJ_SIGNED_ARTIFACTS := $(filter $(PROJ_PPU) $(PROJ_PPUISO) $(PROJ_ISO) $(PROJ_USB) $(PROJ_PXE) $(PROJ_PXESERVER) $(PROJ_PXESERVER_ISO) $(FAKE_PPU) $(PROJ_SBOM) $(PROJ_TEST_HOTFIXES),$(ALL) $(FULL))
+$(PROJ_SIGNED_ARTIFACTS): | $(PROJ_COSIGN_PUB)
 endif
 
 include $(HEX_MAKEDIR)/variable_targets.mk
