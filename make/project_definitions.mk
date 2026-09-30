@@ -45,6 +45,7 @@ PROJ_BUILD_PXESERVER     := 0
 PROJ_BUILD_PXESERVER_ISO := 0
 PROJ_BUILD_PXEDEPLOY     := 0
 PROJ_BUILD_SBOM          := 0
+PROJ_BUILD_SIGN          := 0
 
 # Location of project deliverables
 PROJ_SHIPDIR := $(BLDDIR)/ship
