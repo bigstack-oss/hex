@@ -137,7 +137,6 @@ include $(HEX_MAKEDIR)/projrootfs.mk
 include $(HEX_MAKEDIR)/projinitramfs.mk
 endif
 
-# Before every makefile that ships an artifact: they sign it with PROJ_COSIGN
 include $(HEX_MAKEDIR)/projsign.mk
 
 ifeq ($(PROJ_BUILD_PPU),1)
@@ -210,11 +209,18 @@ PROJ_BUILD_ROOTFS := 1
 FULL += $(PROJ_SBOM)
 endif
 
-# Every shipped artifact is signed as it is built, so the signing key has to exist first. Order-only:
-# a newly generated key must not rebuild images that are already signed.
+# The build's part of signing (projsign.mk): once every deliverable is in the ship directory,
+# write the SHA256SUMS manifest the publish job signs. Last in FULL, after everything it lists.
 ifeq ($(PROJ_BUILD_SIGN),1)
-PROJ_SIGNED_ARTIFACTS := $(filter $(PROJ_PPU) $(PROJ_PPUISO) $(PROJ_ISO) $(PROJ_USB) $(PROJ_PXE) $(PROJ_PXESERVER) $(PROJ_PXESERVER_ISO) $(FAKE_PPU) $(PROJ_SBOM) $(PROJ_TEST_HOTFIXES),$(ALL) $(FULL))
-$(PROJ_SIGNED_ARTIFACTS): | $(PROJ_COSIGN_PUB)
+PROJ_SUMMED_ARTIFACTS := $(filter $(PROJ_PPU) $(PROJ_PPUISO) $(PROJ_ISO) $(PROJ_USB) $(PROJ_PXE) $(PROJ_PXESERVER) $(PROJ_PXESERVER_ISO) $(FAKE_PPU) $(PROJ_SBOM) $(PROJ_TEST_HOTFIXES),$(ALL) $(FULL))
+$(PROJ_SHA256SUMS): $(PROJ_SUMMED_ARTIFACTS)
+FULL += $(PROJ_SHA256SUMS)
+
+# The SBOM describes the rootfs, so `make attest` attests it to every image that carries it. Not
+# the pxe server iso, which is built without the pkg; see projsign.mk.
+ifeq ($(PROJ_BUILD_SBOM),1)
+PROJ_SBOM_ATTESTED := $(filter $(PROJ_PPU) $(PROJ_PPUISO) $(PROJ_ISO) $(PROJ_USB) $(PROJ_PXE) $(PROJ_PXESERVER),$(ALL) $(FULL))
+endif
 endif
 
 include $(HEX_MAKEDIR)/variable_targets.mk
