@@ -1,0 +1,52 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+
+Usage() {
+    echo "Usage: $PROG <sbom.cdx.json> <packages.cdx.json>"
+    echo "  Write a package-level copy of a CycloneDX SBOM: every component and dependency"
+    echo "  edge except the per-file entries, and without syft's own properties."
+    exit 1
+}
+
+[ $# -eq 2 ] || Usage
+
+# The full SBOM is too big to attest. syft catalogues every package-owned file with its
+# digests (171677 of 189822 components in 3.2.0) and attaches its own properties to every
+# package (cpe23 candidates, raw package metadata, file locations): 128 MB in all, where public
+# Rekor refuses a request over ~24 MiB and the attestation carries the SBOM base64-encoded.
+# What remains -- name, version, purl, cpe, licenses, supplier and the package dependency graph
+# -- is what a consumer of the attestation matches against, and is ~9 MB. The full SBOM still
+# ships, signed, beside it.
+python3 - "$1" "$2" <<'EOF'
+import json, sys
+
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
+    bom = json.load(f)
+
+comps = [c for c in bom.get("components", []) if c.get("type") != "file"]
+for c in comps:
+    c.pop("properties", None)
+refs = {c.get("bom-ref") for c in comps}
+meta = bom.get("metadata", {})
+if "component" in meta:
+    refs.add(meta["component"].get("bom-ref"))
+
+deps = []
+for d in bom.get("dependencies", []):
+    if d.get("ref") not in refs:
+        continue
+    d = dict(d)
+    if "dependsOn" in d:
+        d["dependsOn"] = [r for r in d["dependsOn"] if r in refs]
+    deps.append(d)
+
+bom["components"] = comps
+bom["dependencies"] = deps
+with open(dst, "w") as f:
+    json.dump(bom, f, separators=(",", ":"))
+EOF

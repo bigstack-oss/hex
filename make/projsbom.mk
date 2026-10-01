@@ -29,19 +29,20 @@ SYFT_RPM := $(GITHUB_DL_BASE)/anchore/syft/releases/download/v$(SYFT_VER)/syft_$
 GRYPE_RPM := $(GITHUB_DL_BASE)/anchore/grype/releases/download/v$(GRYPE_VER)/grype_$(GRYPE_VER)_linux_amd64.rpm
 
 help::
-	$(Q)echo "sbom         Create SBOM (syft) and vulnerability report (grype), signed if PROJ_BUILD_SIGN=1"
+	$(Q)echo "sbom         Create SBOM (syft) and vulnerability report (grype)"
 
 .PHONY: sbom
 sbom: $(PROJ_SBOM)
 	$(Q)true
 
-# The SBOM and the vulnerability report are signed like every other deliverable (projsign.mk):
-# the copies in the ship directory, since those are what a consumer receives.
-$(PROJ_SBOM): syft-fs-cubecos.cdx.json
-	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; rm -f $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_vuln.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_bndl.json,"  RM      old sbom")
+# The SBOM, the package-level SBOM derived from it and the vulnerability report ship like any
+# other deliverable: projsign.mk covers them with the signed SHA256SUMS manifest, and attests
+# the package-level SBOM to each image (it says why that one, not the full SBOM).
+$(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages
+	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; rm -f $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom_packages.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_vuln.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_bndl.json,"  RM      old sbom")
 	$(call RUN_CMD_TIMED, grype sbom:$< --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
 	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
-	$(call PROJ_COSIGN,$(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,sbom + vuln)
+	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/makesbompackages $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom_packages.json,"  GEN     sbom_packages.json")
 	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
 
 syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
