@@ -31,6 +31,10 @@ MINI_PKGS += coreutils dmidecode e2fsprogs e2fsprogs-libs fuse-libs glibc libblk
 #     shim-x64
 #  libyaml-devel
 BASE_PKGS += kmod kexec-tools hostname cpio less tree ncurses openssl-devel glib2-devel openssl e2fsprogs xfsprogs dosfstools parted glibc-locale-source glibc-langpack-en pciutils ethtool efibootmgr mg passwd
+# rootfiles for root's .bash_profile (a login shell reads it, not .bashrc); the centos:stream9
+#     base image used to carry it. systemd-tmpfiles copies its /root files in at boot and leaves
+#     an existing .bashrc (data/os/bashrc.def) alone
+BASE_PKGS_NOARCH += rootfiles
 
 CENTOS_MIRROR := https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages
 DISTRO := el9
