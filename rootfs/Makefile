@@ -72,9 +72,37 @@ mini_rootfs_install:: RPMS-mini
 	$(Q)rm -rf $(ROOTDIR)/var/lock
 	$(Q)find $(ROOTDIR) -executable -type f | xargs -i bash -c "file -i {} | grep -q 'charset=binary' && strip {} 2>/dev/null" || true
 
+## Intel's out-of-tree ixgbe, built into the base rootfs
+
+# The Intel E610 (8086:57AE-57B2) is only known to the in-tree ixgbe from Linux 6.14, and the
+# kernel here is 6.12. Intel's driver carries it, so it is compiled in the jail against
+# $(KERNEL_VERS) and installed under updates/, which depmod searches ahead of the in-tree copy.
+# Base is the rootfs the others are built on -- full, and from it the project rootfs, and the
+# install, PXE and PXE-server ramdisks -- so all of them carry it. The boot ramdisk is built on
+# the mini initrd, not on base, and stays without NIC drivers. base.modules carries dca, the one
+# module ixgbe depends on, so base's own module index resolves it.
+GITHUB_DL_BASE ?= https://github.com
+IXGBE_VER := 6.4.5
+IXGBE_URL := $(GITHUB_DL_BASE)/intel/ethernet-linux-ixgbe/releases/download/v$(IXGBE_VER)/ixgbe-$(IXGBE_VER).tar.gz
+# The GitHub release carries no checksum. This is the SHA256 Intel's download center publishes
+# for the same tarball (intel.com download 14302), so it moves with IXGBE_VER.
+IXGBE_SHA256 := 8d23f2c329e0b93055236e67ffbf1de99d8dce32ccc75beb759774c7c24d7ed4
+IXGBE_TGZ = $(TOP_BLDDIR)/hex/rootfs/ixgbe-$(IXGBE_VER).tar.gz
+IXGBE_SRC = $(TOP_BLDDIR)/hex/rootfs/ixgbe-$(IXGBE_VER)
+
+DISTCLEAN += $(IXGBE_TGZ) $(IXGBE_SRC)
+
+# Download to .part and only rename once the digest matches.
+$(IXGBE_TGZ):
+	$(Q)mkdir -p $(@D)
+	$(Q)wget -q $(IXGBE_URL) -O $@.part
+	$(Q)echo "$(IXGBE_SHA256)  $@.part" | sha256sum -c -
+	$(Q)mv $@.part $@
+
 ## HEX Base Rootfs: components needed by installer images
 
 BASE_DEPS := \
+	$(IXGBE_TGZ) \
 	$(HEX_DATADIR)/os/base.modules \
 	$(HEX_DATADIR)/os/systemd-hexctl-sys.service \
 	$(HEX_DATADIR)/os/passwd \
@@ -108,6 +136,14 @@ base_rootfs_install:
 	$(Q)chroot $(ROOTDIR) systemctl unmask getty.target
 	$(Q)chroot $(ROOTDIR) systemctl set-default multi-user.target
 	$(Q)$(INSTALL_MODULES) $(ROOTDIR) $(HEX_DATADIR)/os/base.modules
+	@# BUILD_KERNEL keeps Intel's Makefile off `uname -r`, the build host's kernel. modules_install,
+	@# not install, which would also run dracut; INSTALL_MOD_STRIP drops ~17 MB of debug info. The
+	@# modinfo check fails the build unless ixgbe resolves to a module with the E610 10GBASE-T id.
+	$(Q)rm -rf $(IXGBE_SRC) && tar -xzf $(IXGBE_TGZ) -C $(dir $(IXGBE_SRC))
+	$(Q)$(MAKE) -C $(IXGBE_SRC)/src BUILD_KERNEL=$(KERNEL_VERS) \
+		INSTALL_MOD_PATH=$(ROOTDIR) INSTALL_MOD_STRIP=1 modules_install
+	$(Q)chroot $(ROOTDIR) depmod -a $(KERNEL_VERS)
+	$(Q)chroot $(ROOTDIR) modinfo -k $(KERNEL_VERS) -F alias ixgbe | grep -qi 'v00008086d000057B0'
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/systemd-hexctl-sys.service ./lib/systemd/system
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/passwd ./etc
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/shadow ./etc
