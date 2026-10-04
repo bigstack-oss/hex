@@ -518,6 +518,11 @@ w
 EOF
     fi
     partprobe $DEVICE
+    # Let udev finish the partition re-reads before testing for the nodes. fdisk's
+    # and partprobe's each remove and re-add every partition, so WaitForDev can see
+    # a node that a re-read still queued then takes away: mkfs.vfat on a UEFI restore
+    # failed with "unable to open /dev/sda1" right after WaitForDev had found it.
+    udevadm settle --timeout=30 || true
 
     if echo $DEVICE | grep -q nvme ; then
         # nvme partition example /dev/nvme0n1p1 /dev/nvme0n1p2, ...
