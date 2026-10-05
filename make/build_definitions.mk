@@ -3,14 +3,22 @@
 # Hex SDK header dependencies
 HEX_SDK_INCDIR := -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0
 
-CC       ?= gcc
-CXX      ?= g++
+# GCC Toolset 15, installed in the build jail beside the system gcc 11 (which still builds kernel
+# modules, rpms and pip wheels); gnu23 needs gcc 14 or newer. Make predefines CC and CXX, so `?=`
+# never fired: replace only make's defaults, and let the environment or command line still win.
+GCC_TOOLSET_BINDIR := /opt/rh/gcc-toolset-15/root/usr/bin
+ifneq ($(filter default undefined,$(origin CC)),)
+CC       := $(GCC_TOOLSET_BINDIR)/gcc
+endif
+ifneq ($(filter default undefined,$(origin CXX)),)
+CXX      := $(GCC_TOOLSET_BINDIR)/g++
+endif
 #FIXME: deprecated declarations should be replaced
 #WARNFLAGS := -Wall -Werror -Wno-unused-result
 WARNFLAGS := -Wall -Werror -Wno-unused-result -Wno-error=deprecated-declarations
 OPTFLAGS := -g
-CFLAGS    = $(WARNFLAGS) $(OPTFLAGS) -std=gnu99
-CXXFLAGS  = $(WARNFLAGS) $(OPTFLAGS) -fno-rtti -fexceptions -std=gnu++2a
+CFLAGS    = $(WARNFLAGS) $(OPTFLAGS) -std=gnu23
+CXXFLAGS  = $(WARNFLAGS) $(OPTFLAGS) -fno-rtti -fexceptions -std=gnu++23
 CPPFLAGS := -MMD -D_REENTRANT $(HEX_SDK_INCDIR) -I$(HEX_INCLUDEDIR) -I$(SRCDIR) -I.
 
 LDFLAGS	 :=
