@@ -98,6 +98,7 @@ if [ -z "$disk" ]; then
     exit 1
 fi
 
+# hex_install restore wipes the other local data disks (see WipeDataDisks).
 say "restoring $(basename "$disk") image to $disk ..."
 SECONDS=0
 echo "sys.install.hdd=$disk" > /etc/extra_settings.sys
