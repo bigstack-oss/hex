@@ -46,30 +46,58 @@ if [ -z ${pxe_via_nfs+x} ]; then
     done
     echo "[rc.local] image fetch via HTTP ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
 else
-    /bin/mkdir -p /mnt/nfs
-    # NetworkManager may not have the interface up when rc.local first runs, so
-    # the NFS mount must wait for the network AND retry — a one-shot mount races
-    # ahead of DHCP, leaving /mnt/nfs empty so rsync finds no pkg.
+    # pxe_via_nfs= carries the pxeserver + image dir. Prefer fetching the .pkg over
+    # HTTP (derived from the same server): wget is resumable and avoids NFS-client
+    # read wedges (folio_wait_bit_common) on the multi-GB .pkg seen on nodes with
+    # many SAN LUNs. Fall back to the NFS mount if the pxeserver isn't serving HTTP.
     nfshost=${pxe_via_nfs%%:*}
-    for a in $(seq 1 60); do
-        grep -q " /mnt/nfs " /proc/mounts || { timeout 3 ping -c1 $nfshost >/dev/null 2>&1 && timeout 15 /bin/mount -t nfs -o nolock $pxe_via_nfs /mnt/nfs 2>/dev/null; }
-        pkg=$(basename $(ls /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg 2>/dev/null | head -1) 2>/dev/null)
-        [ -n "$pkg" ] && break
-        echo "[rc.local] waiting for network + NFS pkg (attempt $a) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 3
+    pkgname=@PROJ_RELEASE_LONGNAME@.pkg
+    http_url=""
+    for port in "" ":8080"; do
+        u="http://${nfshost}${port}/${pxe_via_nfs##*/}/${pkgname}"
+        if timeout 12 /usr/bin/wget -q -T 8 --spider "$u" 2>/dev/null ; then
+            http_url="$u"
+            break
+        fi
     done
-    echo "[rc.local] fetching ${pkg:-image} via NFS (retry until complete) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1
-    SECONDS=0
-    # --append resumes a killed transfer from the current length instead of a
-    # delta restart — safe because the source .pkg is static for a given name
-    # (a swapped pkg yields a corrupt file that hex_install rejects).
-    for a in $(seq 1 12); do
-        timeout 7200 /usr/bin/rsync --partial --append --info=progress2 /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg /mnt/install/ 2>&1 | tee /dev/tty0 >/dev/null 2>&1
-        [ ${PIPESTATUS[0]} -eq 0 ] && break
-        echo "[rc.local] ${pkg:-image} fetch attempt $a incomplete (${SECONDS}s); retrying" | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 5
-    done
-    echo "[rc.local] ${pkg:-image} ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
-    sync
-    timeout 10 umount /mnt/nfs || umount -l /mnt/nfs
+    /bin/mkdir -p /mnt/install
+    if [ -n "$http_url" ]; then
+        echo "[rc.local] fetching ${pkgname} via HTTP ${http_url} (resume) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        SECONDS=0
+        for a in $(seq 1 20); do
+            timeout 7200 /usr/bin/wget -c -T 60 -O /mnt/install/${pkgname} "$http_url" 2>&1 | tee /dev/tty0 >/dev/null 2>&1
+            [ ${PIPESTATUS[0]} -eq 0 ] && break
+            echo "[rc.local] HTTP fetch attempt $a incomplete (${SECONDS}s); retrying" | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 5
+        done
+        echo "[rc.local] ${pkgname} via HTTP ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        sync
+    else
+        echo "[rc.local] pxeserver HTTP unavailable on ${nfshost} (:80, :8080); falling back to NFS ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        /bin/mkdir -p /mnt/nfs
+        # NetworkManager may not have the interface up when rc.local first runs, so
+        # the NFS mount must wait for the network AND retry — a one-shot mount races
+        # ahead of DHCP, leaving /mnt/nfs empty so rsync finds no pkg.
+        nfshost=${pxe_via_nfs%%:*}
+        for a in $(seq 1 60); do
+            grep -q " /mnt/nfs " /proc/mounts || { timeout 3 ping -c1 $nfshost >/dev/null 2>&1 && timeout 15 /bin/mount -t nfs -o nolock $pxe_via_nfs /mnt/nfs 2>/dev/null; }
+            pkg=$(basename $(ls /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg 2>/dev/null | head -1) 2>/dev/null)
+            [ -n "$pkg" ] && break
+            echo "[rc.local] waiting for network + NFS pkg (attempt $a) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 3
+        done
+        echo "[rc.local] fetching ${pkg:-image} via NFS (retry until complete) ..." | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        SECONDS=0
+        # --append resumes a killed transfer from the current length instead of a
+        # delta restart — safe because the source .pkg is static for a given name
+        # (a swapped pkg yields a corrupt file that hex_install rejects).
+        for a in $(seq 1 12); do
+            timeout 7200 /usr/bin/rsync --partial --append --info=progress2 /mnt/nfs/@PROJ_RELEASE_LONGNAME@*.pkg /mnt/install/ 2>&1 | tee /dev/tty0 >/dev/null 2>&1
+            [ ${PIPESTATUS[0]} -eq 0 ] && break
+            echo "[rc.local] ${pkg:-image} fetch attempt $a incomplete (${SECONDS}s); retrying" | tee /dev/tty0 /dev/console >/dev/null 2>&1; sleep 5
+        done
+        echo "[rc.local] ${pkg:-image} ... (${SECONDS}s)" | tee /dev/tty0 /dev/console >/dev/null 2>&1
+        sync
+        timeout 10 umount /mnt/nfs || umount -l /mnt/nfs
+    fi
 fi
 
 # Hot-update the phone-home-agent from the driver NOW — before preflight, over
