@@ -51,6 +51,7 @@ RestoreMain(int argc, const char** argv)
         device.c_str());
 
     CliPrintf("Restoring %s on %s", list[0].c_str(), device.c_str());
+    CliPrintf("The other local data disks will be wiped (boot with autoinstall_keepdata to keep them)");
 
     if (!CliReadConfirmation()) {
         return CLI_SUCCESS;
