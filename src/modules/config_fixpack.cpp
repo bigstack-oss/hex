@@ -523,5 +523,8 @@ CONFIG_SUPPORT_FILE(FIXPACK_HISTORY_FILE);
 CONFIG_SUPPORT_COMMAND("ls -l /var/fixpack");
 
 CONFIG_MODULE(fixpack, 0, 0, 0, 0, 0);
-CONFIG_MIGRATE(fixpack, FIXPACK_HISTORY_FILE);
+
+// FIXPACK_HISTORY_FILE is deliberately not migrated: a new firmware already
+// carries the fixes of the fixpacks installed on the old one, so it starts
+// with no fixpack history.
 
