@@ -98,6 +98,31 @@ if [ -z "$disk" ]; then
     exit 1
 fi
 
+# Wipe the other local data disks so the first-time setup starts clean: an old
+# Ceph OSD left on them is otherwise kept by FTS ("carries a bluestore label; not
+# re-creating it") and never comes up. Same eligibility rule as the target pick,
+# so SAN LUNs (fc/iscsi/fcoe) and USB are never touched. Squid keeps bluestore
+# label copies at 0/1G/10G/100G/1000G, so zero each slot on the disk and on every
+# partition before dropping the table. `autoinstall_keepdata` skips this.
+keepdata=""
+grep -qw autoinstall_keepdata /proc/cmdline && keepdata=1
+if [ -z "$keepdata" ]; then
+    for d in $(/usr/sbin/hex_install_disks --paths 2>/dev/null); do
+        [ "$d" = "$disk" ] && continue
+        say "wiping data disk $d ..."
+        for dev in $(/bin/lsblk -lnpo NAME "$d" 2>/dev/null); do
+            sz=$(/usr/sbin/blockdev --getsize64 "$dev" 2>/dev/null || echo 0)
+            for off in 0 1 10 100 1000; do
+                [ $((off * 1024 * 1024 * 1024)) -lt "$sz" ] || continue
+                dd if=/dev/zero of="$dev" bs=1M count=1 seek=$((off * 1024)) oflag=direct conv=notrunc 2>/dev/null || true
+            done
+            /usr/sbin/wipefs -a "$dev" >/dev/null 2>&1 || true
+        done
+        /usr/sbin/sgdisk -Z "$d" >/dev/null 2>&1 || true
+        /usr/sbin/partprobe "$d" 2>/dev/null || true
+    done
+fi
+
 say "restoring $(basename "$disk") image to $disk ..."
 SECONDS=0
 echo "sys.install.hdd=$disk" > /etc/extra_settings.sys
