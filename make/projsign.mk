@@ -164,6 +164,32 @@ _SUMS = $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_SHA256SUMS
 _SUMS_BUNDLE = $(_SUMS)$(PROJ_COSIGN_BUNDLE_EXT)
 _HOWTO = $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_HOW_TO_VERIFY.txt
 
+# The release's own check on the systems it is installed on. A release rootfs built here, with a
+# signer named, ships what `hex_install update` needs to check the next release before it mounts
+# anything of it (data/hex_install/hex_verify_update.sh): cosign, Sigstore's trusted root for an
+# offline check (data/sigstore), the verifier, and the signer's identity and issuer in
+# /etc/settings.sys. These are the identity the publish job signs as (PROJ_COSIGN_IDENTITY /
+# _OIDC_ISSUER there), and they are what every future update of this system is checked against.
+# Left empty, nothing is installed and updates are not checked, as before.
+PROJ_UPDATE_SIGNER_IDENTITY ?=
+PROJ_UPDATE_SIGNER_ISSUER ?=
+
+ifeq ($(PROJ_BUILD_SIGN),1)
+ifneq ($(PROJ_UPDATE_SIGNER_IDENTITY),)
+ifeq ($(PROJ_UPDATE_SIGNER_ISSUER),)
+$(error PROJ_UPDATE_SIGNER_IDENTITY needs PROJ_UPDATE_SIGNER_ISSUER)
+endif
+rootfs_install::
+	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/fetchverified $(COSIGN_RPM) $(COSIGN_SHA256) $(notdir $(COSIGN_RPM)) && rpm --root $(ROOTDIR) -U --replacepkgs --nodeps $(notdir $(COSIGN_RPM)),"  RPM     cosign (update check)")
+	$(Q)$(INSTALL_DATA) -f $(ROOTDIR) $(HEX_DATADIR)/sigstore/trusted_root.json ./usr/share/hex/sigstore/trusted_root.json
+	$(Q)$(INSTALL_SCRIPT) -f $(ROOTDIR) $(HEX_DATADIR)/hex_install/hex_verify_update.sh ./usr/sbin/hex_verify_update
+	$(Q)echo "sys.update.signer.identity = $(PROJ_UPDATE_SIGNER_IDENTITY)" >> $(ROOTDIR)/etc/settings.sys
+	$(Q)echo "sys.update.signer.issuer = $(PROJ_UPDATE_SIGNER_ISSUER)" >> $(ROOTDIR)/etc/settings.sys
+
+DISTCLEAN += $(notdir $(COSIGN_RPM))
+endif
+endif
+
 help::
 	$(Q)echo "sums         Write the SHA256SUMS manifest of the ship directory"
 	$(Q)echo "sign         Sign the SHA256SUMS manifest (cosign)"

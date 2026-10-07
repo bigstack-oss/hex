@@ -101,6 +101,7 @@ else
 fi
 
 IMAGE=""
+UPDATE_RELEASE=""
 WIPEHDD=0
 DESTLIST="1"
 VERBOSE=0
@@ -136,6 +137,7 @@ if [ "$MODE" = "ppu" ] ; then
             ;;
         update)
             shift 1
+            UPDATE_RELEASE=$(basename ${1%%.pkg})
             IMAGE=$(ls ${1%%.pkg}*.pkg 2>/dev/null || find -L $SRC -type f -regex ".*${1%%.pkg}.*[.]pkg$")
             ;;
         *)
@@ -707,6 +709,13 @@ FormatDataHDD()
 
 # main()
 if [ "$MODE" = "ppu" ] ; then
+    # Check the release signature first: mounting the update, and the install.sh and update.sh it
+    # carries, already run as root on this system. Refuses what is signed but does not check out;
+    # an unsigned update goes ahead with a warning. A system built without the check has no
+    # hex_verify_update, and updates as before.
+    if [ -n "$UPDATE_RELEASE" -a -x /usr/sbin/hex_verify_update ] ; then
+        /usr/sbin/hex_verify_update $(dirname $(echo $IMAGE | cut -d' ' -f1)) $UPDATE_RELEASE $IMAGE || exit 1
+    fi
     # Update from HDD
     MountAndInstallImage
     Echo "Finished updating. Please reboot appliance."
