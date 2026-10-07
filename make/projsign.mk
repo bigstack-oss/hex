@@ -67,8 +67,15 @@
 # See projsbom.mk
 GITHUB_DL_BASE ?= https://github.com
 
-# Pinned; see projsbom.mk for why.
+# Pinned, with the rpm's SHA-256; see projsbom.mk for why. The digest comes from the
+# cosign_checksums.txt published with the release, checked against sigstore's release identity:
+#
+#   cosign verify-blob --bundle cosign_checksums.txt.sigstore.json \
+#       --certificate-identity keyless@projectsigstore.iam.gserviceaccount.com \
+#       --certificate-oidc-issuer https://accounts.google.com cosign_checksums.txt
+#   grep ' cosign-<ver>-1.x86_64.rpm$' cosign_checksums.txt
 COSIGN_VER := 3.1.3
+COSIGN_SHA256 := 2e126115465ba55d03d3aea606cced2a24a1df578c8feb1d9384d584ebda9226
 COSIGN_RPM := $(GITHUB_DL_BASE)/sigstore/cosign/releases/download/v$(COSIGN_VER)/cosign-$(COSIGN_VER)-1.x86_64.rpm
 
 # Signing key: a key file or a KMS URI (awskms://, gcpkms://, hashivault://, ...). Left empty, a
@@ -210,7 +217,7 @@ ifneq ($(PROJ_COSIGN_KEY)$(filter 1,$(PROJ_COSIGN_KEYLESS)),)
 endif
 
 $(PROJ_COSIGN_SETUP):
-	$(call RUN_CMD_TIMED, command -v cosign >/dev/null && cosign version 2>/dev/null | grep -q "v$(COSIGN_VER)$$" || dnf install -y $(COSIGN_RPM),"  DNF     cosign")
+	$(call RUN_CMD_TIMED, command -v cosign >/dev/null && cosign version 2>/dev/null | grep -q "v$(COSIGN_VER)$$" || { $(SHELL) $(HEX_SCRIPTSDIR)/fetchverified $(COSIGN_RPM) $(COSIGN_SHA256) $(notdir $(COSIGN_RPM)) && dnf install -y ./$(notdir $(COSIGN_RPM)) ; },"  DNF     cosign")
 ifeq ($(PROJ_COSIGN_KEYLESS),1)
 	$(call RUN_CMD_TIMED, printf 'certificate-identity: %s\ncertificate-oidc-issuer: %s\n' '$(PROJ_COSIGN_IDENTITY)' '$(PROJ_COSIGN_OIDC_ISSUER)' > $@,"  GEN     $@")
 else ifeq ($(PROJ_COSIGN_KEY),)
@@ -220,6 +227,8 @@ else
 endif
 
 PKGCLEAN += cosign.key $(PROJ_COSIGN_PUB) cosign.identity
+# The download: kept by `make clean`, reused once its digest checks out
+DISTCLEAN += $(notdir $(COSIGN_RPM))
 
 # Refuse to sign or attest a manifest that no longer describes the ship directory. sign and
 # attest do not depend on $(PROJ_SHA256SUMS) through make: a stale image would then be rebuilt,

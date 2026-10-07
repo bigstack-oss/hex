@@ -1,0 +1,36 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+
+Usage() {
+    echo "Usage: $PROG <url> <sha256> <file>"
+    echo "  Download <url> to <file> and keep it only if its SHA-256 is <sha256>. A <file> that"
+    echo "  already has that digest is kept as it is, without downloading."
+    exit 1
+}
+
+[ $# -eq 3 ] || Usage
+URL=$1 WANT=$2 OUT=$3
+[[ $WANT =~ ^[0-9a-f]{64}$ ]] || { echo "$PROG: not a sha256: '$WANT'" >&2 ; exit 1 ; }
+
+sha() { sha256sum < "$1" | cut -d' ' -f1 ; }
+
+# A copy from an earlier build is reused only if it is still exactly the pinned file; any other
+# copy goes, so a failed download cannot leave it behind looking like the real thing
+if [ -f "$OUT" ] ; then
+    [ "$(sha "$OUT")" != "$WANT" ] || exit 0
+    rm -f "$OUT"
+fi
+
+TMP=$OUT.part
+trap 'rm -f "$TMP"' EXIT
+curl -fsSL --retry 3 -o "$TMP" "$URL" || { echo "$PROG: cannot download $URL" >&2 ; exit 1 ; }
+GOT=$(sha "$TMP")
+if [ "$GOT" != "$WANT" ] ; then
+    echo "$PROG: $(basename "$OUT") from $URL has sha256 $GOT, expected $WANT" >&2
+    exit 1
+fi
+mv -f "$TMP" "$OUT"
