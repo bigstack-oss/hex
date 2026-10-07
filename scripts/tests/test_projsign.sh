@@ -175,4 +175,23 @@ chk "  keep the transparency log check" "$(has "$KT" "insecure-ignore-tlog")" "n
 bash "$HEX/scripts/makehowtoverify" -i x@y "$K" $R >/dev/null 2>&1; chk "  identity without issuer is a usage error" "$?" "1"
 bash "$HEX/scripts/makehowtoverify" -k k.pub -i x@y -o z "$K" $R >/dev/null 2>&1; chk "  key and identity together is a usage error" "$?" "1"
 
+# --- a directory that does not sign: forwards to PROJ_SIGN_DIR when it names one, else says
+# signing is disabled -- rather than either quietly doing nothing
+U="$T/top"; mkdir -p "$U"
+cat > "$U/Makefile" <<EOF2
+VERBOSE := 0
+include $HEX/make/run_cmd_definitions.mk
+PROJ_SIGN_DIR := $T
+include $HEX/make/projsign.mk
+EOF2
+reset
+OUT=$(make -C "$U" --no-print-directory verify 2>&1); RC=$?
+chk "top level with PROJ_SIGN_DIR forwards verify" "$RC" "0"
+chk "  and runs the signing directory's" "$(has "$OUT" "VERIFY  SHA256SUMS contents")" "yes"
+chk "  without override warnings" "$(has "$OUT" "overriding recipe")" "no"
+sed -i '/^PROJ_SIGN_DIR/d' "$U/Makefile"
+OUT=$(make -C "$U" --no-print-directory verify 2>&1); RC=$?
+chk "top level without PROJ_SIGN_DIR refuses" "$RC" "2"
+chk "  and says signing is disabled" "$(has "$OUT" "Signing is disabled")" "yes"
+
 echo "pass=$pass fail=$fail"; [ $fail -eq 0 ]

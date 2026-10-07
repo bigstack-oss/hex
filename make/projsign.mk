@@ -283,6 +283,15 @@ endif
 howtoverify:
 	$(call RUN_CMD_TIMED, A="" ; for L in $(PROJ_SBOM_ATTESTED) ; do A="$$A -a $$(basename $$(readlink -f $$L))" ; done ; $(SHELL) $(HEX_SCRIPTSDIR)/makehowtoverify $(_HOWTO_WHO) $(if $(filter 1,$(PROJ_COSIGN_TLOG)),,-n) -c $(COSIGN_VER) $$A $(PROJ_SHIPDIR) $$(readlink $(PROJ_RELEASE)) || exit 1,"  GEN     HOW_TO_VERIFY.txt")
 
+else ifneq ($(PROJ_SIGN_DIR),)
+
+# A directory that does not sign but names the one that does (cubecos' top level: core/main)
+# forwards there. Set PROJ_SIGN_DIR before hex_sdk.mk is included; a rule of the project's own
+# for these targets would be overridden by this file, which is read later.
+.PHONY: sums sign attest verify howtoverify
+sums sign attest verify howtoverify:
+	$(Q)$(MAKE) -C $(PROJ_SIGN_DIR) $@
+
 else
 
 .PHONY: sums sign attest verify howtoverify
