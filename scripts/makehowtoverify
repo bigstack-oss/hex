@@ -94,8 +94,15 @@ trap 'rm -f "$TMP"' EXIT
     [ $TLOG -eq 1 ] || echo "  Not recorded in a transparency log."
     [ -z "$COSIGN_VER" ] || echo "  Signed with:      cosign v$COSIGN_VER"
     echo
+    if [ -z "$PUBKEY" ] ; then
+        echo "Confirm the signer identity and issuer with the vendor through a channel other than"
+        echo "this download before relying on them: this file came with the images, so on its own"
+        echo "it is no stronger than they are."
+        echo
+    fi
     echo "You need cosign (https://docs.sigstore.dev/cosign/system_config/installation/)"
     echo "and sha256sum. Run the commands below in the directory holding the files."
+    [ $TLOG -eq 0 ] || echo "The first run needs network access: cosign fetches Sigstore's trusted root."
     echo
     echo "1. Check the signature of the list. It must print \"Verified OK\":"
     echo
