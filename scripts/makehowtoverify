@@ -1,0 +1,123 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+
+Usage() {
+    echo "Usage: $PROG [options] <shipdir> <release>"
+    echo "  Write <shipdir>/<release>_HOW_TO_VERIFY.txt: how someone who downloaded the release"
+    echo "  checks its signature and contents, with this release's file names and digests."
+    echo
+    echo "  -i <identity> -o <issuer>  signed keyless as <identity>, vouched for by <issuer>"
+    echo "  -k <pubkey>                signed with a key; <pubkey> is the shipped public key's name"
+    echo "  -t                         (with -k) the key is the build's throwaway key"
+    echo "  -n                         signed without the transparency log"
+    echo "  -c <version>               the cosign version it was signed with"
+    echo "  -a <image>                 an image with an SBOM attestation (repeatable)"
+    exit 1
+}
+
+IDENTITY= ISSUER= PUBKEY= THROWAWAY=0 TLOG=1 COSIGN_VER= ATTESTED=()
+while getopts "i:o:k:tnc:a:" opt ; do
+    case $opt in
+        i) IDENTITY=$OPTARG ;;
+        o) ISSUER=$OPTARG ;;
+        k) PUBKEY=$OPTARG ;;
+        t) THROWAWAY=1 ;;
+        n) TLOG=0 ;;
+        c) COSIGN_VER=$OPTARG ;;
+        a) ATTESTED+=("$OPTARG") ;;
+        *) Usage ;;
+    esac
+done
+shift $((OPTIND - 1))
+[ $# -eq 2 ] || Usage
+[ -n "$PUBKEY" ] || [ -n "$IDENTITY" -a -n "$ISSUER" ] || Usage
+[ -z "$PUBKEY" ] || [ -z "$IDENTITY$ISSUER" ] || Usage
+
+SHIP=$1 R=$2
+SUMS=${R}_SHA256SUMS
+BUNDLE=$SUMS.sigstore.json
+OUT=$SHIP/${R}_HOW_TO_VERIFY.txt
+
+# Only a manifest that is signed gets instructions: a file like this next to an unsigned
+# release would read as a check that is not there.
+[ -f "$SHIP/$SUMS" ] || { echo "$PROG: no $SUMS in $SHIP" >&2 ; exit 1 ; }
+[ -f "$SHIP/$BUNDLE" ] || { echo "$PROG: $SUMS is not signed (no $BUNDLE)" >&2 ; exit 1 ; }
+
+if [ -n "$PUBKEY" ] ; then
+    [ -f "$SHIP/$PUBKEY" ] || { echo "$PROG: no $PUBKEY in $SHIP" >&2 ; exit 1 ; }
+    WHO="--key $PUBKEY"
+else
+    WHO="--certificate-identity $IDENTITY --certificate-oidc-issuer $ISSUER"
+fi
+[ $TLOG -eq 1 ] || WHO="$WHO --insecure-ignore-tlog"
+
+# The Rekor entry, from the bundle (sigstore bundle v0.3: verificationMaterial.tlogEntries)
+LOGINDEX= SIGNED=
+if [ $TLOG -eq 1 ] ; then
+    LOGINDEX=$(grep -oE '"logIndex": *"?[0-9]+' "$SHIP/$BUNDLE" | head -1 | grep -oE '[0-9]+$' || true)
+    T=$(grep -oE '"integratedTime": *"?[0-9]+' "$SHIP/$BUNDLE" | head -1 | grep -oE '[0-9]+$' || true)
+    [ -z "$T" ] || SIGNED=$(date -u -d @$T '+%Y-%m-%d %H:%M:%S UTC')
+fi
+
+TMP=$OUT.tmp
+trap 'rm -f "$TMP"' EXIT
+{
+    echo "How to verify $R"
+    echo "$(printf '%*s' $((14 + ${#R})) '' | tr ' ' '=')"
+    echo
+    echo "The list of digests named below covers every file in this release, and is signed."
+    echo "Checking the signature, then the files against the list, shows they are exactly what"
+    echo "was released."
+    echo
+    echo "  List of digests:  $SUMS"
+    echo "  Its signature:    $BUNDLE"
+    if [ -n "$PUBKEY" ] ; then
+        echo "  Signed with key:  $PUBKEY"
+        if [ $THROWAWAY -eq 1 ] ; then
+            echo
+            echo "  WARNING: this key was generated for this build and ships beside what it"
+            echo "  signs. The signature shows the files belong together, not who built them."
+        else
+            echo "  Compare $PUBKEY with the public key published by the vendor before"
+            echo "  trusting it: a key that came with the download proves nothing on its own."
+        fi
+    else
+        echo "  Signer identity:  $IDENTITY"
+        echo "  OIDC issuer:      $ISSUER"
+    fi
+    [ -z "$SIGNED" ] || echo "  Signed at:        $SIGNED"
+    [ -z "$LOGINDEX" ] || echo "  Rekor log entry:  $LOGINDEX, https://search.sigstore.dev/?logIndex=$LOGINDEX"
+    [ $TLOG -eq 1 ] || echo "  Not recorded in a transparency log."
+    [ -z "$COSIGN_VER" ] || echo "  Signed with:      cosign v$COSIGN_VER"
+    echo
+    echo "You need cosign (https://docs.sigstore.dev/cosign/system_config/installation/)"
+    echo "and sha256sum. Run the commands below in the directory holding the files."
+    echo
+    echo "1. Check the signature of the list. It must print \"Verified OK\":"
+    echo
+    echo "    cosign verify-blob $WHO --bundle $BUNDLE $SUMS"
+    echo
+    echo "2. Check the files you downloaded against the list. Every file must say \"OK\":"
+    echo
+    echo "    sha256sum -c --ignore-missing $SUMS"
+    if [ ${#ATTESTED[@]} -gt 0 ] ; then
+        echo
+        echo "3. Optional: check the SBOM attested to an image. Each image's line must print"
+        echo "   \"Verified OK\". The digest is the one from the signed list, so the image itself"
+        echo "   need not be present."
+        for N in "${ATTESTED[@]}" ; do
+            H=$(awk -v n="$N" '$2 == n { print $1 }' "$SHIP/$SUMS")
+            [ -n "$H" ] || { echo "$PROG: $N is not in $SUMS" >&2 ; exit 1 ; }
+            [ -f "$SHIP/$N.sbom.sigstore.json" ] || { echo "$PROG: no attestation for $N" >&2 ; exit 1 ; }
+            echo
+            echo "   $N:"
+            echo "    cosign verify-blob-attestation $WHO --type cyclonedx --bundle $N.sbom.sigstore.json --digest $H --digestAlg sha256"
+        done
+    fi
+} > "$TMP"
+chmod 0644 "$TMP"
+mv -f "$TMP" "$OUT"

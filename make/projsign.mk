@@ -14,6 +14,8 @@
 #                           rootfs -> <image>.sbom.sigstore.json
 #            `make verify`  checks all of it, including that every file still matches the
 #                           manifest, before anything is published
+#            `make howtoverify`  writes <release>_HOW_TO_VERIFY.txt: the commands below, for
+#                           this release's files and digests, for whoever downloads it
 #
 # sign and attest never read an image: attest-blob takes the digest from the manifest (--hash).
 # Together they are one cosign call per image plus one for the manifest, done in seconds, so a
@@ -147,15 +149,18 @@ _COSIGN_SIGN_FLAGS := --use-signing-config=false --tlog-upload=false
 _COSIGN_VERIFY_FLAGS := --insecure-ignore-tlog
 endif
 
-# Shell names for the manifest and its signature in $(PROJ_SHIPDIR), for use in recipes
+# Shell names for the manifest, its signature and the verification instructions in
+# $(PROJ_SHIPDIR), for use in recipes
 _SUMS = $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_SHA256SUMS
 _SUMS_BUNDLE = $(_SUMS)$(PROJ_COSIGN_BUNDLE_EXT)
+_HOWTO = $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_HOW_TO_VERIFY.txt
 
 help::
 	$(Q)echo "sums         Write the SHA256SUMS manifest of the ship directory"
 	$(Q)echo "sign         Sign the SHA256SUMS manifest (cosign)"
 	$(Q)echo "attest       Attest the SBOM to every image that contains the rootfs (cosign)"
 	$(Q)echo "verify       Check the manifest signature, the attestations and every file's digest"
+	$(Q)echo "howtoverify  Write the instructions for checking this release (signed manifest only)"
 
 ifeq ($(PROJ_BUILD_SIGN),1)
 
@@ -183,7 +188,7 @@ endif
 
 # The manifest. Its prerequisites -- every deliverable -- are added in hex_sdk.mk once every
 # artifact makefile has been read. It lists every file in the ship directory except checksums,
-# signatures, the verification material and the pkg's split parts, by base name so that
+# signatures, the verification material and instructions, and the pkg's split parts, by base name so that
 # `sha256sum -c` works from wherever the files are copied to. A split part is recognised by what
 # it is a part of -- <X>_N.pkg next to <X>.pkg -- not by a numeric suffix: the release name
 # itself ends in _<digits> when the build description is an all-digit hash. Regenerating it
@@ -193,7 +198,7 @@ sums: $(PROJ_SHA256SUMS)
 	@true
 
 $(PROJ_SHA256SUMS):
-	$(call RUN_CMD_TIMED, set -o pipefail ; R=$$(readlink $(PROJ_RELEASE)) && L=$(CURDIR)/sha256sums.list && T=$(CURDIR)/sha256sums.tmp && cd $(PROJ_SHIPDIR) || exit 1 ; rm -f $(PROJ_NAME)_$(PROJ_VERSION)*_SHA256SUMS* *$(PROJ_COSIGN_ATTEST_EXT) || exit 1 ; find . -maxdepth 1 -type f ! -name "*.md5" ! -name "*.sha256" ! -name "*$(PROJ_COSIGN_BUNDLE_EXT)" ! -name "*_pub.key" ! -name "*_cosign_identity.txt" -printf '%f\n' | sort | while read F ; do [ "$${F%.pkg}" != "$$F" ] && [ -f "$${F%_*}.pkg" ] && continue ; echo "$$F" ; done > $$L || exit 1 ; [ -s $$L ] || { echo "nothing to list in $(PROJ_SHIPDIR)" ; exit 1 ; } ; xargs -r -d '\n' -P 4 -n 1 sha256sum < $$L | sort -k 2 > $$T || exit 1 ; [ $$(wc -l < $$T) -eq $$(wc -l < $$L) ] || exit 1 ; rm -f $$L ; chmod 0644 $$T && mv -f $$T "$${R}_SHA256SUMS" || exit 1,"  GEN     SHA256SUMS")
+	$(call RUN_CMD_TIMED, set -o pipefail ; R=$$(readlink $(PROJ_RELEASE)) && L=$(CURDIR)/sha256sums.list && T=$(CURDIR)/sha256sums.tmp && cd $(PROJ_SHIPDIR) || exit 1 ; rm -f $(PROJ_NAME)_$(PROJ_VERSION)*_SHA256SUMS* *$(PROJ_COSIGN_ATTEST_EXT) $(PROJ_NAME)_$(PROJ_VERSION)*_HOW_TO_VERIFY.txt || exit 1 ; find . -maxdepth 1 -type f ! -name "*.md5" ! -name "*.sha256" ! -name "*$(PROJ_COSIGN_BUNDLE_EXT)" ! -name "*_pub.key" ! -name "*_cosign_identity.txt" ! -name "*_HOW_TO_VERIFY.txt" -printf '%f\n' | sort | while read F ; do [ "$${F%.pkg}" != "$$F" ] && [ -f "$${F%_*}.pkg" ] && continue ; echo "$$F" ; done > $$L || exit 1 ; [ -s $$L ] || { echo "nothing to list in $(PROJ_SHIPDIR)" ; exit 1 ; } ; xargs -r -d '\n' -P 4 -n 1 sha256sum < $$L | sort -k 2 > $$T || exit 1 ; [ $$(wc -l < $$T) -eq $$(wc -l < $$L) ] || exit 1 ; rm -f $$L ; chmod 0644 $$T && mv -f $$T "$${R}_SHA256SUMS" || exit 1,"  GEN     SHA256SUMS")
 	$(Q)ln -sf $(_SUMS) $@
 
 PKGCLEAN += $(PROJ_SHA256SUMS) sha256sums.list sha256sums.tmp
@@ -227,7 +232,7 @@ _COSIGN_SUMS_FRESH = S=$(_SUMS) ; [ -f "$$S" ] || { echo "no $$S: run make sums"
 # been made in another mode or by another identity, and this one takes seconds.
 .PHONY: sign
 sign: $(PROJ_COSIGN_SETUP)
-	$(call RUN_CMD_TIMED, $(_COSIGN_SUMS_FRESH) ; $(_COSIGN_PUBLISH) || exit 1 ; rm -f $(_SUMS_BUNDLE) ; $(_COSIGN_TOKEN_GET) $(_COSIGN_ENV) cosign sign-blob --yes $(_COSIGN_SIGN_ID) $(_COSIGN_SIGN_FLAGS) --bundle $(_SUMS_BUNDLE) $(_SUMS) || { $(_COSIGN_TOKEN_PUT) rm -f $(_SUMS_BUNDLE) ; exit 1 ; } ; $(_COSIGN_TOKEN_PUT) $(if $(filter 1,$(PROJ_COSIGN_SELFCHECK)),cosign verify-blob $(_COSIGN_VERIFY_ID) $(_COSIGN_VERIFY_FLAGS) --bundle $(_SUMS_BUNDLE) $(_SUMS) || { rm -f $(_SUMS_BUNDLE) ; exit 1 ; } ;) chmod 0644 $(_SUMS_BUNDLE) || exit 1,"  SIGN    SHA256SUMS")
+	$(call RUN_CMD_TIMED, $(_COSIGN_SUMS_FRESH) ; $(_COSIGN_PUBLISH) || exit 1 ; rm -f $(_SUMS_BUNDLE) $(_HOWTO) ; $(_COSIGN_TOKEN_GET) $(_COSIGN_ENV) cosign sign-blob --yes $(_COSIGN_SIGN_ID) $(_COSIGN_SIGN_FLAGS) --bundle $(_SUMS_BUNDLE) $(_SUMS) || { $(_COSIGN_TOKEN_PUT) rm -f $(_SUMS_BUNDLE) ; exit 1 ; } ; $(_COSIGN_TOKEN_PUT) $(if $(filter 1,$(PROJ_COSIGN_SELFCHECK)),cosign verify-blob $(_COSIGN_VERIFY_ID) $(_COSIGN_VERIFY_FLAGS) --bundle $(_SUMS_BUNDLE) $(_SUMS) || { rm -f $(_SUMS_BUNDLE) ; exit 1 ; } ;) chmod 0644 $(_SUMS_BUNDLE) || exit 1,"  SIGN    SHA256SUMS")
 
 # Attest the package-level SBOM to each image, by the digest the manifest recorded for it.
 # All images at once: each attest-blob uploads the ~12 MB predicate to Rekor, ~9 s apiece, and one
@@ -252,10 +257,26 @@ verify: $(PROJ_COSIGN_SETUP)
 	$(call RUN_CMD_TIMED, for L in $(PROJ_SBOM_ATTESTED) ; do N=$$(basename $$(readlink -f $$L)) ; B=$(PROJ_SHIPDIR)/$$N$(PROJ_COSIGN_ATTEST_EXT) ; H=$$(awk -v n="$$N" '$$2 == n { print $$1 }' $(_SUMS)) ; [ -n "$$H" ] && [ -f $$B ] || { echo "$$N: no manifest entry or no attestation" ; exit 1 ; } ; cosign verify-blob-attestation $(_COSIGN_VERIFY_ID) $(_COSIGN_VERIFY_FLAGS) --type cyclonedx --bundle $$B --digest $$H --digestAlg sha256 || exit 1 ; grep -o '"payload": *"[^"]*"' $$B | cut -d'"' -f4 | base64 -d | grep -q '"predicateType": *"https://cyclonedx.org/bom"' || { echo "$$B: predicate type is not https://cyclonedx.org/bom" ; exit 1 ; } ; done,"  VERIFY  sbom attestations")
 	$(call RUN_CMD_TIMED, cd $(PROJ_SHIPDIR) && sha256sum -c --strict --quiet $$(readlink $(CURDIR)/$(PROJ_RELEASE))_SHA256SUMS || exit 1,"  VERIFY  SHA256SUMS contents")
 
+# The instructions for whoever downloads the release, with its real file names and digests:
+# who signed it and the commands that check the manifest, the files and each attestation
+# (scripts/makehowtoverify). Refused for a manifest that is not signed -- a file like this beside
+# an unsigned release would read as a check that is not there -- and for an attested image with
+# no attestation. Written after signing, so the manifest does not list it; sums and sign remove
+# a stale one. Run it with the same PROJ_COSIGN_* settings that signed.
+ifeq ($(PROJ_COSIGN_KEYLESS),1)
+_HOWTO_WHO := -i '$(PROJ_COSIGN_IDENTITY)' -o '$(PROJ_COSIGN_OIDC_ISSUER)'
+else
+_HOWTO_WHO = -k $$(readlink $(PROJ_RELEASE))_pub.key $(if $(PROJ_COSIGN_KEY),,-t)
+endif
+
+.PHONY: howtoverify
+howtoverify:
+	$(call RUN_CMD_TIMED, A="" ; for L in $(PROJ_SBOM_ATTESTED) ; do A="$$A -a $$(basename $$(readlink -f $$L))" ; done ; $(SHELL) $(HEX_SCRIPTSDIR)/makehowtoverify $(_HOWTO_WHO) $(if $(filter 1,$(PROJ_COSIGN_TLOG)),,-n) -c $(COSIGN_VER) $$A $(PROJ_SHIPDIR) $$(readlink $(PROJ_RELEASE)) || exit 1,"  GEN     HOW_TO_VERIFY.txt")
+
 else
 
-.PHONY: sums sign attest verify
-sums sign attest verify:
+.PHONY: sums sign attest verify howtoverify
+sums sign attest verify howtoverify:
 	@echo "Signing is disabled (PROJ_BUILD_SIGN != 1)" >&2 ; exit 1
 
 endif

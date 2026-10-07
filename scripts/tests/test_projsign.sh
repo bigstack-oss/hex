@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Unit test for make/projsign.mk (sums, sign, attest, verify) and scripts/makesbompackages:
+# Unit test for make/projsign.mk (sums, sign, attest, verify, howtoverify), scripts/makesbompackages
+# and scripts/makehowtoverify:
 # a small stand-in ship directory, a throwaway key and no transparency log, so it runs in
 # seconds with no build tree and no network. Keyless signing is not covered: it needs a login.
 #
@@ -28,6 +29,7 @@ PROJ_NAME := test
 PROJ_VERSION := 1.0
 PROJ_SHIPDIR := \$(CURDIR)/ship
 PROJ_RELEASE := proj.release
+HEX_SCRIPTSDIR := $HEX/scripts
 PROJ_BUILD_SIGN := 1
 PROJ_COSIGN_TLOG := 0
 PROJ_SBOM_ATTESTED := proj.pkg proj.iso
@@ -95,6 +97,30 @@ chk "consumer verify-blob-attestation" "$(cd "$S" && cosign verify-blob-attestat
 cp -a "$S" "$T/good"
 reset(){ rm -rf "$S"; cp -a "$T/good" "$S"; }
 
+# --- the instructions: run every command they give, from the file, as a downloader would
+HT="$S/${R}_HOW_TO_VERIFY.txt"
+mk howtoverify; chk "howtoverify exits 0" "$RC" "0"
+chk "instructions written" "$([ -s "$HT" ] && echo yes)" "yes"
+chk "  not in the manifest" "$(grep -c HOW_TO_VERIFY "$M")" "0"
+chk "  name the throwaway key" "$(has "$(cat "$HT")" "generated for this build")" "yes"
+chk "  say there is no transparency log" "$(has "$(cat "$HT")" "Not recorded in a transparency log")" "yes"
+cmds(){ sed -n 's/^    \(cosign .*\|sha256sum .*\)$/\1/p' "$HT"; }
+chk "  give 4 commands (signature, contents, 2 images)" "$(cmds | wc -l)" "4"
+chk "  every command passes" "$(cd "$S" && cmds | while read -r c ; do bash -c "$c" >/dev/null 2>&1 || echo "failed: $c" ; done)" ""
+mk verify; chk "verify still passes beside the instructions" "$RC" "0"
+reset; mk howtoverify; printf 'x' | dd of="$S/$R.iso" bs=1 seek=100 conv=notrunc 2>/dev/null
+chk "  the contents command catches a changed byte" "$(cd "$S" && cmds | sed -n 2p | bash >/dev/null 2>&1; echo $?)" "1"
+
+# The instructions follow the signing: none for an unsigned manifest, and a new signature or
+# manifest removes the old ones
+reset; rm -f "$M.sigstore.json"
+mk howtoverify; chk "howtoverify refuses an unsigned manifest" "$RC" "2"
+chk "  and writes nothing" "$([ -e "$HT" ] && echo yes || echo no)" "no"
+reset; rm -f "$S/$R.iso.sbom.sigstore.json"
+mk howtoverify; chk "howtoverify refuses an image with no attestation" "$RC" "2"
+reset; mk howtoverify; mk sign; chk "sign removes stale instructions" "$([ -e "$HT" ] && echo yes || echo no)" "no"
+reset; mk howtoverify; rm -f "$T/proj.sha256sums"; mk sums; chk "sums removes stale instructions" "$([ -e "$HT" ] && echo yes || echo no)" "no"
+
 reset; printf 'x' | dd of="$S/$R.iso" bs=1 seek=100 conv=notrunc 2>/dev/null
 mk verify; chk "verify fails on a changed byte" "$RC" "2"
 chk "  and names the file" "$(has "$OUT" "$R.iso: FAILED")" "yes"
@@ -127,5 +153,19 @@ chk "re-sums drops the old signature" "$(ls "$S" | grep -c 'sigstore.json$')" "0
 chk "re-sums lists no verification material" "$(grep -c -e sigstore -e _pub.key "$M")" "0"
 mk verify; chk "verify fails on an unsigned manifest" "$RC" "2"
 chk "  and says so" "$(has "$OUT" "is not signed: run make sign")" "yes"
+
+# --- keyless: cannot be signed here, so render the instructions for a stand-in bundle that
+# carries a Rekor entry, as a keyless signature's does
+K="$T/keyless"; mkdir -p "$K"; cp "$T/good/${R}_SHA256SUMS" "$K/"
+echo '{"verificationMaterial":{"tlogEntries":[{"logIndex":"123456789","integratedTime":"1767225600"}]}}' > "$K/${R}_SHA256SUMS.sigstore.json"
+bash "$HEX/scripts/makehowtoverify" -i release@example.com -o https://github.com/login/oauth -c 3.1.3 "$K" $R; chk "keyless instructions exit 0" "$?" "0"
+KT=$(cat "$K/${R}_HOW_TO_VERIFY.txt")
+chk "  name the identity" "$(has "$KT" "Signer identity:  release@example.com")" "yes"
+chk "  link the Rekor entry" "$(has "$KT" "https://search.sigstore.dev/?logIndex=123456789")" "yes"
+chk "  say when it was signed" "$(has "$KT" "Signed at:        2026-01-01 00:00:00 UTC")" "yes"
+chk "  pin identity and issuer" "$(has "$KT" "cosign verify-blob --certificate-identity release@example.com --certificate-oidc-issuer https://github.com/login/oauth --bundle ${R}_SHA256SUMS.sigstore.json ${R}_SHA256SUMS")" "yes"
+chk "  keep the transparency log check" "$(has "$KT" "insecure-ignore-tlog")" "no"
+bash "$HEX/scripts/makehowtoverify" -i x@y "$K" $R >/dev/null 2>&1; chk "  identity without issuer is a usage error" "$?" "1"
+bash "$HEX/scripts/makehowtoverify" -k k.pub -i x@y -o z "$K" $R >/dev/null 2>&1; chk "  key and identity together is a usage error" "$?" "1"
 
 echo "pass=$pass fail=$fail"; [ $fail -eq 0 ]
