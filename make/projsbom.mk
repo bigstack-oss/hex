@@ -45,6 +45,15 @@ GRYPE_SHA256 := 24872be8acdb53e5ccc16f15e2bb2cf1ca9ed9a33fe9bf0da1aeda3611ef5d54
 SYFT_RPM := $(GITHUB_DL_BASE)/anchore/syft/releases/download/v$(SYFT_VER)/syft_$(SYFT_VER)_linux_amd64.rpm
 GRYPE_RPM := $(GITHUB_DL_BASE)/anchore/grype/releases/download/v$(GRYPE_VER)/grype_$(GRYPE_VER)_linux_amd64.rpm
 
+# OpenVEX documents grype applies to the scan, as space-separated paths. A match a document marks
+# not_affected or fixed moves from "matches" to "ignoredMatches" in <release>_vuln.json, and the
+# report's descriptor lists the documents it used, so the shipped report says which dispositions
+# it carries. The project names the documents; hex ships none. A statement matches on the id
+# grype reports (often a GHSA, not the CVE): name the CVE with the GHSA in "aliases", and the
+# package by purl in "products". A path that doesn't exist stops the scan instead of quietly
+# scanning without it.
+PROJ_VEX ?=
+
 help::
 	$(Q)echo "sbom         Create SBOM (syft) and vulnerability report (grype)"
 
@@ -55,9 +64,9 @@ sbom: $(PROJ_SBOM)
 # The SBOM, the package-level SBOM derived from it and the vulnerability report ship like any
 # other deliverable: projsign.mk covers them with the signed SHA256SUMS manifest, and attests
 # the package-level SBOM to each image (it says why that one, not the full SBOM).
-$(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages
+$(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages $(PROJ_VEX)
 	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; rm -f $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom_packages.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_vuln.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_bndl.json,"  RM      old sbom")
-	$(call RUN_CMD_TIMED, grype sbom:$< --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
+	$(call RUN_CMD_TIMED, grype sbom:$< $(foreach v,$(PROJ_VEX),--vex $(v)) --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
 	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
 	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/makesbompackages $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom_packages.json,"  GEN     sbom_packages.json")
 	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
