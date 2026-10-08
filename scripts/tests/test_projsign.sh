@@ -68,7 +68,7 @@ R=test_1.0_label_desc
 S="$T/ship"; mkdir -p "$S"
 ln -s $R "$T/proj.release"
 head -c 65536 /dev/urandom > "$S/$R.pkg"
-head -c 4096 /dev/urandom > "$S/${R}_1.pkg"              # split part: not in the manifest
+head -c 4096 /dev/urandom > "$S/${R}_1.pkg"              # split part: installed with the pkg, so signed too
 head -c 65536 /dev/urandom > "$S/$R.iso"
 md5sum < "$S/$R.pkg" > "$S/$R.pkg.md5"; sha256sum < "$S/$R.pkg" > "$S/$R.pkg.sha256"
 cp "$T/full.cdx.json" "$S/${R}_sbom.json"; cp "$T/pkgs.cdx.json" "$S/${R}_sbom_packages.json"
@@ -76,7 +76,7 @@ ln -s "$S/$R.pkg" "$T/proj.pkg"; ln -s "$S/$R.iso" "$T/proj.iso"
 
 mk sums; chk "sums exits 0" "$RC" "0"
 M="$S/${R}_SHA256SUMS"
-chk "manifest lists the deliverables" "$(cut -d' ' -f3- "$M" | tr '\n' ' ')" "$R.iso $R.pkg ${R}_sbom.json ${R}_sbom_packages.json "
+chk "manifest lists the deliverables, split part included" "$(cut -d' ' -f3- "$M" | LC_ALL=C sort | tr '\n' ' ')" "$R.iso $R.pkg ${R}_1.pkg ${R}_sbom.json ${R}_sbom_packages.json "
 chk "manifest checks out" "$(cd "$S" && sha256sum -c --strict --quiet "${R}_SHA256SUMS" >/dev/null 2>&1; echo $?)" "0"
 chk "proj.sha256sums links the manifest" "$(readlink "$T/proj.sha256sums")" "$M"
 
@@ -125,6 +125,11 @@ reset; printf 'x' | dd of="$S/$R.iso" bs=1 seek=100 conv=notrunc 2>/dev/null
 mk verify; chk "verify fails on a changed byte" "$RC" "2"
 chk "  and names the file" "$(has "$OUT" "$R.iso: FAILED")" "yes"
 
+# The split part is installed with the pkg, so a change to it must fail like any other
+reset; printf 'x' | dd of="$S/${R}_1.pkg" bs=1 seek=10 conv=notrunc 2>/dev/null
+mk verify; chk "verify fails on a changed split part" "$RC" "2"
+chk "  and names it" "$(has "$OUT" "${R}_1.pkg: FAILED")" "yes"
+
 reset; sed -i "s/  $R.iso\$/  $R.iso.renamed/" "$M"; touch -r "$T/good/${R}_SHA256SUMS" "$M"
 mk verify; chk "verify fails on an edited manifest" "$RC" "2"
 
@@ -169,5 +174,24 @@ chk "  say the first run needs the network" "$(has "$KT" "first run needs networ
 chk "  keep the transparency log check" "$(has "$KT" "insecure-ignore-tlog")" "no"
 bash "$HEX/scripts/makehowtoverify" -i x@y "$K" $R >/dev/null 2>&1; chk "  identity without issuer is a usage error" "$?" "1"
 bash "$HEX/scripts/makehowtoverify" -k k.pub -i x@y -o z "$K" $R >/dev/null 2>&1; chk "  key and identity together is a usage error" "$?" "1"
+
+# --- a directory that does not sign: forwards to PROJ_SIGN_DIR when it names one, else says
+# signing is disabled -- rather than either quietly doing nothing
+U="$T/top"; mkdir -p "$U"
+cat > "$U/Makefile" <<EOF2
+VERBOSE := 0
+include $HEX/make/run_cmd_definitions.mk
+PROJ_SIGN_DIR := $T
+include $HEX/make/projsign.mk
+EOF2
+reset
+OUT=$(make -C "$U" --no-print-directory verify 2>&1); RC=$?
+chk "top level with PROJ_SIGN_DIR forwards verify" "$RC" "0"
+chk "  and runs the signing directory's" "$(has "$OUT" "VERIFY  SHA256SUMS contents")" "yes"
+chk "  without override warnings" "$(has "$OUT" "overriding recipe")" "no"
+sed -i '/^PROJ_SIGN_DIR/d' "$U/Makefile"
+OUT=$(make -C "$U" --no-print-directory verify 2>&1); RC=$?
+chk "top level without PROJ_SIGN_DIR refuses" "$RC" "2"
+chk "  and says signing is disabled" "$(has "$OUT" "Signing is disabled")" "yes"
 
 echo "pass=$pass fail=$fail"; [ $fail -eq 0 ]

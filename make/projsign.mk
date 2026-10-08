@@ -22,8 +22,10 @@
 # token handed to the publish job only has to outlive that.
 #
 # The pkg's split parts (<release>_N.pkg: makeppu's separate ext4 images of the rootfs, one per
-# large top-level tree) are deliberately left out of the manifest. They are not slices of the
-# pkg, so nothing here says anything about them.
+# large top-level tree) are in the manifest like any other deliverable. They are not slices of
+# the pkg but the rest of the rootfs: `hex_install update <release>.pkg` installs every
+# <release>*.pkg it finds, and the iso and usb images carry only the split parts. Leaving them out
+# left part of what gets installed unsigned.
 #
 # Three ways to sign, from weakest to strongest:
 #
@@ -195,17 +197,16 @@ endif
 
 # The manifest. Its prerequisites -- every deliverable -- are added in hex_sdk.mk once every
 # artifact makefile has been read. It lists every file in the ship directory except checksums,
-# signatures, the verification material and instructions, and the pkg's split parts, by base name so that
-# `sha256sum -c` works from wherever the files are copied to. A split part is recognised by what
-# it is a part of -- <X>_N.pkg next to <X>.pkg -- not by a numeric suffix: the release name
-# itself ends in _<digits> when the build description is an all-digit hash. Regenerating it
-# drops the signature and the attestations, which covered the old digests.
+# signatures and the verification material and instructions, by base name so that `sha256sum -c`
+# works from wherever the files are copied to. The pkg's split parts are listed too (see the top
+# of this file). Regenerating it drops the signature and the attestations, which covered the old
+# digests.
 .PHONY: sums
 sums: $(PROJ_SHA256SUMS)
 	@true
 
 $(PROJ_SHA256SUMS):
-	$(call RUN_CMD_TIMED, set -o pipefail ; R=$$(readlink $(PROJ_RELEASE)) && L=$(CURDIR)/sha256sums.list && T=$(CURDIR)/sha256sums.tmp && cd $(PROJ_SHIPDIR) || exit 1 ; rm -f $(PROJ_NAME)_$(PROJ_VERSION)*_SHA256SUMS* *$(PROJ_COSIGN_ATTEST_EXT) $(PROJ_NAME)_$(PROJ_VERSION)*_HOW_TO_VERIFY.txt || exit 1 ; find . -maxdepth 1 -type f ! -name "*.md5" ! -name "*.sha256" ! -name "*$(PROJ_COSIGN_BUNDLE_EXT)" ! -name "*_pub.key" ! -name "*_cosign_identity.txt" ! -name "*_HOW_TO_VERIFY.txt" -printf '%f\n' | sort | while read F ; do [ "$${F%.pkg}" != "$$F" ] && [ -f "$${F%_*}.pkg" ] && continue ; echo "$$F" ; done > $$L || exit 1 ; [ -s $$L ] || { echo "nothing to list in $(PROJ_SHIPDIR)" ; exit 1 ; } ; xargs -r -d '\n' -P 4 -n 1 sha256sum < $$L | sort -k 2 > $$T || exit 1 ; [ $$(wc -l < $$T) -eq $$(wc -l < $$L) ] || exit 1 ; rm -f $$L ; chmod 0644 $$T && mv -f $$T "$${R}_SHA256SUMS" || exit 1,"  GEN     SHA256SUMS")
+	$(call RUN_CMD_TIMED, set -o pipefail ; R=$$(readlink $(PROJ_RELEASE)) && L=$(CURDIR)/sha256sums.list && T=$(CURDIR)/sha256sums.tmp && cd $(PROJ_SHIPDIR) || exit 1 ; rm -f $(PROJ_NAME)_$(PROJ_VERSION)*_SHA256SUMS* *$(PROJ_COSIGN_ATTEST_EXT) $(PROJ_NAME)_$(PROJ_VERSION)*_HOW_TO_VERIFY.txt || exit 1 ; find . -maxdepth 1 -type f ! -name "*.md5" ! -name "*.sha256" ! -name "*$(PROJ_COSIGN_BUNDLE_EXT)" ! -name "*_pub.key" ! -name "*_cosign_identity.txt" ! -name "*_HOW_TO_VERIFY.txt" -printf '%f\n' | sort > $$L || exit 1 ; [ -s $$L ] || { echo "nothing to list in $(PROJ_SHIPDIR)" ; exit 1 ; } ; xargs -r -d '\n' -P 4 -n 1 sha256sum < $$L | sort -k 2 > $$T || exit 1 ; [ $$(wc -l < $$T) -eq $$(wc -l < $$L) ] || exit 1 ; rm -f $$L ; chmod 0644 $$T && mv -f $$T "$${R}_SHA256SUMS" || exit 1,"  GEN     SHA256SUMS")
 	$(Q)ln -sf $(_SUMS) $@
 
 PKGCLEAN += $(PROJ_SHA256SUMS) sha256sums.list sha256sums.tmp
@@ -281,6 +282,15 @@ endif
 .PHONY: howtoverify
 howtoverify:
 	$(call RUN_CMD_TIMED, A="" ; for L in $(PROJ_SBOM_ATTESTED) ; do A="$$A -a $$(basename $$(readlink -f $$L))" ; done ; $(SHELL) $(HEX_SCRIPTSDIR)/makehowtoverify $(_HOWTO_WHO) $(if $(filter 1,$(PROJ_COSIGN_TLOG)),,-n) -c $(COSIGN_VER) $$A $(PROJ_SHIPDIR) $$(readlink $(PROJ_RELEASE)) || exit 1,"  GEN     HOW_TO_VERIFY.txt")
+
+else ifneq ($(PROJ_SIGN_DIR),)
+
+# A directory that does not sign but names the one that does (cubecos' top level: core/main)
+# forwards there. Set PROJ_SIGN_DIR before hex_sdk.mk is included; a rule of the project's own
+# for these targets would be overridden by this file, which is read later.
+.PHONY: sums sign attest verify howtoverify
+sums sign attest verify howtoverify:
+	$(Q)$(MAKE) -C $(PROJ_SIGN_DIR) $@
 
 else
 
