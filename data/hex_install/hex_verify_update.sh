@@ -56,13 +56,14 @@ SIGNER=${IDENTITY:-the holder of $PUBKEY}
 log() { local pri=$1 ; shift ; logger -t hex_install -p user.$pri -- "$*" 2>/dev/null || true ; }
 Refuse()
 {
+    local what=$1
     {
-        echo "ERROR: $1"
+        echo "ERROR: $what"
         shift
         for l in "$@" ; do echo "  $l" ; done
         echo "  The upgrade was stopped before anything was changed on this system."
     } >&2
-    log err "update of $R refused: $*"
+    log err "update of $R refused: $what${1:+ $1}"
     exit 1
 }
 
@@ -111,9 +112,11 @@ fi
 if ! OUT=$(cd "$DIR" && cosign verify-blob "${WHO[@]}" --bundle "$BUNDLE" "$SUMS" 2>&1) ; then
     WHY=$(echo "$OUT" | grep -v '^$' | tail -1)
     HINT=()
-    # A system much older than the release may predate a rotation of Sigstore's keys: say so,
-    # rather than let a genuine release look tampered with
-    if [ -z "$PUBKEY" ] && echo "$OUT" | grep -q -i -E 'certificate|chain|root|tlog|transparency|timestamp|SCT' ; then
+    # A system much older than the release may predate a rotation of Sigstore's certificate
+    # authority: say so, rather than let a genuine release look tampered with. Only for a failure
+    # in the certificate chain -- a signature by anyone else fails on the transparency log or the
+    # identity, and must not be explained away as rotation.
+    if [ -z "$PUBKEY" ] && echo "$OUT" | grep -q -i -E 'x509|certificate chain|unknown authority|verifying certificate|root certificate' ; then
         HINT=("This system's Sigstore trust data is from $(date -r "$TRUSTED_ROOT" +%Y-%m-%d). If it is older than" \
               "the release, upgrade through an intermediate release first, or contact support.")
     fi
