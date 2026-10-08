@@ -180,7 +180,7 @@ ifeq ($(PROJ_UPDATE_SIGNER_ISSUER),)
 $(error PROJ_UPDATE_SIGNER_IDENTITY needs PROJ_UPDATE_SIGNER_ISSUER)
 endif
 rootfs_install::
-	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/fetchverified $(COSIGN_RPM) $(COSIGN_SHA256) $(notdir $(COSIGN_RPM)) && rpm --root $(ROOTDIR) -U --replacepkgs --nodeps $(notdir $(COSIGN_RPM)),"  RPM     cosign (update check)")
+	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/fetchverified $(COSIGN_RPM) $(COSIGN_SHA256) $(notdir $(COSIGN_RPM)) && rpm --root "$$(cd $(ROOTDIR) && pwd)" -U --replacepkgs --nodeps $(notdir $(COSIGN_RPM)),"  RPM     cosign (update check)")
 	$(Q)$(INSTALL_DATA) -f $(ROOTDIR) $(HEX_DATADIR)/sigstore/trusted_root.json ./usr/share/hex/sigstore/trusted_root.json
 	$(Q)$(INSTALL_SCRIPT) -f $(ROOTDIR) $(HEX_DATADIR)/hex_install/hex_verify_update.sh ./usr/sbin/hex_verify_update
 	$(Q)echo "sys.update.signer.identity = $(PROJ_UPDATE_SIGNER_IDENTITY)" >> $(ROOTDIR)/etc/settings.sys
