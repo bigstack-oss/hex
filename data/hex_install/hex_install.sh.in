@@ -24,6 +24,9 @@ BOOT_DIR="/boot"
 GRUB_DIR="$BOOT_DIR/grub2"
 GRUB_ENV="$GRUB_DIR/grubenv"
 GRUB_CFG="$GRUB_DIR/grub.cfg"
+# the data disks to prepare, written by the CLI's set_data_disks; without it
+# every data disk is prepared
+DATA_DISKS_SETTINGS="/etc/data_disks.sys"
 
 source hex_tuning /etc/settings.sys
 VENDOR_NAME=$T_sys_vendor_name
@@ -649,6 +652,13 @@ FormatDataHDD()
 {
     local sys_dev=$(/usr/bin/basename "$TEMP_HDD")
 
+    # " none " or the selected disks, space separated; empty prepares every disk
+    local selected=""
+    if [ -f "$DATA_DISKS_SETTINGS" ] ; then
+        source hex_tuning "$DATA_DISKS_SETTINGS"
+        selected=" ${T_sys_install_data_disks//,/ } "
+    fi
+
     local block_dev
     for block_dev in /sys/block/sd* /sys/block/nvme* ; do
         # skip non-existing links
@@ -695,6 +705,11 @@ FormatDataHDD()
         # ensure the device is a block device
         local device="/dev/${device_basename}"
         if [ ! -b "$device" ] ; then
+            continue
+        fi
+
+        # leave a disk that was not selected untouched
+        if [ -n "$selected" ] && [[ "$selected" != *" $device "* ]] ; then
             continue
         fi
 
