@@ -63,15 +63,27 @@ if [ $TLOG -eq 1 ] ; then
     [ -z "$T" ] || SIGNED=$(date -u -d @$T '+%Y-%m-%d %H:%M:%S UTC')
 fi
 
+# B (signature, attestations) needs Sigstore's trust data, fetched online, except for a key
+# signature made without the transparency log
+B_NET=online
+[ -z "$PUBKEY" -o $TLOG -eq 1 ] || B_NET="offline with this key"
+
 TMP=$OUT.tmp
 trap 'rm -f "$TMP"' EXIT
 {
     echo "How to verify $R"
     echo "$(printf '%*s' $((14 + ${#R})) '' | tr ' ' '=')"
     echo
-    echo "The list of digests named below covers every file in this release, and is signed."
-    echo "Checking the signature, then the files against the list, shows they are exactly what"
-    echo "was released."
+    echo "Two checks. Each has its own commands below:"
+    echo
+    echo "  A. Integrity (offline): the files you have are exactly the files in this release's"
+    echo "     signed list of digests. It catches a corrupted, incomplete or altered download."
+    echo "  B. Signature and SBOM attestations ($B_NET): the list itself, and the SBOM of each"
+    echo "     image, were signed by the signer below."
+    echo
+    echo "A alone does not show that the list is genuine; B does. B needs only the small files"
+    echo "(the list and the .sigstore.json files), not the images. At a site without Internet"
+    echo "access, run A there and B on any machine that has it."
     echo
     echo "  List of digests:  $SUMS"
     echo "  Its signature:    $BUNDLE"
@@ -93,35 +105,48 @@ trap 'rm -f "$TMP"' EXIT
     [ -z "$LOGINDEX" ] || echo "  Rekor log entry:  $LOGINDEX, https://search.sigstore.dev/?logIndex=$LOGINDEX"
     [ $TLOG -eq 1 ] || echo "  Not recorded in a transparency log."
     [ -z "$COSIGN_VER" ] || echo "  Signed with:      cosign v$COSIGN_VER"
-    echo
     if [ -z "$PUBKEY" ] ; then
+        echo
         echo "Confirm the signer identity and issuer with the vendor through a channel other than"
         echo "this download before relying on them: this file came with the images, so on its own"
         echo "it is no stronger than they are."
-        echo
     fi
-    echo "You need cosign (https://docs.sigstore.dev/cosign/system_config/installation/)"
-    echo "and sha256sum. Run the commands below in the directory holding the files."
-    [ $TLOG -eq 0 ] || echo "The first run needs network access: cosign fetches Sigstore's trusted root."
     echo
-    echo "1. Check the signature of the list. It must print \"Verified OK\":"
     echo
-    echo "    cosign verify-blob $WHO --bundle $BUNDLE $SUMS"
+    echo "A. Integrity (offline)"
+    echo "----------------------"
     echo
-    echo "2. Check the files you downloaded against the list. Every file must say \"OK\":"
+    echo "You need sha256sum and no network access. In the directory holding the files you"
+    echo "downloaded, run the command below. Every one of them must say \"OK\"; files you did not"
+    echo "download are skipped:"
     echo
     echo "    sha256sum -c --ignore-missing $SUMS"
+    echo
+    echo
+    echo "B. Signature and SBOM attestations ($B_NET)"
+    echo "$(printf '%*s' $((37 + ${#B_NET})) '' | tr ' ' '-')"
+    echo
+    echo "You need cosign (https://docs.sigstore.dev/cosign/system_config/installation/)."
+    if [ "$B_NET" = online ] ; then
+        echo "cosign fetches Sigstore's trust data on its first run, so this needs network access."
+    fi
+    echo "Run the commands in a directory holding $SUMS and the"
+    echo ".sigstore.json files; the images themselves are not needed."
+    echo
+    echo "B1. The signature of the list of digests. It must print \"Verified OK\":"
+    echo
+    echo "    cosign verify-blob $WHO --bundle $BUNDLE $SUMS"
     if [ ${#ATTESTED[@]} -gt 0 ] ; then
         echo
-        echo "3. Optional: check the SBOM attested to an image. Each image's line must print"
-        echo "   \"Verified OK\". The digest is the one from the signed list, so the image itself"
-        echo "   need not be present."
+        echo "B2. Optional: the SBOM attested to each image -- which SBOM the signer published for"
+        echo "    that exact image. Each line must print \"Verified OK\". The digest comes from the"
+        echo "    signed list, so the image itself need not be present."
         for N in "${ATTESTED[@]}" ; do
             H=$(awk -v n="$N" '$2 == n { print $1 }' "$SHIP/$SUMS")
             [ -n "$H" ] || { echo "$PROG: $N is not in $SUMS" >&2 ; exit 1 ; }
             [ -f "$SHIP/$N.sbom.sigstore.json" ] || { echo "$PROG: no attestation for $N" >&2 ; exit 1 ; }
             echo
-            echo "   $N:"
+            echo "    $N:"
             echo "    cosign verify-blob-attestation $WHO --type cyclonedx --bundle $N.sbom.sigstore.json --digest $H --digestAlg sha256"
         done
     fi
