@@ -58,38 +58,50 @@ chk "  warns it cannot check" "$(has "$OUT" "no release signer configured")" "ye
 chk "  logs a warning" "$(has "$LOG" "user.warning.*no release signer configured")" "yes"
 
 reset; rm -f "$U/${R}_SHA256SUMS"; run "${K[@]}" "$U" $R "${FILES[@]}"
-chk "signature but no list: refused" "$RC" "1"
+chk "signature but no list: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  says the list is missing" "$(has "$OUT" "its list of digests is missing")" "yes"
-chk "  says nothing changed" "$(has "$OUT" "stopped before anything was changed")" "yes"
-chk "  logs an error with what is wrong" "$(has "$LOG" "user.err.*update of $R refused: $R is signed, but its list of digests is missing")" "yes"
+chk "  never says it stopped" "$(has "$OUT" "stopped")" "no"
+chk "  logs a warning with what is wrong" "$(has "$LOG" "user.warning.*update of $R NOT VERIFIED: $R is signed, but its list of digests is missing")" "yes"
 
 reset; sed -i '1s/^./0/' "$U/${R}_SHA256SUMS"; run "${K[@]}" "$U" $R "${FILES[@]}"
-chk "list edited after signing: refused" "$RC" "1"
+chk "list edited after signing: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  says the signature does not verify" "$(has "$OUT" "the signature on ${R}_SHA256SUMS does not verify")" "yes"
 
 reset; printf 'x' | dd of="$U/$R.pkg" bs=1 seek=100 conv=notrunc 2>/dev/null; run "${K[@]}" "$U" $R "${FILES[@]}"
-chk "pkg changed: refused" "$RC" "1"
-chk "  names it" "$(has "$OUT" "ERROR: $R.pkg does not match the signed list of digests")" "yes"
+chk "pkg changed: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
+chk "  names it" "$(has "$OUT" "WARNING: $R.pkg does not match the signed list of digests")" "yes"
 chk "  shows the expected digest" "$(has "$OUT" "expected sha256 $(awk -v n=$R.pkg '$2 == n { print $1 }' "$G/${R}_SHA256SUMS")")" "yes"
 chk "  shows the actual digest" "$(has "$OUT" "actual   sha256 $(sha256sum < "$U/$R.pkg" | cut -d' ' -f1)")" "yes"
 
 reset; printf 'x' | dd of="$U/${R}_1.pkg" bs=1 seek=10 conv=notrunc 2>/dev/null; run "${K[@]}" "$U" $R "${FILES[@]}"
-chk "split part changed: refused" "$RC" "1"
-chk "  names it" "$(has "$OUT" "ERROR: ${R}_1.pkg does not match")" "yes"
+chk "split part changed: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
+chk "  names it" "$(has "$OUT" "WARNING: ${R}_1.pkg does not match")" "yes"
+
+reset; printf 'x' | dd of="$U/$R.pkg" bs=1 seek=100 conv=notrunc 2>/dev/null; printf 'x' | dd of="$U/${R}_1.pkg" bs=1 seek=10 conv=notrunc 2>/dev/null; run "${K[@]}" "$U" $R "${FILES[@]}"
+chk "two files changed: exit 0" "$RC" "0"
+chk "  reports both" "$(grep -c 'does not match the signed list' <<<"$OUT")" "2"
+chk "  and sums up" "$(has "$OUT" "2 of 2 package file(s) of $R do not match")" "yes"
 
 reset; head -c 100 /dev/urandom > "$U/${R}_9.pkg"; run "${K[@]}" "$U" $R "${FILES[@]}" "$U/${R}_9.pkg"
-chk "file not in the list: refused" "$RC" "1"
+chk "file not in the list: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  names it" "$(has "$OUT" "${R}_9.pkg is not in the signed list")" "yes"
-chk "  and logs which file" "$(has "$LOG" "refused: ${R}_9.pkg is not in the signed list")" "yes"
+chk "  and logs which file" "$(has "$LOG" "NOT VERIFIED: ${R}_9.pkg is not in the signed list")" "yes"
 
 # --- the identity path: signer and issuer from settings, offline against a trusted root
 printf 'sys.update.signer.identity = release@example.com\nsys.update.signer.issuer = https://github.com/login/oauth\n' > "$T/settings.sys"
 reset; run "$U" $R "${FILES[@]}"
-chk "identity, no trust data on the system: refused" "$RC" "1"
+chk "identity, no trust data on the system: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  says so" "$(has "$OUT" "no Sigstore trust data")" "yes"
 echo '{}' > "$T/trusted_root.json"
 reset; TR="$T/trusted_root.json" run "$U" $R "${FILES[@]}"
-chk "identity, signature not the identity's: refused" "$RC" "1"
+chk "identity, signature not the identity's: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  names the expected signer" "$(has "$OUT" "was not signed by")" "yes"
 chk "  and who" "$(has "$OUT" "release@example.com")" "yes"
 reset; rm -f "$U/${R}_SHA256SUMS.sigstore.json"; TR="$T/trusted_root.json" run "$U" $R "${FILES[@]}"
@@ -106,24 +118,30 @@ echo "not the real binary" > "$KD/cosign-linux-amd64"      # listed in the manif
 printf 'sys.update.signer.identity = keyless@projectsigstore.iam.gserviceaccount.com\nsys.update.signer.issuer = https://accounts.google.com\n' > "$T/settings.sys"
 TR="$TRR" run "$KD" $KR "$KD/cosign-linux-amd64"
 chk "keyless, right identity: signature verifies offline (reaches the digest check)" "$(has "$OUT" "Checking 1 package file(s)")" "yes"
-chk "  then refuses the file that does not match" "$(has "$OUT" "ERROR: cosign-linux-amd64 does not match")" "yes"
+chk "  then reports the file that does not match" "$(has "$OUT" "WARNING: cosign-linux-amd64 does not match")" "yes"
 chk "  naming the keyless signer" "$(has "$OUT" "signed by keyless@projectsigstore.iam.gserviceaccount.com")" "yes"
 printf 'sys.update.signer.identity = release@example.com\nsys.update.signer.issuer = https://accounts.google.com\n' > "$T/settings.sys"
 TR="$TRR" run "$KD" $KR "$KD/cosign-linux-amd64"
-chk "keyless, another identity: refused at the signature" "$(has "$OUT" "the signature on ${KR}_SHA256SUMS does not verify")" "yes"
+chk "keyless, another identity: not verified at the signature" "$(has "$OUT" "the signature on ${KR}_SHA256SUMS does not verify")" "yes"
 chk "  before any file is read" "$(has "$OUT" "Checking 1 package file")" "no"
 chk "  without blaming key rotation" "$(has "$OUT" "Sigstore trust data is from")" "no"
 printf 'sys.update.signer.identity = keyless@projectsigstore.iam.gserviceaccount.com\nsys.update.signer.issuer = https://github.com/login/oauth\n' > "$T/settings.sys"
 TR="$TRR" run "$KD" $KR "$KD/cosign-linux-amd64"
-chk "keyless, another issuer: refused at the signature" "$(has "$OUT" "does not verify")" "yes"
+chk "keyless, another issuer: not verified at the signature" "$(has "$OUT" "does not verify")" "yes"
 : > "$T/settings.sys"
 
 # --- no cosign on the system
 mkdir -p "$T/nocosign"; for c in bash sh sed awk grep cut sha256sum basename date cat head tail dd; do ln -sf "$(command -v $c)" "$T/nocosign/$c"; done; ln -sf "$T/bin/logger" "$T/nocosign/logger"
 reset; : > "$T/syslog"; OUT=$(PATH="$T/nocosign" SETTINGS="$T/settings.sys" "$T/nocosign/bash" "$SCRIPT" "${K[@]}" "$U" $R "${FILES[@]}" 2>&1); RC=$?
-chk "signed, but no cosign: refused" "$RC" "1"
+chk "signed, but no cosign: not verified, update continues (exit 0)" "$RC" "0"
+chk "  says it continues anyway" "$(has "$OUT" "Continuing with the upgrade anyway")" "yes"
 chk "  says so" "$(has "$OUT" "has no cosign")" "yes"
 
-bash "$SCRIPT" "$U" 2>/dev/null >/dev/null; chk "usage error" "$?" "2"
+bash "$SCRIPT" "$U" 2>/dev/null >/dev/null; chk "usage error (hex_install ignores the status)" "$?" "2"
+
+# hex_install's call: whatever the verifier returns, the update goes on
+CALL=$(grep -A1 'if \[ -n "\$UPDATE_RELEASE" -a -x /usr/sbin/hex_verify_update \]' "$DIR/../../data/hex_install/hex_install.sh.in" | tail -1)
+chk "hex_install never exits on the check's status" "$(grep -c 'exit' <<<"$CALL")" "0"
+chk "  and says so when the check fails to run" "$(has "$CALL" "|| echo \"WARNING: the release signature check did not complete")" "yes"
 
 echo "pass=$pass fail=$fail"; [ $fail -eq 0 ]

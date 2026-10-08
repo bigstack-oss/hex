@@ -709,12 +709,13 @@ FormatDataHDD()
 
 # main()
 if [ "$MODE" = "ppu" ] ; then
-    # Check the release signature first: mounting the update, and the install.sh and update.sh it
-    # carries, already run as root on this system. Refuses what is signed but does not check out;
-    # an unsigned update goes ahead with a warning. A system built without the check has no
-    # hex_verify_update, and updates as before.
+    # Check the release signature first, before the update is mounted and its install.sh and
+    # update.sh run as root on this system. It never stops the update -- an update must always be
+    # able to complete, offline included: anything that does not check out is a warning on the
+    # console and in the system log, and its status is ignored here, so not even a fault in the
+    # check can block an update. A system built without it has no hex_verify_update.
     if [ -n "$UPDATE_RELEASE" -a -x /usr/sbin/hex_verify_update ] ; then
-        /usr/sbin/hex_verify_update $(dirname $(echo $IMAGE | cut -d' ' -f1)) $UPDATE_RELEASE $IMAGE || exit 1
+        /usr/sbin/hex_verify_update $(dirname $(echo $IMAGE | cut -d' ' -f1)) $UPDATE_RELEASE $IMAGE || echo "WARNING: the release signature check did not complete (status $?); continuing with the upgrade" >&2
     fi
     # Update from HDD
     MountAndInstallImage
