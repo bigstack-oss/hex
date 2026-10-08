@@ -105,11 +105,18 @@ chk "  not in the manifest" "$(grep -c HOW_TO_VERIFY "$M")" "0"
 chk "  name the throwaway key" "$(has "$(cat "$HT")" "generated for this build")" "yes"
 chk "  say there is no transparency log" "$(has "$(cat "$HT")" "Not recorded in a transparency log")" "yes"
 cmds(){ sed -n 's/^    \(cosign .*\|sha256sum .*\)$/\1/p' "$HT"; }
-chk "  give 4 commands (signature, contents, 2 images)" "$(cmds | wc -l)" "4"
+chk "  give 4 commands (contents, signature, 2 images)" "$(cmds | wc -l)" "4"
+section(){ awk -v h="$1" 'index($0,h)==1{f=1;next} /^[AB]\. /{f=0} f' "$HT"; }
+chk "  A, integrity, is offline" "$(grep -c '^A. Integrity (offline)$' "$HT")" "1"
+chk "  A holds the contents check" "$(section 'A. Integrity' | grep -c '^    sha256sum -c --ignore-missing ')" "1"
+chk "  A needs no cosign" "$(section 'A. Integrity' | grep -c 'cosign')" "0"
+chk "  B holds the signature and attestation checks" "$(section 'B. Signature' | grep -c '^    cosign verify-blob')" "3"
+chk "  B with a key and no log is offline" "$(grep -c '^B. Signature and SBOM attestations (offline with this key)$' "$HT")" "1"
+chk "  B says the images are not needed" "$(has "$(section 'B. Signature')" "the images themselves are not needed")" "yes"
 chk "  every command passes" "$(cd "$S" && cmds | while read -r c ; do bash -c "$c" >/dev/null 2>&1 || echo "failed: $c" ; done)" ""
 mk verify; chk "verify still passes beside the instructions" "$RC" "0"
 reset; mk howtoverify; printf 'x' | dd of="$S/$R.iso" bs=1 seek=100 conv=notrunc 2>/dev/null
-chk "  the contents command catches a changed byte" "$(cd "$S" && cmds | sed -n 2p | bash >/dev/null 2>&1; echo $?)" "1"
+chk "  the contents command catches a changed byte" "$(cd "$S" && cmds | grep '^sha256sum' | bash >/dev/null 2>&1; echo $?)" "1"
 
 # The instructions follow the signing: none for an unsigned manifest, and a new signature or
 # manifest removes the old ones
@@ -165,7 +172,9 @@ chk "  link the Rekor entry" "$(has "$KT" "https://search.sigstore.dev/?logIndex
 chk "  say when it was signed" "$(has "$KT" "Signed at:        2026-01-01 00:00:00 UTC")" "yes"
 chk "  pin identity and issuer" "$(has "$KT" "cosign verify-blob --certificate-identity release@example.com --certificate-oidc-issuer https://github.com/login/oauth --bundle ${R}_SHA256SUMS.sigstore.json ${R}_SHA256SUMS")" "yes"
 chk "  say to confirm the identity out of band" "$(has "$KT" "through a channel other than")" "yes"
-chk "  say the first run needs the network" "$(has "$KT" "first run needs network access")" "yes"
+chk "  say B is online" "$(has "$KT" "B. Signature and SBOM attestations (online)")" "yes"
+chk "  and why it needs the network" "$(has "$KT" "fetches Sigstore's trust data on its first run, so this needs network access")" "yes"
+chk "  A stays offline" "$(has "$KT" "A. Integrity (offline)")" "yes"
 chk "  keep the transparency log check" "$(has "$KT" "insecure-ignore-tlog")" "no"
 bash "$HEX/scripts/makehowtoverify" -i x@y "$K" $R >/dev/null 2>&1; chk "  identity without issuer is a usage error" "$?" "1"
 bash "$HEX/scripts/makehowtoverify" -k k.pub -i x@y -o z "$K" $R >/dev/null 2>&1; chk "  key and identity together is a usage error" "$?" "1"
