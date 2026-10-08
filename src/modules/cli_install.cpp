@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <hex/cli_module.h>
@@ -160,8 +161,12 @@ SetDataDisksMain(int argc, const char** argv)
         return CLI_INVALID_ARGS;
     }
 
-    FILE* f = fopen(DATA_DISKS_SETTINGS, "w");
+    const int fd = open(DATA_DISKS_SETTINGS, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    FILE* f = (fd < 0) ? NULL : fdopen(fd, "w");
     if (f == NULL) {
+        if (fd >= 0) {
+            close(fd);
+        }
         CliPrintf("Failed to write %s.", DATA_DISKS_SETTINGS);
         return CLI_UNEXPECTED_ERROR;
     }
