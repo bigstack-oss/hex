@@ -5,7 +5,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Re-judge grype's Linux kernel matches by the kernel CNA's records.
+"""Re-judge grype's Linux kernel matches by the kernel CNA's records, and rate the ones that stay.
 
 grype judges a kernel by data that does not describe it. The vmlinuz is matched by NVD's CPE
 ranges, which often stop at the mainline fix and leave out the stable backports (CVE-2026-43197:
@@ -20,21 +20,35 @@ with the reason; a match that stays gets the fix the CNA names for its own branc
 kernel rpm match for a CVE the CNA has no record of stays only if NVD matches the kernel image
 too: Red Hat's verdict is about its 5.14 kernel, not this one.
 
-The CNA's records are read at scan time, as grype fetches its own database: they are kept in a
-git checkout that later scans bring up to date, and the report's descriptor records the commit
-used. KERNEL_VULNS_GIT in the environment points at a mirror.
+Severity of what stays: Red Hat's rating where Red Hat has one, else the CNA's, else grype's own
+(NVD). The CNA scores some of its records and nearly always High or Critical: CVE-2025-21673 is
+9.8 to it, 5.5 Moderate to Red Hat. The rating source's CVSS goes first in the match's "cvss", so
+the score shown agrees with the severity.
+
+Both sources are read at scan time, as grype fetches its own database. The CNA's records are kept
+in a git checkout that later scans bring up to date, and the report's descriptor records the
+commit used; Red Hat's ratings are asked for per CVE on every scan. KERNEL_VULNS_GIT and
+REDHAT_SECDATA in the environment point either at a mirror.
 """
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 
 KERNEL_VULNS_GIT = os.environ.get(
     'KERNEL_VULNS_GIT', 'https://git.kernel.org/pub/scm/linux/security/vulns.git'
 )
+REDHAT_SECDATA = os.environ.get(
+    'REDHAT_SECDATA', 'https://access.redhat.com/hydra/rest/securitydata'
+)
+RH_SEVERITY = {'Critical': 'Critical', 'Important': 'High', 'Moderate': 'Medium', 'Low': 'Low'}
 
 
 def key(v):
@@ -120,6 +134,62 @@ def record(vulns, cve):
             return json.load(f)['containers']['cna']
     except FileNotFoundError:
         return None
+
+
+def redhat(cve):
+    """Red Hat's record of a CVE, or None if it has none."""
+    # The default Python-urllib agent is refused (403); any named one is served.
+    req = urllib.request.Request(
+        f'{REDHAT_SECDATA}/cve/{cve}.json', headers={'User-Agent': 'hex-recheckvulns'}
+    )
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            err = e
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, FileNotFoundError):
+                return None
+            err = e
+        if attempt < 2:
+            time.sleep(5 * (attempt + 1))
+    raise RuntimeError(f'{cve}: {err}')
+
+
+def rate(vul, cna, rh):
+    """Rate a match Red Hat > kernel CNA > NVD (grype's own); return who rated it."""
+    cvss = next((x['cvssV3_1'] for x in cna.get('metrics', []) if 'cvssV3_1' in x), None)
+    if rh.get('threat_severity') in RH_SEVERITY:
+        vul['severity'], by = RH_SEVERITY[rh['threat_severity']], 'Red Hat'
+        score = rh.get('cvss3') and {
+            'source': 'secalert@redhat.com',
+            'vector': rh['cvss3']['cvss3_scoring_vector'],
+            'score': float(rh['cvss3']['cvss3_base_score']),
+        }
+    elif cvss:
+        vul['severity'], by = cvss['baseSeverity'].capitalize(), 'kernel CNA'
+        score = {
+            'source': cna['providerMetadata']['orgId'],
+            'vector': cvss['vectorString'],
+            'score': cvss['baseScore'],
+        }
+    else:
+        return 'NVD'
+    if score:
+        vul['cvss'] = [
+            {
+                'source': score['source'],
+                'type': 'Primary',
+                'version': score['vector'][5:8],
+                'vector': score['vector'],
+                'metrics': {'baseScore': score['score']},
+                'vendorMetadata': {},
+            }
+        ] + (vul.get('cvss') or [])
+    return by
 
 
 def upstream(v):
@@ -210,21 +280,36 @@ def main():
         keep.append(m)
         kernel.append(m)
 
+    cves = sorted({m['vulnerability']['id'] for m in kernel})
+    try:
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            rh = dict(zip(cves, pool.map(redhat, cves)))
+    except RuntimeError as e:
+        sys.exit(f'recheckvulns: Red Hat security data unreachable: {e}')
+
+    rated = dict.fromkeys(['Red Hat', 'kernel CNA', 'NVD'], 0)
+    for m in kernel:
+        cve = m['vulnerability']['id']
+        rated[rate(m['vulnerability'], record(args.vulns, cve) or {}, rh[cve] or {})] += 1
+
     rep['matches'] = keep
     rep['ignoredMatches'] = (
         (rep.get('ignoredMatches') or []) + ignored['kernel CNA'] + ignored['NVD']
     )
     rep['descriptor']['kernelRecheck'] = {
         'cna': {'repository': KERNEL_VULNS_GIT, 'commit': commit, 'date': date},
+        'severity': {'order': ['Red Hat', 'kernel CNA', 'NVD'], 'redhat': REDHAT_SECDATA},
         'ignored': {by: len(ms) for by, ms in ignored.items()},
         'kept': len(kernel),
+        'rated': rated,
     }
     with open(args.report + '.tmp', 'w') as f:
         json.dump(rep, f, indent=1)
     os.replace(args.report + '.tmp', args.report)
     print(
         f'kernel matches: {len(ignored["kernel CNA"])} ignored by the CNA, '
-        f'{len(ignored["NVD"])} by NVD, {len(kernel)} kept'
+        f'{len(ignored["NVD"])} by NVD, {len(kernel)} kept; rated by Red Hat {rated["Red Hat"]}, '
+        f'by the CNA {rated["kernel CNA"]}, by NVD {rated["NVD"]}'
     )
 
 

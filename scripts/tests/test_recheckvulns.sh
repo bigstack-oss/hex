@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 # Unit test for scripts/recheckvulns.py: which kernel matches the kernel CNA's records move to
-# ignoredMatches, the fix of the ones that stay, and that nothing else is touched.
-# Self-contained: vulns.git is a local repo.
+# ignoredMatches, the fix and severity of the ones that stay, and that nothing else is touched.
+# Self-contained: vulns.git is a local repo and Red Hat's security data a file:// directory.
 #
 # Needs bash, git and python3.
 # Run: bash test_recheckvulns.sh
@@ -14,7 +14,7 @@ SCRIPT="$DIR/../recheckvulns.py"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 # The CNA's records, in the shapes vulns.git uses
-mkdir -p "$T/vulns/cve/published/2026"
+mkdir -p "$T/vulns/cve/published/2026" "$T/rh/cve"
 cna(){ cat > "$T/vulns/cve/published/2026/$1.json" <<EOF
 {"containers": {"cna": {"providerMetadata": {"orgId": "f4215fc3-5b6b-47ff-a258-f7189bd81038"}, $2}}}
 EOF
@@ -26,7 +26,7 @@ win(){ echo '{"version": "'$1'", "lessThan": "'$2'", "status": "affected", "vers
 cna CVE-2026-0001 '"affected": ['"$(main 6.1 "$(fix 6.6.90)$(fix 6.12.100)" 6.14)"']'
 cna CVE-2026-0002 '"affected": ['"$(main 6.14 "" 6.16)"']'
 cna CVE-2026-0003 '"affected": ['"$(main 5.10 "$(fix 6.12.113)" 6.17)"']'
-cna CVE-2026-0004 '"affected": ['"$(main 6.6 "" 6.18)"']'
+cna CVE-2026-0004 '"affected": ['"$(main 6.6 "" 6.18)"'], "metrics": [{"cvssV3_1": {"version": "3.1", "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "baseScore": 9.8, "baseSeverity": "CRITICAL"}}]'
 # Fixed in mainline before 6.12 branched
 cna CVE-2026-0005 '"affected": ['"$(main 5.15 "$(fix 6.6.50)" 6.11)"']'
 # Only backports carry it: 6.12 from the start of history to 6.12.100, 6.18 to 6.18.54
@@ -35,7 +35,10 @@ cna CVE-2026-0006 '"affected": [{"defaultStatus": "unaffected", "versions": ['"$
 cna CVE-2026-0008 '"affected": [{"defaultStatus": "unaffected", "versions": ['"$(win 6.12.105 6.12.115)"']}]'
 git -C "$T/vulns" init -q -b master && git -C "$T/vulns" add -A &&
     git -C "$T/vulns" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m one
-export KERNEL_VULNS_GIT="file://$T/vulns"
+export KERNEL_VULNS_GIT="file://$T/vulns" REDHAT_SECDATA="file://$T/rh"
+
+echo '{"threat_severity": "Moderate", "cvss3": {"cvss3_base_score": "5.5", "cvss3_scoring_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H", "status": "verified"}}' > "$T/rh/cve/CVE-2026-0003.json"
+echo '{"threat_severity": "Important"}' > "$T/rh/cve/CVE-2026-0007.json"
 
 # grype's report: the vmlinuz (NVD), the kernel rpms (Red Hat's 5.14 data) and bystanders
 m(){ echo '{"vulnerability": {"id": "'$1'", "namespace": "'$2'", "severity": "'$3'", "cvss": [{"source": "nvd@nist.gov", "type": "Primary", "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "metrics": {"baseScore": 9.8}}], "fix": {"versions": ["6.18.5"], "state": "fixed"}}, "artifact": {"name": "'$4'", "version": "'$5'", "type": "'$6'"}}'; }
@@ -77,10 +80,16 @@ chk "a backport's range" "$(get CVE-2026-0008 linux-kernel "v['fix']['versions']
 chk "no CNA record: fix untouched" "$(get CVE-2026-0007 linux-kernel "v['fix']['versions']")" "['6.18.5']"
 chk "  an rpm NVD matches on the image too stays" "$(get CVE-2026-0007 kernel-modules "v['fix']['versions']")" "['6.18.5']"
 chk "  one it does not is ignored" "$(why CVE-2026-0009 kernel-core)" "NVD: no match on the kernel image, and no kernel CNA record"
+chk "Red Hat rates first" "$(get CVE-2026-0003 linux-kernel "v['severity']")" "Medium"
+chk "  its score goes first" "$(get CVE-2026-0003 linux-kernel "v['cvss'][0]['source'], v['cvss'][0]['metrics']['baseScore']")" "secalert@redhat.com 5.5"
+chk "  the rpm too" "$(get CVE-2026-0003 kernel-modules "v['severity']")" "Medium"
+chk "Important is High" "$(get CVE-2026-0007 linux-kernel "v['severity']")" "High"
+chk "then the CNA" "$(get CVE-2026-0004 linux-kernel "v['severity'], v['cvss'][0]['source']")" "Critical f4215fc3-5b6b-47ff-a258-f7189bd81038"
+chk "then NVD" "$(get CVE-2026-0008 linux-kernel "v['severity'], len(v['cvss'])")" "High 1"
 chk "RHEL's 5.14 rpm untouched" "$(get CVE-2026-0001 kernel-headers "v['severity']")" "Medium"
 chk "not a kernel: untouched" "$(get CVE-2026-0003 openssl "v['severity'], v['fix']['versions']")" "Critical ['6.18.5']"
 chk "commit recorded" "$(q "r['descriptor']['kernelRecheck']['cna']['commit']")" "$(git -C "$T/vulns" rev-parse HEAD)"
-chk "summary" "$OUT" "kernel matches: 5 ignored by the CNA, 1 by NVD, 6 kept"
+chk "summary" "$OUT" "kernel matches: 5 ignored by the CNA, 1 by NVD, 6 kept; rated by Red Hat 4, by the CNA 1, by NVD 1"
 
 # The next scan fetches what changed: CVE-2026-0003 is now fixed in 6.12.105
 cna CVE-2026-0003 '"affected": ['"$(main 5.10 "$(fix 6.12.105)" 6.17)"']'
@@ -90,6 +99,10 @@ chk "  by the new record" "$(why CVE-2026-0003 linux-kernel)" "kernel CNA: fixed
 chk "  checkout keeps only the records" "$(cd "$T/checkout" && git ls-files | grep -vc '^cve/published/.*\.json$')" "0"
 
 report; cp "$T/vuln.json" "$T/before.json"
+REDHAT_SECDATA=http://127.0.0.1:9 run "$T/vuln.json" "$T/checkout"; chk "Red Hat unreachable fails" "$RC" "1"
+chk "  and says so" "$(grep -c 'Red Hat security data unreachable' <<<"$OUT")" "1"
+chk "  report untouched" "$(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "same"
+
 KERNEL_VULNS_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout2"; chk "vulns.git unreachable fails" "$RC" "1"
 chk "  and says so" "$(grep -c "cannot fetch the kernel CNA records from file://$T/nowhere" <<<"$OUT")" "1"
 chk "  report untouched" "$(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "same"
