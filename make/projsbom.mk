@@ -54,12 +54,15 @@ sbom: $(PROJ_SBOM)
 
 # The SBOM, the package-level SBOM derived from it and the vulnerability report ship like any
 # other deliverable: projsign.mk covers them with the signed SHA256SUMS manifest, and attests
-# the package-level SBOM to each image (it says why that one, not the full SBOM).
-$(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages
+# the package-level SBOM to each image (it says why that one, not the full SBOM). Before the
+# report ships, its kernel matches are re-judged by the kernel CNA's records and re-rated
+# (recheckvulns.py says why); kernel-vulns is its checkout of those records.
+$(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages $(HEX_SCRIPTSDIR)/recheckvulns.py
 	$(call RUN_CMD_TIMED, mkdir -p $(PROJ_SHIPDIR) ; rm -f $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_sbom_packages.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_vuln.json* $(PROJ_SHIPDIR)/$(PROJ_NAME)_$(PROJ_VERSION)*_bndl.json,"  RM      old sbom")
 	$(call RUN_CMD_TIMED, grype sbom:$< --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
 	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
 	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/makesbompackages $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom_packages.json,"  GEN     sbom_packages.json")
+	$(call RUN_CMD_TIMED, python3 $(HEX_SCRIPTSDIR)/recheckvulns.py $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json kernel-vulns,"  RECHECK vuln")
 	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
 
 syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
@@ -67,5 +70,6 @@ syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
 	$(call RUN_CMD_TIMED, cd $< && syft --config $(SRCDIR)/syft.yml --source-version $(PROJ_NAME)_$(PROJ_VERSION) ./,"  GEN     $@")
 
 PKGCLEAN += $(PROJ_SBOM) syft-fs-cubecos.cdx.json
-# Downloads: kept by `make clean`, so the next build reuses them once their digest checks out
-DISTCLEAN += $(notdir $(SYFT_RPM) $(GRYPE_RPM))
+# Downloads: kept by `make clean`, so the next build reuses them once their digest checks out, and
+# fetches only what changed in kernel-vulns
+DISTCLEAN += $(notdir $(SYFT_RPM) $(GRYPE_RPM)) kernel-vulns
