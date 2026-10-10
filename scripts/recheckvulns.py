@@ -5,7 +5,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Re-judge grype's Linux kernel matches by the kernel CNA's records, and rate the ones that stay.
+"""Re-judge grype's kernel matches by the kernel CNA, and RHEL python rpm matches by Red Hat.
 
 grype judges a kernel by data that does not describe it. The vmlinuz is matched by NVD's CPE
 ranges, which often stop at the mainline fix and leave out the stable backports (CVE-2026-43197:
@@ -29,6 +29,18 @@ Both sources are read at scan time, as grype fetches its own database. The CNA's
 in a git checkout that later scans bring up to date, and the report's descriptor records the
 commit used; Red Hat's ratings are asked for per CVE on every scan. KERNEL_VULNS_GIT and
 REDHAT_SECDATA in the environment point either at a mirror.
+
+Given the SBOM (--sbom), Python packages that an rpm built from RHEL's sources installed into the
+system site-packages are re-judged too. grype matches them by the package's own version against
+the GitHub advisories, and Red Hat backports fixes without moving that version: urllib3 1.26.5
+from python3-urllib3-1.26.5-8.el9 carries fixes its version predates and is reported for each.
+Red Hat's RHEL 9 record decides instead. A match moves to "ignoredMatches" when Red Hat says the
+source package is not affected, when it names a fix of the same version whose release this build
+sorts at or above, or when the rpm's own changelog names the CVE (--root, the scanned rootfs, lets
+it read them): a z-stream rebuild such as 8.el9_8 sorts above the 8.el9 that fixed it in Stream.
+The rpm is the SBOM's python3-<name> of the same version, published by CentOS or Red Hat with a
+Stream or RHEL dist tag, so a SIG (el9s) or EPEL build of that name, which carries none of RHEL's
+backports, keeps grype's verdict. A match that stays is rated by Red Hat where Red Hat rates it.
 """
 
 import argparse
@@ -49,6 +61,9 @@ REDHAT_SECDATA = os.environ.get(
     'REDHAT_SECDATA', 'https://access.redhat.com/hydra/rest/securitydata'
 )
 RH_SEVERITY = {'Critical': 'Critical', 'Important': 'High', 'Moderate': 'Medium', 'Low': 'Low'}
+RHEL = 'Red Hat Enterprise Linux 9'
+DISTRO_PUBLISHERS = {'CentOS', 'Red Hat, Inc.'}
+SYSTEM_SITE = re.compile(r'/usr/lib(64)?/python3[.0-9]*/site-packages/')
 
 
 def key(v):
@@ -196,19 +211,54 @@ def upstream(v):
     return re.match(r'(?:\d+:)?([^-]+)', v).group(1)
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('report', help="grype's JSON report, rewritten in place")
-    ap.add_argument(
-        'vulns',
-        help="checkout of the kernel CNA's records (vulns.git): cloned when missing, "
-        'brought up to date otherwise',
-    )
-    args = ap.parse_args()
+def vercmp(a, b):
+    """rpm's ordering of two version or release strings: -1, 0 or 1."""
+    x, y = (re.findall(r'~|\^|\d+|[a-zA-Z]+', v) for v in (a, b))
+    while x or y:
+        p, q = x[0] if x else None, y[0] if y else None
+        if p == '~' or q == '~':
+            if p != q:
+                return -1 if p == '~' else 1
+        elif p == '^' or q == '^':
+            if p is None or q is None:
+                return -1 if p is None else 1
+            if p != q:
+                return 1 if q == '^' else -1
+        elif p is None or q is None:
+            return 1 if q is None else -1
+        elif p.isdigit() != q.isdigit():
+            return 1 if p.isdigit() else -1
+        elif p.isdigit() and int(p) != int(q):
+            return 1 if int(p) > int(q) else -1
+        elif not p.isdigit() and p != q:
+            return 1 if p > q else -1
+        x, y = x[1:], y[1:]
+    return 0
 
-    with open(args.report) as f:
-        rep = json.load(f)
 
+def fetch_redhat(cves):
+    """Red Hat's records of these CVEs, or exit if Red Hat cannot be reached."""
+    try:
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            return dict(zip(cves, pool.map(redhat, cves)))
+    except RuntimeError as e:
+        sys.exit(f'recheckvulns: Red Hat security data unreachable: {e}')
+
+
+def ignore(m, why):
+    vul, art = m['vulnerability'], m['artifact']
+    m['appliedIgnoreRules'] = [
+        {
+            'vulnerability': vul['id'],
+            'namespace': vul['namespace'],
+            'reason': why,
+            'package': {'name': art['name'], 'version': art['version'], 'type': art['type']},
+        }
+    ]
+
+
+def recheck_kernel(rep, vulns):
+    """Re-judge the kernel matches in place; a summary, or None if the report has no kernel."""
     # The kernel rpms judged are the ones that package a kernel image the SBOM found; any other
     # kernel-* rpm (RHEL's own, at 5.14) keeps grype's Red Hat verdict.
     images = {
@@ -217,8 +267,7 @@ def main():
         if m['artifact']['type'] == 'linux-kernel'
     }
     if not images:
-        print('no kernel image in the report: nothing to re-check')
-        return
+        return None
     nvd = {
         (upstream(m['artifact']['version']), m['vulnerability']['id'])
         for m in rep['matches']
@@ -233,7 +282,7 @@ def main():
         )
 
     try:
-        commit, date = fetch_records(args.vulns)
+        commit, date = fetch_records(vulns)
     except subprocess.CalledProcessError:
         sys.exit(f'recheckvulns: cannot fetch the kernel CNA records from {KERNEL_VULNS_GIT}')
 
@@ -243,7 +292,7 @@ def main():
         if not is_kernel(art):
             keep.append(m)
             continue
-        cna = record(args.vulns, vul['id'])
+        cna = record(vulns, vul['id'])
         if cna:
             state, what = judge(cna, art['version'])
             by, why = 'kernel CNA', f'kernel CNA: {what} (vulns.git {commit[:12]})'
@@ -257,18 +306,7 @@ def main():
         else:
             state = 'affected'
         if state == 'unaffected':
-            m['appliedIgnoreRules'] = [
-                {
-                    'vulnerability': vul['id'],
-                    'namespace': vul['namespace'],
-                    'reason': why,
-                    'package': {
-                        'name': art['name'],
-                        'version': art['version'],
-                        'type': art['type'],
-                    },
-                }
-            ]
+            ignore(m, why)
             ignored[by].append(m)
             continue
         if cna:
@@ -280,17 +318,11 @@ def main():
         keep.append(m)
         kernel.append(m)
 
-    cves = sorted({m['vulnerability']['id'] for m in kernel})
-    try:
-        with concurrent.futures.ThreadPoolExecutor(8) as pool:
-            rh = dict(zip(cves, pool.map(redhat, cves)))
-    except RuntimeError as e:
-        sys.exit(f'recheckvulns: Red Hat security data unreachable: {e}')
-
+    rh = fetch_redhat(sorted({m['vulnerability']['id'] for m in kernel}))
     rated = dict.fromkeys(['Red Hat', 'kernel CNA', 'NVD'], 0)
     for m in kernel:
         cve = m['vulnerability']['id']
-        rated[rate(m['vulnerability'], record(args.vulns, cve) or {}, rh[cve] or {})] += 1
+        rated[rate(m['vulnerability'], record(vulns, cve) or {}, rh[cve] or {})] += 1
 
     rep['matches'] = keep
     rep['ignoredMatches'] = (
@@ -303,14 +335,165 @@ def main():
         'kept': len(kernel),
         'rated': rated,
     }
-    with open(args.report + '.tmp', 'w') as f:
-        json.dump(rep, f, indent=1)
-    os.replace(args.report + '.tmp', args.report)
-    print(
+    return (
         f'kernel matches: {len(ignored["kernel CNA"])} ignored by the CNA, '
         f'{len(ignored["NVD"])} by NVD, {len(kernel)} kept; rated by Red Hat {rated["Red Hat"]}, '
         f'by the CNA {rated["kernel CNA"]}, by NVD {rated["NVD"]}'
     )
+
+
+def sbom_rpms(path):
+    """The SBOM's rpms by name: (version, release, source package, publisher)."""
+    with open(path) as f:
+        sbom = json.load(f)
+    rpms = {}
+    for c in sbom.get('components') or []:
+        if not (c.get('purl') or '').startswith('pkg:rpm/'):
+            continue
+        props = {p['name']: p['value'] for p in c.get('properties') or []}
+        src = re.match(r'(.+)-[^-]+-[^-]+\.src\.rpm$', props.get('syft:metadata:sourceRpm', ''))
+        evr = re.match(r'(?:\d+:)?(.+)-([^-]+)$', c.get('version', ''))
+        if src and evr:
+            rpms[c['name']] = (evr.group(1), evr.group(2), src.group(1), c.get('publisher'))
+    return rpms
+
+
+def distro_rpm(art, rpms):
+    """(name, version, release, source package) of the RHEL-built rpm that installed this python
+    package into the system site-packages, or None."""
+    if art['type'] != 'python' or not any(
+        SYSTEM_SITE.match(x.get('path', '')) for x in art.get('locations') or []
+    ):
+        return None
+    name = 'python3-' + re.sub(r'[-_.]+', '-', art['name']).lower()
+    r = rpms.get(name)
+    # The publisher alone does not tell: the Cloud SIG ships python3-jinja2-3.0.1-2.el9s as
+    # "CentOS". Its dist tag does -- el9s is a SIG build, el9 and el9_N are Stream's and RHEL's.
+    if not r or r[3] not in DISTRO_PUBLISHERS or re.search(r'\.el\d+s(\.|$)', r[1]):
+        return None
+    # Red Hat's dist-info can carry a suffix its rpm version does not: Mako 1.1.4.dev0, rpm 1.1.4
+    if art['version'] != r[0] and not art['version'].startswith(r[0] + '.'):
+        return None
+    return name, r[0], r[1], r[2]
+
+
+def changelog(root, name):
+    if not root:
+        return ''
+    out = subprocess.run(
+        ['rpm', '--root', root, '-q', '--changelog', name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return out.stdout if out.returncode == 0 else ''
+
+
+def backported(rh, cve, srpm, version, release, log):
+    """(who, why) when Red Hat's record or the rpm's changelog clears this build, else None."""
+    for x in rh.get('package_state') or []:
+        if (x.get('product_name'), x.get('package_name'), x.get('fix_state')) == (
+            RHEL,
+            srpm,
+            'Not affected',
+        ):
+            return 'Red Hat', f'Red Hat: {srpm} is not affected in {RHEL}'
+    for x in rh.get('affected_release') or []:
+        fix = re.match(r'(.+)-(?:\d+:)?([^-]+)-([^-]+)$', x.get('package') or '')
+        if (
+            x.get('product_name') == RHEL
+            and fix
+            and fix.group(1) == srpm
+            and fix.group(2) == version
+            and vercmp(release, fix.group(3)) >= 0
+        ):
+            return (
+                'Red Hat',
+                f'Red Hat: fixed in {x["package"]} ({x.get("advisory")}), '
+                f'this build is {version}-{release}',
+            )
+    if re.search(rf'(?<![\w-]){re.escape(cve)}(?![\w-])', log):
+        return 'changelog', f'rpm changelog: {srpm}-{version}-{release} backports {cve}'
+    return None
+
+
+def recheck_python(rep, sbom, root):
+    """Re-judge the matches on RHEL-built python rpms in place; return a summary."""
+    rpms = sbom_rpms(sbom)
+    owned = []
+    for m in rep['matches']:
+        r = distro_rpm(m['artifact'], rpms)
+        ids = [m['vulnerability']['id']] + [
+            x.get('id', '') for x in m.get('relatedVulnerabilities') or []
+        ]
+        cve = next((i for i in ids if i.startswith('CVE-')), None)
+        if r and cve:
+            owned.append((m, r, cve))
+
+    rh = fetch_redhat(sorted({cve for _, _, cve in owned}))
+    logs, drop = {}, set()
+    ignored = {'Red Hat': [], 'changelog': []}
+    rated = {'Red Hat': 0, 'grype': 0}
+    for m, (name, version, release, srpm), cve in owned:
+        if name not in logs:
+            logs[name] = changelog(root, name)
+        verdict = backported(rh[cve] or {}, cve, srpm, version, release, logs[name])
+        if verdict:
+            by, why = verdict
+            ignore(m, why)
+            ignored[by].append(m)
+            drop.add(id(m))
+        else:
+            by = rate(m['vulnerability'], {}, rh[cve] or {})
+            rated['Red Hat' if by == 'Red Hat' else 'grype'] += 1
+
+    rep['matches'] = [m for m in rep['matches'] if id(m) not in drop]
+    rep['ignoredMatches'] = (
+        (rep.get('ignoredMatches') or []) + ignored['Red Hat'] + ignored['changelog']
+    )
+    kept = len(owned) - len(drop)
+    rep.setdefault('descriptor', {})['backportRecheck'] = {
+        'product': RHEL,
+        'redhat': REDHAT_SECDATA,
+        'changelogs': bool(root),
+        'ignored': {by: len(ms) for by, ms in ignored.items()},
+        'kept': kept,
+        'rated': rated,
+    }
+    return (
+        f'RHEL python rpm matches: {len(ignored["Red Hat"])} ignored by Red Hat, '
+        f'{len(ignored["changelog"])} by the rpm changelog, {kept} kept; '
+        f'rated by Red Hat {rated["Red Hat"]}, by grype {rated["grype"]}'
+    )
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('report', help="grype's JSON report, rewritten in place")
+    ap.add_argument(
+        'vulns',
+        help="checkout of the kernel CNA's records (vulns.git): cloned when missing, "
+        'brought up to date otherwise',
+    )
+    ap.add_argument('--sbom', help='the CycloneDX SBOM the report was scanned from')
+    ap.add_argument('--root', help="the rootfs the SBOM was made from, for its rpms' changelogs")
+    args = ap.parse_args()
+
+    with open(args.report) as f:
+        rep = json.load(f)
+
+    done = [recheck_kernel(rep, args.vulns)]
+    if args.sbom:
+        done.append(recheck_python(rep, args.sbom, args.root))
+    done = [x for x in done if x]
+    if not done:
+        print('no kernel image in the report: nothing to re-check')
+        return
+
+    with open(args.report + '.tmp', 'w') as f:
+        json.dump(rep, f, indent=1)
+    os.replace(args.report + '.tmp', args.report)
+    print('\n'.join(done))
 
 
 if __name__ == '__main__':
