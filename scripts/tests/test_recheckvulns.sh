@@ -117,10 +117,13 @@ run "$T/vuln.json"; chk "usage error with one arg" "$RC" "2"
 
 # RHEL python rpms (--sbom): the SBOM's rpms, Red Hat's records and the rpms' changelogs
 c(){ echo '{"type": "library", "name": "'$1'", "version": "'$2'", "publisher": "'$3'", "purl": "pkg:rpm/centos/'$1'@'$2'", "properties": [{"name": "syft:metadata:sourceRpm", "value": "'$4'-'$2'.src.rpm"}]}'; }
+rc(){ echo '{"type": "library", "name": "'$1'", "version": "'$2'", "publisher": "'$3'", "purl": "pkg:rpm/centos/'$1'@'$2'", "properties": [{"name": "syft:metadata:sourceRpm", "value": "'$4'.src.rpm"}]}'; }
 cat > "$T/sbom.json" <<EOF
 {"components": [$(c python3-urllib3 1.26.5-8.el9 CentOS python-urllib3), $(c python3-mako 1.1.4-6.el9 CentOS python-mako),
  $(c python3-setuptools 65.5.1-2.el9s "CentOS Cloud SIG" python-setuptools), $(c python3-protobuf 3.14.0-17.el9 CentOS protobuf),
  $(c python3-lxml 4.6.5-3.el9 CentOS python-lxml), $(c python3-jinja2 3.0.1-2.el9s CentOS python-jinja2),
+ $(rc nginx-core 2:1.20.1-32.el9 CentOS nginx-1.20.1-32.el9), $(rc conmon 3:2.2.1-2.el9 CentOS conmon-2.2.1-2.el9),
+ $(rc kernel-core 6.12.110-1.el9 CentOS kernel-6.12.110-1.el9), $(rc openvswitch3.3 3.3.4-1.el9s CentOS openvswitch3.3-3.3.4-1.el9s),
  {"type": "library", "name": "urllib3", "version": "1.26.5", "purl": "pkg:pypi/urllib3@1.26.5"}]}
 EOF
 rel(){ echo '{"product_name": "'"${3:-Red Hat Enterprise Linux 9}"'", "package": "'$1'", "advisory": "'$2'"}'; }
@@ -134,6 +137,12 @@ echo '{"threat_severity": "Moderate", "affected_release": ['"$(rel protobuf-0:3.
 echo '{"threat_severity": "Moderate", "package_state": ['"$(st python-lxml 'Fix deferred')"']}' > "$T/rh/cve/CVE-2026-1007.json"
 # The Cloud SIG ships its jinja2 as "CentOS": only the el9s dist tag says it is not RHEL's 2.11.3
 echo '{"threat_severity": "Important", "package_state": ['"$(st python-jinja2 'Not affected')"']}' > "$T/rh/cve/CVE-2026-1008.json"
+# The rpms themselves: nginx measured against a module stream though RHEL fixed its own line (twice,
+# both below this build), conmon Red Hat calls not affected, and a kernel and a SIG rpm left alone
+echo '{"threat_severity": "Important", "affected_release": ['"$(rel nginx-1:1.20.1-14.el9_2.1 RHSA-2026:11), $(rel nginx-2:1.20.1-24.el9_7.2 RHSA-2026:12)"']}' > "$T/rh/cve/CVE-2026-1010.json"
+echo '{"threat_severity": "Moderate", "package_state": ['"$(st conmon 'Not affected')"']}' > "$T/rh/cve/CVE-2026-1011.json"
+echo '{"threat_severity": "Important", "package_state": ['"$(st kernel 'Not affected')"']}' > "$T/rh/cve/CVE-2026-1012.json"
+echo '{"threat_severity": "Important", "package_state": ['"$(st openvswitch3.3 'Not affected')"']}' > "$T/rh/cve/CVE-2026-1013.json"
 # Fixed in an older minor's z-stream below this build and in the newest one above it: not proof
 echo '{"threat_severity": "Important", "affected_release": ['"$(rel python-urllib3-0:1.26.5-6.el9_7.1 RHSA-2026:9), $(rel python-urllib3-0:1.26.5-9.el9_8 RHSA-2026:10)"']}' > "$T/rh/cve/CVE-2026-1009.json"
 mkdir -p "$T/bin" "$T/root"
@@ -141,16 +150,20 @@ printf '* Wed Jun 03 2026 Packager - 1.26.5-8\n- Security fix for CVE-2026-1002 
 printf '#!/bin/bash\n[ "$1 $2 $3 $4" = "--root %s -q --changelog" ] || exit 2\n[ "$5" = python3-urllib3 ] && cat "%s/changelog"\n' "$T/root" "$T" > "$T/bin/rpm"; chmod +x "$T/bin/rpm"
 SITE=/usr/lib/python3.9/site-packages
 p(){ echo '{"vulnerability": {"id": "'$1'", "namespace": "github:language:python", "severity": "High", "cvss": [], "fix": {"versions": ["9.9"], "state": "fixed"}}, "relatedVulnerabilities": [{"id": "'$2'"}], "artifact": {"name": "'$3'", "version": "'$4'", "type": "python", "locations": [{"path": "'$5'/'$3'-'$4'.dist-info/METADATA"}]}}'; }
+rp(){ echo '{"vulnerability": {"id": "'$1'", "namespace": "redhat:distro:redhat:9", "severity": "High", "cvss": [], "fix": {"versions": ["'$4'"], "state": "fixed"}}, "artifact": {"name": "'$2'", "version": "'$3'", "type": "rpm", "locations": [{"path": "/var/lib/rpm/rpmdb.sqlite"}]}}'; }
 pyreport(){ cat > "$T/vuln.json" <<EOF
 {"descriptor": {"name": "grype"}, "matches": [
  $(p GHSA-0001 CVE-2026-1001 urllib3 1.26.5 $SITE), $(p GHSA-0002 CVE-2026-1002 urllib3 1.26.5 $SITE),
  $(p CVE-2026-1003 CVE-2026-1003 urllib3 1.26.5 $SITE), $(p GHSA-0004 CVE-2026-1004 Mako 1.1.4.dev0 $SITE),
  $(p GHSA-0005 CVE-2026-1005 setuptools 65.5.1 $SITE), $(p GHSA-0006 CVE-2026-1006 protobuf 3.14.0 /usr/lib64/python3.9/site-packages),
  $(p GHSA-0007 CVE-2026-1007 lxml 4.6.5 /usr/lib64/python3.9/site-packages), $(p GHSA-0008 CVE-2026-1008 Jinja2 3.0.1 $SITE), $(p GHSA-0009 CVE-2026-1009 urllib3 1.26.5 $SITE),
- $(p GHSA-0001 CVE-2026-1001 urllib3 1.26.5 /usr/local/lib/python3.9/site-packages)]}
+ $(p GHSA-0001 CVE-2026-1001 urllib3 1.26.5 /usr/local/lib/python3.9/site-packages),
+ $(rp CVE-2026-1010 nginx-core 2:1.20.1-32.el9 2:1.26.3-9.module+el9.8.0+1), $(rp CVE-2026-1011 conmon 3:2.2.1-2.el9 ""),
+ $(rp CVE-2026-1012 kernel-core 6.12.110-1.el9 ""), $(rp CVE-2026-1013 openvswitch3.3 3.3.4-1.el9s "")]}
 EOF
 }
-pkept="' '.join(m['vulnerability']['id'] + '/' + m['artifact']['locations'][0]['path'].split('/')[2] for m in r['matches'])"
+pkept="' '.join(m['vulnerability']['id'] + '/' + m['artifact']['locations'][0]['path'].split('/')[2] for m in r['matches'] if m['artifact']['type'] == 'python')"
+rkept="' '.join(m['vulnerability']['id'] + '/' + m['artifact']['name'] for m in r['matches'] if m['artifact']['type'] == 'rpm')"
 pwhy(){ q "next(m['appliedIgnoreRules'][0]['reason'] for m in r['ignoredMatches'] if m['vulnerability']['id'] == '$1')"; }
 pget(){ q "' '.join(map(str, next(($2,) for m in r['matches'] if m['vulnerability']['id'] == '$1' and '/local/' not in m['artifact']['locations'][0]['path'] for v in [m['vulnerability']])))"; }
 
@@ -167,9 +180,12 @@ chk "  a fix in RHEL 9's newest z-stream above it is not cleared by an older one
 chk "  so does one the SIG publishes as CentOS" "$(pget GHSA-0008 "v['severity'], len(v['cvss'])")" "High 0"
 chk "  an EUS-only fix does not count" "$(pget GHSA-0006 "v['severity']")" "Medium"
 chk "  fix deferred stays, rated" "$(pget GHSA-0007 "v['severity']")" "Medium"
+chk "  rpm: kept" "$(q "$rkept")" "CVE-2026-1012/kernel-core CVE-2026-1013/openvswitch3.3"
+chk "  rpm: a module stream's fix, cleared by RHEL's newest fix of its own line" "$(pwhy CVE-2026-1010)" "Red Hat: fixed in nginx-2:1.20.1-24.el9_7.2 (RHSA-2026:12), this build is 1.20.1-32.el9"
+chk "  rpm: not affected" "$(pwhy CVE-2026-1011)" "Red Hat: conmon is not affected in Red Hat Enterprise Linux 9"
 chk "  /usr/local untouched" "$(q "next(m['vulnerability']['severity'] for m in r['matches'] if '/local/' in m['artifact']['locations'][0]['path'])")" "High"
-chk "  descriptor" "$(q "r['descriptor']['backportRecheck']['ignored'], r['descriptor']['backportRecheck']['changelogs']")" "{'Red Hat': 2, 'changelog': 1} True"
-chk "  summary" "$OUT" "RHEL python rpm matches: 2 ignored by Red Hat, 1 by the rpm changelog, 4 kept; rated by Red Hat 4, by grype 0"
+chk "  descriptor" "$(q "r['descriptor']['backportRecheck']['ignored'], r['descriptor']['backportRecheck']['changelogs']")" "{'Red Hat': 4, 'changelog': 1} True"
+chk "  summary" "$OUT" "RHEL rpm matches (2 rpm, 7 python): 4 ignored by Red Hat, 1 by the rpm changelog, 4 kept; rated by Red Hat 4, by grype 0"
 
 pyreport; PATH="$T/bin:$PATH" KERNEL_VULNS_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout4" --sbom "$T/sbom.json"
 chk "without --root no changelog clears it" "$(q "'GHSA-0002' in [m['vulnerability']['id'] for m in r['matches']]")" "True"

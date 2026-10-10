@@ -30,18 +30,22 @@ in a git checkout that later scans bring up to date, and the report's descriptor
 commit used; Red Hat's ratings are asked for per CVE on every scan. KERNEL_VULNS_GIT and
 REDHAT_SECDATA in the environment point either at a mirror.
 
-Given the SBOM (--sbom), Python packages that an rpm built from RHEL's sources installed into the
-system site-packages are re-judged too. grype matches them by the package's own version against
-the GitHub advisories, and Red Hat backports fixes without moving that version: urllib3 1.26.5
-from python3-urllib3-1.26.5-8.el9 carries fixes its version predates and is reported for each.
+Given the SBOM (--sbom), matches on what rpms built from RHEL's sources installed are re-judged
+too. Python packages such an rpm put into the system site-packages grype matches by the package's
+own version against the GitHub advisories, and Red Hat backports fixes without moving that
+version: urllib3 1.26.5 from python3-urllib3-1.26.5-8.el9 carries fixes its version predates and
+is reported for each. The rpms themselves grype matches by Red Hat's advisories, but at times by
+a module stream's: the non-modular nginx 1.20.1-32.el9 is reported for fixes Red Hat names only in
+nginx:1.24 and 1.26 builds, though Red Hat fixed its own line in 1.20.1-14.el9_2.1 and later.
 Red Hat's RHEL 9 record decides instead. A match moves to "ignoredMatches" when Red Hat says the
 source package is not affected, when this build's release sorts at or above RHEL 9's newest fix
 of the same version (an older minor's z-stream sorting below it proves nothing), or when the rpm's
 own changelog names the CVE (--root, the scanned rootfs, lets it read them): a z-stream rebuild
 such as 8.el9_8 sorts above the 8.el9 that fixed it in Stream.
-The rpm is the SBOM's python3-<name> of the same version, published by CentOS or Red Hat with a
-Stream or RHEL dist tag, so a SIG (el9s) or EPEL build of that name, which carries none of RHEL's
-backports, keeps grype's verdict. A match that stays is rated by Red Hat where Red Hat rates it.
+The rpm is the SBOM's rpm of that name and version (python3-<name> for a Python package), published
+by CentOS or Red Hat with a Stream or RHEL dist tag, so a SIG (el9s) or EPEL build, which carries
+none of RHEL's backports, keeps grype's verdict; kernel rpms are left to the kernel pass. A match
+that stays is rated by Red Hat where Red Hat rates it.
 """
 
 import argparse
@@ -238,13 +242,19 @@ def vercmp(a, b):
     return 0
 
 
+_RH = {}
+
+
 def fetch_redhat(cves):
-    """Red Hat's records of these CVEs, or exit if Red Hat cannot be reached."""
+    """Red Hat's records of these CVEs, or exit if Red Hat cannot be reached. Each CVE is asked
+    for once per run, so a pass reuses what an earlier one fetched."""
+    todo = [c for c in cves if c not in _RH]
     try:
         with concurrent.futures.ThreadPoolExecutor(8) as pool:
-            return dict(zip(cves, pool.map(redhat, cves)))
+            _RH.update(zip(todo, pool.map(redhat, todo)))
     except RuntimeError as e:
         sys.exit(f'recheckvulns: Red Hat security data unreachable: {e}')
+    return {c: _RH[c] for c in cves}
 
 
 def ignore(m, why):
@@ -361,20 +371,27 @@ def sbom_rpms(path):
 
 
 def distro_rpm(art, rpms):
-    """(name, version, release, source package) of the RHEL-built rpm that installed this python
-    package into the system site-packages, or None."""
-    if art['type'] != 'python' or not any(
+    """(name, version, release, source package) of the RHEL-built rpm behind a match: the rpm
+    itself, or the one that installed this python package into the system site-packages. None
+    for anything else, kernel rpms included -- the kernel pass judges those."""
+    if art['type'] == 'rpm' and not re.match(r'kernel(-|$)', art['name']):
+        name = art['name']
+    elif art['type'] == 'python' and any(
         SYSTEM_SITE.match(x.get('path', '')) for x in art.get('locations') or []
     ):
+        name = 'python3-' + re.sub(r'[-_.]+', '-', art['name']).lower()
+    else:
         return None
-    name = 'python3-' + re.sub(r'[-_.]+', '-', art['name']).lower()
     r = rpms.get(name)
     # The publisher alone does not tell: the Cloud SIG ships python3-jinja2-3.0.1-2.el9s as
     # "CentOS". Its dist tag does -- el9s is a SIG build, el9 and el9_N are Stream's and RHEL's.
     if not r or r[3] not in DISTRO_PUBLISHERS or re.search(r'\.el\d+s(\.|$)', r[1]):
         return None
+    if art['type'] == 'rpm':
+        if re.sub(r'^\d+:', '', art['version']) != f'{r[0]}-{r[1]}':
+            return None
     # Red Hat's dist-info can carry a suffix its rpm version does not: Mako 1.1.4.dev0, rpm 1.1.4
-    if art['version'] != r[0] and not art['version'].startswith(r[0] + '.'):
+    elif art['version'] != r[0] and not art['version'].startswith(r[0] + '.'):
         return None
     return name, r[0], r[1], r[2]
 
@@ -391,38 +408,35 @@ def changelog(root, name):
     return out.stdout if out.returncode == 0 else ''
 
 
-def backported(rh, cve, srpm, version, release, log):
-    """(who, why) when Red Hat's record or the rpm's changelog clears this build, else None."""
+def backported(rh, srpm, version, release):
+    """Why Red Hat's record clears this build, or None."""
     for x in rh.get('package_state') or []:
         if (x.get('product_name'), x.get('package_name'), x.get('fix_state')) == (
             RHEL,
             srpm,
             'Not affected',
         ):
-            return 'Red Hat', f'Red Hat: {srpm} is not affected in {RHEL}'
+            return f'Red Hat: {srpm} is not affected in {RHEL}'
     # Measured against RHEL 9's newest fix of this version, not any: capstone's CVE-2025-68114 is
     # fixed in 4.0.2-11.el9_7 and 4.0.2-13.el9_8, because 9.8 shipped 12 without it -- so Stream's
     # 4.0.2-12.el9 sorting above the 9.7 fix says nothing about whether it carries the fix.
     fixes = []
     for x in rh.get('affected_release') or []:
         fix = re.match(r'(.+)-(?:\d+:)?([^-]+)-([^-]+)$', x.get('package') or '')
-        if x.get('product_name') == RHEL and fix and fix.group(1) == srpm and fix.group(2) == version:
+        if x.get('product_name') == RHEL and fix and fix.group(1, 2) == (srpm, version):
             fixes.append((fix.group(3), x))
     if fixes:
         newest, x = max(fixes, key=functools.cmp_to_key(lambda a, b: vercmp(a[0], b[0])))
         if vercmp(release, newest) >= 0:
             return (
-                'Red Hat',
                 f'Red Hat: fixed in {x["package"]} ({x.get("advisory")}), '
-                f'this build is {version}-{release}',
+                f'this build is {version}-{release}'
             )
-    if re.search(rf'(?<![\w-]){re.escape(cve)}(?![\w-])', log):
-        return 'changelog', f'rpm changelog: {srpm}-{version}-{release} backports {cve}'
     return None
 
 
-def recheck_python(rep, sbom, root):
-    """Re-judge the matches on RHEL-built python rpms in place; return a summary."""
+def recheck_distro(rep, sbom, root):
+    """Re-judge the matches on RHEL-built rpms and their python packages in place; summarize."""
     rpms = sbom_rpms(sbom)
     owned = []
     for m in rep['matches']:
@@ -439,11 +453,14 @@ def recheck_python(rep, sbom, root):
     ignored = {'Red Hat': [], 'changelog': []}
     rated = {'Red Hat': 0, 'grype': 0}
     for m, (name, version, release, srpm), cve in owned:
-        if name not in logs:
-            logs[name] = changelog(root, name)
-        verdict = backported(rh[cve] or {}, cve, srpm, version, release, logs[name])
-        if verdict:
-            by, why = verdict
+        why, by = backported(rh[cve] or {}, srpm, version, release), 'Red Hat'
+        # The changelog only when Red Hat's record does not settle it: rpm queries are the slow part
+        if not why and root:
+            if name not in logs:
+                logs[name] = changelog(root, name)
+            if re.search(rf'(?<![\w-]){re.escape(cve)}(?![\w-])', logs[name]):
+                why, by = f'rpm changelog: {srpm}-{version}-{release} backports {cve}', 'changelog'
+        if why:
             ignore(m, why)
             ignored[by].append(m)
             drop.add(id(m))
@@ -456,18 +473,20 @@ def recheck_python(rep, sbom, root):
         (rep.get('ignoredMatches') or []) + ignored['Red Hat'] + ignored['changelog']
     )
     kept = len(owned) - len(drop)
+    judged = {t: sum(m['artifact']['type'] == t for m, _, _ in owned) for t in ('rpm', 'python')}
     rep.setdefault('descriptor', {})['backportRecheck'] = {
         'product': RHEL,
         'redhat': REDHAT_SECDATA,
         'changelogs': bool(root),
+        'judged': judged,
         'ignored': {by: len(ms) for by, ms in ignored.items()},
         'kept': kept,
         'rated': rated,
     }
     return (
-        f'RHEL python rpm matches: {len(ignored["Red Hat"])} ignored by Red Hat, '
-        f'{len(ignored["changelog"])} by the rpm changelog, {kept} kept; '
-        f'rated by Red Hat {rated["Red Hat"]}, by grype {rated["grype"]}'
+        f'RHEL rpm matches ({judged["rpm"]} rpm, {judged["python"]} python): '
+        f'{len(ignored["Red Hat"])} ignored by Red Hat, {len(ignored["changelog"])} by the rpm '
+        f'changelog, {kept} kept; rated by Red Hat {rated["Red Hat"]}, by grype {rated["grype"]}'
     )
 
 
@@ -488,7 +507,7 @@ def main():
 
     done = [recheck_kernel(rep, args.vulns)]
     if args.sbom:
-        done.append(recheck_python(rep, args.sbom, args.root))
+        done.append(recheck_distro(rep, args.sbom, args.root))
     done = [x for x in done if x]
     if not done:
         print('no kernel image in the report: nothing to re-check')
