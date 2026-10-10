@@ -134,6 +134,8 @@ echo '{"threat_severity": "Moderate", "affected_release": ['"$(rel protobuf-0:3.
 echo '{"threat_severity": "Moderate", "package_state": ['"$(st python-lxml 'Fix deferred')"']}' > "$T/rh/cve/CVE-2026-1007.json"
 # The Cloud SIG ships its jinja2 as "CentOS": only the el9s dist tag says it is not RHEL's 2.11.3
 echo '{"threat_severity": "Important", "package_state": ['"$(st python-jinja2 'Not affected')"']}' > "$T/rh/cve/CVE-2026-1008.json"
+# Fixed in an older minor's z-stream below this build and in the newest one above it: not proof
+echo '{"threat_severity": "Important", "affected_release": ['"$(rel python-urllib3-0:1.26.5-6.el9_7.1 RHSA-2026:9), $(rel python-urllib3-0:1.26.5-9.el9_8 RHSA-2026:10)"']}' > "$T/rh/cve/CVE-2026-1009.json"
 mkdir -p "$T/bin" "$T/root"
 printf '* Wed Jun 03 2026 Packager - 1.26.5-8\n- Security fix for CVE-2026-1002 and CVE-2026-10020\n' > "$T/changelog"
 printf '#!/bin/bash\n[ "$1 $2 $3 $4" = "--root %s -q --changelog" ] || exit 2\n[ "$5" = python3-urllib3 ] && cat "%s/changelog"\n' "$T/root" "$T" > "$T/bin/rpm"; chmod +x "$T/bin/rpm"
@@ -144,7 +146,7 @@ pyreport(){ cat > "$T/vuln.json" <<EOF
  $(p GHSA-0001 CVE-2026-1001 urllib3 1.26.5 $SITE), $(p GHSA-0002 CVE-2026-1002 urllib3 1.26.5 $SITE),
  $(p CVE-2026-1003 CVE-2026-1003 urllib3 1.26.5 $SITE), $(p GHSA-0004 CVE-2026-1004 Mako 1.1.4.dev0 $SITE),
  $(p GHSA-0005 CVE-2026-1005 setuptools 65.5.1 $SITE), $(p GHSA-0006 CVE-2026-1006 protobuf 3.14.0 /usr/lib64/python3.9/site-packages),
- $(p GHSA-0007 CVE-2026-1007 lxml 4.6.5 /usr/lib64/python3.9/site-packages), $(p GHSA-0008 CVE-2026-1008 Jinja2 3.0.1 $SITE),
+ $(p GHSA-0007 CVE-2026-1007 lxml 4.6.5 /usr/lib64/python3.9/site-packages), $(p GHSA-0008 CVE-2026-1008 Jinja2 3.0.1 $SITE), $(p GHSA-0009 CVE-2026-1009 urllib3 1.26.5 $SITE),
  $(p GHSA-0001 CVE-2026-1001 urllib3 1.26.5 /usr/local/lib/python3.9/site-packages)]}
 EOF
 }
@@ -155,18 +157,19 @@ pget(){ q "' '.join(map(str, next(($2,) for m in r['matches'] if m['vulnerabilit
 pyreport; PATH="$T/bin:$PATH" KERNEL_VULNS_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout4" --sbom "$T/sbom.json" --root "$T/root"
 chk "python pass exits 0 with no kernel" "$RC" "0"
 chk "  no kernel fetch" "$([ -e "$T/checkout4" ] && echo yes || echo no)" "no"
-chk "  kept" "$(q "$pkept")" "CVE-2026-1003/lib GHSA-0005/lib GHSA-0006/lib64 GHSA-0007/lib64 GHSA-0008/lib GHSA-0001/local"
+chk "  kept" "$(q "$pkept")" "CVE-2026-1003/lib GHSA-0005/lib GHSA-0006/lib64 GHSA-0007/lib64 GHSA-0008/lib GHSA-0009/lib GHSA-0001/local"
 chk "  a Red Hat fix this release sorts above" "$(pwhy GHSA-0001)" "Red Hat: fixed in python-urllib3-0:1.26.5-6.el9_7.1 (RHSA-2026:1), this build is 1.26.5-8.el9"
 chk "  a z-stream rebuild above it, cleared by the changelog" "$(pwhy GHSA-0002)" "rpm changelog: python-urllib3-1.26.5-8.el9 backports CVE-2026-1002"
 chk "  not affected, through a .dev0 dist-info" "$(pwhy GHSA-0004)" "Red Hat: python-mako is not affected in Red Hat Enterprise Linux 9"
 chk "  no fix: rated by Red Hat" "$(pget CVE-2026-1003 "v['severity'], v['cvss'][0]['metrics']['baseScore']")" "High 7.5"
 chk "  a SIG build keeps grype's verdict" "$(pget GHSA-0005 "v['severity'], len(v['cvss'])")" "High 0"
+chk "  a fix in RHEL 9's newest z-stream above it is not cleared by an older one below" "$(pget GHSA-0009 "v['severity']")" "High"
 chk "  so does one the SIG publishes as CentOS" "$(pget GHSA-0008 "v['severity'], len(v['cvss'])")" "High 0"
 chk "  an EUS-only fix does not count" "$(pget GHSA-0006 "v['severity']")" "Medium"
 chk "  fix deferred stays, rated" "$(pget GHSA-0007 "v['severity']")" "Medium"
 chk "  /usr/local untouched" "$(q "next(m['vulnerability']['severity'] for m in r['matches'] if '/local/' in m['artifact']['locations'][0]['path'])")" "High"
 chk "  descriptor" "$(q "r['descriptor']['backportRecheck']['ignored'], r['descriptor']['backportRecheck']['changelogs']")" "{'Red Hat': 2, 'changelog': 1} True"
-chk "  summary" "$OUT" "RHEL python rpm matches: 2 ignored by Red Hat, 1 by the rpm changelog, 3 kept; rated by Red Hat 3, by grype 0"
+chk "  summary" "$OUT" "RHEL python rpm matches: 2 ignored by Red Hat, 1 by the rpm changelog, 4 kept; rated by Red Hat 4, by grype 0"
 
 pyreport; PATH="$T/bin:$PATH" KERNEL_VULNS_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout4" --sbom "$T/sbom.json"
 chk "without --root no changelog clears it" "$(q "'GHSA-0002' in [m['vulnerability']['id'] for m in r['matches']]")" "True"

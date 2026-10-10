@@ -35,9 +35,10 @@ system site-packages are re-judged too. grype matches them by the package's own 
 the GitHub advisories, and Red Hat backports fixes without moving that version: urllib3 1.26.5
 from python3-urllib3-1.26.5-8.el9 carries fixes its version predates and is reported for each.
 Red Hat's RHEL 9 record decides instead. A match moves to "ignoredMatches" when Red Hat says the
-source package is not affected, when it names a fix of the same version whose release this build
-sorts at or above, or when the rpm's own changelog names the CVE (--root, the scanned rootfs, lets
-it read them): a z-stream rebuild such as 8.el9_8 sorts above the 8.el9 that fixed it in Stream.
+source package is not affected, when this build's release sorts at or above RHEL 9's newest fix
+of the same version (an older minor's z-stream sorting below it proves nothing), or when the rpm's
+own changelog names the CVE (--root, the scanned rootfs, lets it read them): a z-stream rebuild
+such as 8.el9_8 sorts above the 8.el9 that fixed it in Stream.
 The rpm is the SBOM's python3-<name> of the same version, published by CentOS or Red Hat with a
 Stream or RHEL dist tag, so a SIG (el9s) or EPEL build of that name, which carries none of RHEL's
 backports, keeps grype's verdict. A match that stays is rated by Red Hat where Red Hat rates it.
@@ -45,6 +46,7 @@ backports, keeps grype's verdict. A match that stays is rated by Red Hat where R
 
 import argparse
 import concurrent.futures
+import functools
 import json
 import os
 import re
@@ -398,15 +400,17 @@ def backported(rh, cve, srpm, version, release, log):
             'Not affected',
         ):
             return 'Red Hat', f'Red Hat: {srpm} is not affected in {RHEL}'
+    # Measured against RHEL 9's newest fix of this version, not any: capstone's CVE-2025-68114 is
+    # fixed in 4.0.2-11.el9_7 and 4.0.2-13.el9_8, because 9.8 shipped 12 without it -- so Stream's
+    # 4.0.2-12.el9 sorting above the 9.7 fix says nothing about whether it carries the fix.
+    fixes = []
     for x in rh.get('affected_release') or []:
         fix = re.match(r'(.+)-(?:\d+:)?([^-]+)-([^-]+)$', x.get('package') or '')
-        if (
-            x.get('product_name') == RHEL
-            and fix
-            and fix.group(1) == srpm
-            and fix.group(2) == version
-            and vercmp(release, fix.group(3)) >= 0
-        ):
+        if x.get('product_name') == RHEL and fix and fix.group(1) == srpm and fix.group(2) == version:
+            fixes.append((fix.group(3), x))
+    if fixes:
+        newest, x = max(fixes, key=functools.cmp_to_key(lambda a, b: vercmp(a[0], b[0])))
+        if vercmp(release, newest) >= 0:
             return (
                 'Red Hat',
                 f'Red Hat: fixed in {x["package"]} ({x.get("advisory")}), '
