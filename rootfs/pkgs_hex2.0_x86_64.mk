@@ -48,7 +48,11 @@ BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-tools-extra-$(GRUB2_VER).$(DISTRO).x86_
 BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-tools-minimal-$(GRUB2_VER).$(DISTRO).x86_64.rpm
 BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-efi-x64-$(GRUB2_VER).$(DISTRO).x86_64.rpm
 BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-efi-x64-modules-$(GRUB2_VER).$(DISTRO).noarch.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/shim-x64-15-15.el8_2.x86_64.rpm
+# shim is Stream's own el9 build. The el8_2 one pinned here from the start predates the fix for
+# CVE-2023-40547, a remote code execution in shim's HTTP boot support. hex_install copies only
+# EFI/centos/shimx64.efi out of it, which both builds carry, and grub chain-loads under either.
+SHIM_VER := 16.1-1.el9
+BASE_LOCK_PKGS += $(CENTOS_MIRROR)/shim-x64-$(SHIM_VER).x86_64.rpm
 
 ### Packages for HEX_FULL_ROOTFS
 # System & Netwokring & Storage
