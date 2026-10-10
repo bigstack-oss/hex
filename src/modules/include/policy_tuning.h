@@ -18,7 +18,7 @@ struct Tuning
 
 struct Tunings
 {
-    bool enabled;
+    bool enabled = true; // matches TuningPolicy::clear() when the key is missing
     std::list<Tuning> tunings;
 };
 
