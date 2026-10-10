@@ -4,7 +4,7 @@ include ../../../../../build.mk
 TESTS_LIBS = $(HEX_SDK_LIB)
 TESTS_LDLIBS = -lyaml -lglib-2.0
 
-CLEAN += network1_0.yml new.yml test1_0.yml
+CLEAN += network1_0.yml new.yml test1_0.yml bad1_0.yml badseq1_0.yml quote1_0.yml
 
 include $(HEX_MAKEDIR)/hex_sdk.mk
 

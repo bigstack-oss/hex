@@ -16,7 +16,7 @@ enum storage_flags {
 }; // "store as" switch
 
 // private functions
-void processLayer(yaml_parser_t *parser, GNode *data);
+int processLayer(yaml_parser_t *parser, GNode *data);
 gboolean writeNode(GNode *node, gpointer data);
 gboolean dumpNode(GNode *node, gpointer data);
 gboolean freeNode(GNode *node, gpointer data);
@@ -63,13 +63,23 @@ ReadYml(const char *policyFile, GNode *cfg)
     yaml_parser_set_input_file(&parser, source);
 
     // Recursive parsing
-    processLayer(&parser, cfg);
+    int ret = processLayer(&parser, cfg);
+    if (ret < 0) {
+        if (parser.error != YAML_NO_ERROR) {
+            HexLogError("Failed to parse policy file %s: %s%s%s at line %zu, column %zu",
+                        policyFile, parser.problem ? parser.problem : "syntax error",
+                        parser.context ? " " : "", parser.context ? parser.context : "",
+                        parser.problem_mark.line + 1, parser.problem_mark.column + 1);
+        } else {
+            HexLogError("Failed to parse policy file %s: unexpected end of yaml events", policyFile);
+        }
+    }
 
     // Cleanup
     yaml_parser_delete(&parser);
     fclose(source);
 
-    return 0;
+    return ret;
 }
 
 int
@@ -331,7 +341,8 @@ DumpYmlNode(GNode *node)
     TraverseYml(node, dumpNode, NULL);
 }
 
-void
+// return 0 on success, -1 on a yaml parse error (details are left in parser)
+int
 processLayer(yaml_parser_t *parser, GNode *data)
 {
     GNode *last_leaf = data;
@@ -340,7 +351,16 @@ processLayer(yaml_parser_t *parser, GNode *data)
     int seqidx = 0;
 
     while (1) {
-        yaml_parser_parse(parser, &event);
+        // once libyaml has failed, every later call yields YAML_NO_EVENT
+        // and never the end event, so stop on either
+        if (!yaml_parser_parse(parser, &event)) {
+            return -1;
+        }
+
+        if (event.type == YAML_NO_EVENT) {
+            yaml_event_delete(&event);
+            return -1;
+        }
 
         // Parse value either as a new leaf in the mapping
         // or as a leaf value (one of them, in case it's a sequence)
@@ -364,22 +384,135 @@ processLayer(yaml_parser_t *parser, GNode *data)
             storage = VAR;
         } else if (event.type == YAML_MAPPING_START_EVENT) {
             // depth += 1
+            int ret;
             if (storage & SEQ) {
                 gchar *value = g_strdup_printf("%d", seqidx++);
                 GNode *idxNode = g_node_append(last_leaf, g_node_new(value));
-                processLayer(parser, idxNode);
+                ret = processLayer(parser, idxNode);
             } else {
-                processLayer(parser, last_leaf);
+                ret = processLayer(parser, last_leaf);
+            }
+
+            if (ret < 0) {
+                yaml_event_delete(&event);
+                return -1;
             }
 
             // Flip VAR/VAL, w/o touching SEQ
             storage ^= VAL;
         } else if (event.type == YAML_MAPPING_END_EVENT || event.type == YAML_STREAM_END_EVENT) {
             // depth -= 1
+            yaml_event_delete(&event);
             break;
         }
 
         yaml_event_delete(&event);
+    }
+
+    return 0;
+}
+
+// is value exactly one complete quoted scalar ("..." or '...')?
+// some callers quote a value themselves (e.g. the alert_resp match expression),
+// so it is written as is, like before
+static gboolean
+isQuotedScalar(const char *value, size_t len)
+{
+    char q = value[0];
+    if (len < 2 || (q != '"' && q != '\'')) {
+        return FALSE;
+    }
+
+    for (size_t i = 1; i < len; i++) {
+        if (q == '"' && value[i] == '\\') {
+            i++; // escaped character
+        } else if (q == '\'' && value[i] == '\'' && value[i + 1] == '\'') {
+            i++; // '' is an escaped '
+        } else if (value[i] == q) {
+            return i == len - 1;
+        }
+    }
+
+    return FALSE;
+}
+
+// how a leaf scalar has to be written so that ReadYml() gets the same string back
+static int
+scalarStyle(const char *value)
+{
+    size_t len = strlen(value);
+
+    // keep the empty placeholder ("key: ") and caller-quoted values as they are
+    if (len == 0 || isQuotedScalar(value, len)) {
+        return YAML_PLAIN_SCALAR_STYLE;
+    }
+
+    // line breaks and other control characters only survive with escapes
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if ((c < 0x20 && c != '\t') || c == 0x7f) {
+            return YAML_DOUBLE_QUOTED_SCALAR_STYLE;
+        }
+    }
+
+    // a plain scalar loses leading and trailing blanks
+    if (value[0] == ' ' || value[0] == '\t' || value[len - 1] == ' ' || value[len - 1] == '\t') {
+        return YAML_SINGLE_QUOTED_SCALAR_STYLE;
+    }
+
+    // a plain scalar cannot start with an indicator
+    if (strchr("#&*!|>'\"%@`,[]{}", value[0])) {
+        return YAML_SINGLE_QUOTED_SCALAR_STYLE;
+    }
+
+    // '-', '?' and ':' are indicators only when followed by a blank (e.g. -1 stays plain)
+    if (strchr("-?:", value[0]) && (value[1] == '\0' || value[1] == ' ' || value[1] == '\t')) {
+        return YAML_SINGLE_QUOTED_SCALAR_STYLE;
+    }
+
+    // ": " starts a mapping value and " #" a comment
+    if (value[len - 1] == ':' || strstr(value, ": ") || strstr(value, ":\t") ||
+        strstr(value, " #") || strstr(value, "\t#")) {
+        return YAML_SINGLE_QUOTED_SCALAR_STYLE;
+    }
+
+    return YAML_PLAIN_SCALAR_STYLE;
+}
+
+static void
+writeScalar(FILE *dest, const char *value)
+{
+    int style = scalarStyle(value);
+
+    if (style == YAML_SINGLE_QUOTED_SCALAR_STYLE) {
+        fputc('\'', dest);
+        for (const char *p = value; *p; p++) {
+            if (*p == '\'') {
+                fputc('\'', dest);
+            }
+            fputc(*p, dest);
+        }
+        fputc('\'', dest);
+    } else if (style == YAML_DOUBLE_QUOTED_SCALAR_STYLE) {
+        fputc('"', dest);
+        for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+            if (*p == '"' || *p == '\\') {
+                fprintf(dest, "\\%c", *p);
+            } else if (*p == '\n') {
+                fprintf(dest, "\\n");
+            } else if (*p == '\r') {
+                fprintf(dest, "\\r");
+            } else if (*p == '\t') {
+                fprintf(dest, "\\t");
+            } else if (*p < 0x20 || *p == 0x7f) {
+                fprintf(dest, "\\x%02x", *p);
+            } else {
+                fputc(*p, dest);
+            }
+        }
+        fputc('"', dest);
+    } else {
+        fwrite(value, 1, strlen(value), dest);
     }
 }
 
@@ -416,7 +549,7 @@ writeNode(GNode *node, gpointer data)
         }
     } else {
         // leaf node
-        fwrite(node->data, 1, strlen(node->data), dest);
+        writeScalar(dest, (const char *)node->data);
         fprintf(dest, "\n");
     }
 
