@@ -34,7 +34,13 @@ UpdateConfig(const char* filepath)
         return false;
 
     fprintf(fout, "module(load=\"imuxsock\" SysSock.Use=\"off\")\n");
-    fprintf(fout, "module(load=\"imjournal\" StateFile=\"imjournal.state\")\n");
+    // imjournal applies one budget to every journal entry, so a single noisy service
+    // used up the default 20000 per 600s and hex_log_event events were dropped with
+    // the rest (cubecos#2064). journald already rate-limits each service on its own;
+    // this budget is only a backstop. cube36 (3 control nodes, 14 days): normal
+    // traffic peaked at ~3,100 per 600s at boot, a keystone traceback flood at
+    // ~200,000 per 600s.
+    fprintf(fout, "module(load=\"imjournal\" StateFile=\"imjournal.state\" Ratelimit.Interval=\"600\" Ratelimit.Burst=\"300000\")\n");
     fprintf(fout, "\n");
     fprintf(fout, "global(workDirectory=\"/var/lib/rsyslog\")\n");
     fprintf(fout, "\n");
