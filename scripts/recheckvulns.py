@@ -5,7 +5,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Re-judge grype's kernel matches by the kernel CNA, RHEL rpm matches by Red Hat, OpenStack's by its OSSAs.
+"""Re-judge grype's kernel matches by the kernel CNA, RHEL rpm matches by Red Hat, OpenStack's by its OSSAs, Go pseudo-versions by their commit.
 
 grype judges a kernel by data that does not describe it. The vmlinuz is matched by NVD's CPE
 ranges, which often stop at the mainline fix and leave out the stable backports (CVE-2026-43197:
@@ -63,6 +63,21 @@ compares in that order, an advisory's ranges included, and a match on a project 
 name, whose every fix grype names is a YYYY.N release and whose version is semantic, moves to
 "ignoredMatches" too. The checkout is kept like the CNA's, and the report's
 descriptor records its commit; OSSA_GIT in the environment points at a mirror.
+
+A Go module whose path carries no major-version suffix while the project releases v2 or later
+(github.com/grafana/tempo, github.com/rancher/rancher) can be linked only at a pseudo-version, which
+names a commit: v1.5.1-0.20260427112133-525d1bab07e0. grype compares it with the releases the
+advisories give as fixed, and it sorts below every one of them whatever the commit holds: a 2025
+commit of rancher is reported for flaws fixed in 2019. Given a directory for bare clones of the
+modules' GitHub repositories (--gomodules), a match on a pseudo-version is judged by the commit, with
+the advisory's ranges and fix commits read from grype's own database. It moves to "ignoredMatches"
+when a fix commit the advisory names is an ancestor of it, or when the newest release it descends
+from is outside every affected range, at or above every fixed release, and was released after all
+of them, the fixed releases being tags of the repository. That last condition keeps a renumbered
+project's old commits: prometheus's 2021 commit descends from v2.26.0, which sorts above its 3.x
+module versions (v0.311.3) but came long before them. A fixed pseudo-version whose commit it does
+not contain keeps it. The clones hold commits only and are brought up to date on later scans, the
+report's descriptor lists them, and GOMODULE_GIT in the environment points at a mirror.
 """
 
 import argparse
@@ -84,6 +99,8 @@ REDHAT_SECDATA = os.environ.get(
     'REDHAT_SECDATA', 'https://access.redhat.com/hydra/rest/securitydata'
 )
 OSSA_GIT = os.environ.get('OSSA_GIT', 'https://opendev.org/openstack/ossa.git')
+GOMODULE_GIT = os.environ.get('GOMODULE_GIT', 'https://github.com')
+GRYPE = os.environ.get('GRYPE', 'grype')
 RH_SEVERITY = {'Critical': 'Critical', 'Important': 'High', 'Moderate': 'Medium', 'Low': 'Low'}
 RHEL = 'Red Hat Enterprise Linux 9'
 DISTRO_PUBLISHERS = {'CentOS', 'Red Hat, Inc.'}
@@ -700,6 +717,173 @@ def recheck_ossa(rep, path):
     )
 
 
+# A Go pseudo-version names a commit: v0.0.0-20250227174106-7829dbe62d7f,
+# v1.5.1-0.20260427112133-525d1bab07e0, v1.2.3-pre.0.20200101000000-0123456789ab.
+PSEUDO = re.compile(r'^v?\d+\.\d+\.\d+-(?:[0-9A-Za-z.]+\.)?(\d{14})-([0-9a-f]{12})$')
+RELEASE_TAG = re.compile(r'^v(\d+)\.(\d+)\.(\d+)$')
+GO_COND = re.compile(r'^\s*(<=|>=|<|>|=)\s*v?(\S+?)\s*$')
+
+
+def semkey(v):
+    """A semantic version's sort key, pre-releases (a pseudo-version is one) before their release."""
+    core, _, pre = v.lstrip('v').split('+')[0].partition('-')
+    nums = tuple(int(x) for x in (core.split('.') + ['0', '0'])[:3])
+    if not pre:
+        return nums, (1,)
+    ids = tuple((0, int(i), '') if i.isdigit() else (1, 0, i) for i in pre.split('.'))
+    return nums, (0,) + ids
+
+
+def go_in_range(ver, conds):
+    k = semkey(ver)
+    for op, x in conds:
+        c = (k > semkey(x)) - (k < semkey(x))
+        if not {'<': c < 0, '<=': c <= 0, '>': c > 0, '>=': c >= 0, '=': c == 0}[op]:
+            return False
+    return True
+
+
+_ADV = {}
+
+
+def advisory(vid, module, repo):
+    """The affected ranges [(conditions, fix or None)] and fix commits grype's own database holds
+    for vid on module, from GitHub's advisory; None if it has none for that module."""
+    if vid not in _ADV:
+        out = subprocess.run(
+            [GRYPE, 'db', 'search', '--vuln', vid, '-o', 'json'],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        if out.returncode:
+            sys.exit(f'recheckvulns: cannot read {vid} from grype\'s database')
+        _ADV[vid] = json.loads(out.stdout or '[]')
+    ranges, commits = [], set()
+    for rec in _ADV[vid]:
+        if rec['vulnerability'].get('provider') != 'github':
+            continue
+        for p in rec.get('packages') or []:
+            if p['package'].get('ecosystem') != 'go-module' or p['package'].get('name') != module:
+                continue
+            for r in p['detail'].get('ranges') or []:
+                conds = [GO_COND.match(c) for c in r['version']['constraint'].split(',')]
+                if conds and all(conds):
+                    ranges.append(([c.groups() for c in conds], (r.get('fix') or {}).get('version')))
+        for ref in rec['vulnerability'].get('refs') or []:
+            m = re.match(rf'https://github\.com/{re.escape(repo)}/commit/([0-9a-f]{{7,40}})\b', ref['url'])
+            if m:
+                commits.add(m.group(1))
+    return (ranges, commits) if ranges else None
+
+
+def fetch_repo(url, path):
+    """Clone or update a bare, commits-only clone of url's branches and tags."""
+    if os.path.isdir(path):
+        cmd = ['git', '-C', path, 'fetch', '-q', '--filter=tree:0', '--prune', '--force', 'origin',
+               '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*']
+    else:
+        cmd = ['git', 'clone', '-q', '--bare', '--filter=tree:0', url, path]
+    subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
+
+
+def git_out(path, *args):
+    out = subprocess.run(['git', '-C', path] + list(args), stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    return out.stdout if out.returncode == 0 else None
+
+
+def ancestor(path, a, b):
+    return subprocess.run(['git', '-C', path, 'merge-base', '--is-ancestor', a, b],
+                          stderr=subprocess.DEVNULL).returncode == 0
+
+
+def recheck_gopseudo(rep, path):
+    """Re-judge matches on Go modules at a pseudo-version by the module's own history in place; a
+    summary, or None if the report has no such match."""
+    todo = []
+    for m in rep['matches']:
+        art = m['artifact']
+        pm = PSEUDO.match(art['version']) if art['type'] == 'go-module' else None
+        parts = art['name'].split('/')
+        if pm and len(parts) >= 3 and parts[0] == 'github.com':
+            todo.append((m, f'{parts[1]}/{parts[2]}', pm.group(2)))
+    if not todo:
+        return None
+
+    repos = {}
+    for repo in sorted({r for _, r, _ in todo}):
+        clone = os.path.join(path, repo + '.git')
+        try:
+            fetch_repo(f'{GOMODULE_GIT}/{repo}', clone)
+        except subprocess.CalledProcessError:
+            sys.exit(f'recheckvulns: cannot fetch {repo} from {GOMODULE_GIT}')
+        tags = {}
+        for line in (git_out(clone, 'for-each-ref', '--format=%(refname:short) %(creatordate:unix)',
+                             'refs/tags') or '').splitlines():
+            name, _, date = line.partition(' ')
+            tags[name] = int(date or 0)
+        repos[repo] = (clone, tags)
+
+    ignored = {'fix commit': [], 'release': []}
+    kept = 0
+    for m, repo, short in todo:
+        vul, art = m['vulnerability'], m['artifact']
+        clone, tags = repos[repo]
+        adv = advisory(vul['id'], art['name'], repo)
+        sha = (git_out(clone, 'rev-parse', '--verify', '-q', short + '^{commit}') or '').strip()
+        if not adv or not sha:
+            kept += 1
+            continue
+        ranges, commits = adv
+        pseudo_fixes = [f for _, f in ranges if f and PSEUDO.match(f)]
+        commits |= {PSEUDO.match(f).group(2) for f in pseudo_fixes}
+        has = next((c for c in sorted(commits) if ancestor(clone, c, sha)), None)
+        if has:
+            why, by = f'contains the fix commit {has[:12]}', 'fix commit'
+        else:
+            # The module path has no major-version suffix, so the project's releases cannot be
+            # named: every version a Go build can link is a pseudo-version, which sorts below
+            # every fixed release. Judge by the newest release the commit descends from instead,
+            # when the fixes are releases of this repository and that one came after them all.
+            fixes = [f for _, f in ranges if f and not PSEUDO.match(f)]
+            merged = [t for t in (git_out(clone, 'tag', '--merged', sha, '--list', 'v*') or '').split()
+                      if RELEASE_TAG.match(t)]
+            if pseudo_fixes or not fixes or not merged or any('v' + f not in tags for f in fixes):
+                kept += 1
+                continue
+            base = max(merged, key=semkey)
+            if (
+                any(go_in_range(base, conds) for conds, _ in ranges)
+                or semkey(base) < max(semkey(f) for f in fixes)
+                or tags[base] < max(tags['v' + f] for f in fixes)
+            ):
+                kept += 1
+                continue
+            why = (
+                f'descends from {base}, released after every fixed release '
+                f'({", ".join(sorted(set(fixes), key=semkey))}) and outside every affected range'
+            )
+            by = 'release'
+        ignore(m, f'go pseudo-version: {art["name"]} {art["version"]} is commit {sha[:12]}, which {why}')
+        ignored[by].append(m)
+
+    drop = {id(m) for ms in ignored.values() for m in ms}
+    rep['matches'] = [m for m in rep['matches'] if id(m) not in drop]
+    rep['ignoredMatches'] = (
+        (rep.get('ignoredMatches') or []) + ignored['fix commit'] + ignored['release']
+    )
+    rep.setdefault('descriptor', {})['goPseudoRecheck'] = {
+        'source': GOMODULE_GIT,
+        'repositories': sorted(repos),
+        'judged': len(todo),
+        'ignored': {by: len(ms) for by, ms in ignored.items()},
+        'kept': kept,
+    }
+    return (
+        f'Go pseudo-version matches: {len(todo)} judged; {len(ignored["fix commit"])} ignored by a '
+        f'fix commit, {len(ignored["release"])} by a release; {kept} kept'
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('report', help="grype's JSON report, rewritten in place")
@@ -715,6 +899,12 @@ def main():
         help='checkout of the OpenStack security advisories (ossa.git): cloned when missing, '
         "brought up to date otherwise; with it, OpenStack's python packages are re-judged",
     )
+    ap.add_argument(
+        '--gomodules',
+        help='directory of bare clones of the GitHub repositories of Go modules matched at a '
+        'pseudo-version: cloned when missing, brought up to date otherwise; with it, those '
+        'matches are re-judged by the module\'s own history',
+    )
     args = ap.parse_args()
 
     with open(args.report) as f:
@@ -725,9 +915,11 @@ def main():
         done.append(recheck_distro(rep, args.sbom, args.root))
     if args.ossa:
         done.append(recheck_ossa(rep, args.ossa))
+    if args.gomodules:
+        done.append(recheck_gopseudo(rep, args.gomodules))
     done = [x for x in done if x]
     if not done:
-        print('no kernel image or python package in the report: nothing to re-check')
+        print('no kernel image, python package or Go pseudo-version in the report: nothing to re-check')
         return
 
     with open(args.report + '.tmp', 'w') as f:
