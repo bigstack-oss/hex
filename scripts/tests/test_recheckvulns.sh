@@ -1,8 +1,9 @@
 #!/bin/bash
 #
 # Unit test for scripts/recheckvulns.py: which kernel matches the kernel CNA's records move to
-# ignoredMatches, the fix and severity of the ones that stay, and that nothing else is touched.
-# Self-contained: vulns.git is a local repo and Red Hat's security data a file:// directory.
+# ignoredMatches, the fix and severity of the ones that stay, and that nothing else is touched;
+# likewise for RHEL python rpms by Red Hat's records and OpenStack's packages by the OSSAs.
+# Self-contained: vulns.git and ossa.git are local repos, Red Hat's security data a file:// directory.
 #
 # Needs bash, git and python3.
 # Run: bash test_recheckvulns.sh
@@ -194,6 +195,71 @@ pyreport; cp "$T/vuln.json" "$T/before.json"
 REDHAT_SECDATA=http://127.0.0.1:9 KERNEL_VULNS_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout4" --sbom "$T/sbom.json"
 chk "python pass: Red Hat unreachable fails" "$RC" "1"
 chk "  report untouched" "$(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "same"
+
+# OpenStack's python packages (--ossa): the advisories, in the shape ossa.git keeps them
+mkdir -p "$T/ossa/ossa"
+adv(){ printf 'date: 2099-01-01\n\nid: %s\n\ntitle: t\n\naffected-products:\n%b\nvulnerabilities:\n%b\n' "$1" "$2" "$3" > "$T/ossa/ossa/$1.yaml"; }
+adv OSSA-2099-001 "  - product: keystone\n    version: '>=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=27.0.0 <27.0.1, >=28.0.0 <28.0.1'\n" "  - cve-id: CVE-2026-3001\n"
+adv OSSA-2099-002 "  - product: Nova\n    version: '>=30.0.0 <30.2.1, >=31.0.0 <31.1.1'\n" "  - cve-id: 'CVE-2026-3002'\n"
+adv OSSA-2099-003 "  - product: glance\n    version: All versions\n" "  - cve-id: CVE-2026-3003\n"
+adv OSSA-2099-004 "  - product: oslo.messaging\n    version: '<16.1.3'\n  - product: python-keystoneclient\n    version: '<5.6.1'\n" "  - cve-id: CVE-2026-3004 (client to proxy)\n"
+echo 'not an advisory' > "$T/ossa/README.rst"
+git -C "$T/ossa" init -q -b master && git -C "$T/ossa" add -A &&
+    git -C "$T/ossa" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m one
+VENV=/opt/openstack-epoxy/lib/python3.12/site-packages
+osreport(){ cat > "$T/vuln.json" <<EOF
+{"descriptor": {"name": "grype"}, "matches": [
+ $(p GHSA-k001 CVE-2026-3001 keystone 27.1.0 $VENV), $(p GHSA-k002 CVE-2026-3001 keystone 27.0.0 $VENV),
+ $(p GHSA-k003 CVE-2026-3001 keystone 29.0.0.0rc1 $VENV), $(p GHSA-n001 CVE-2026-3002 nova 31.0.2 $VENV),
+ $(p GHSA-n002 CVE-2026-3002 nova 31.1.1 $VENV), $(p GHSA-g001 CVE-2026-3003 glance 30.0.0 $VENV),
+ $(p GHSA-o001 CVE-2026-3004 oslo.messaging 16.1.2 $VENV), $(p GHSA-o002 CVE-2026-3004 python-keystoneclient 5.6.1 $VENV),
+ $(p GHSA-x001 CVE-2026-3001 nova 31.0.0 $VENV), $(p GHSA-r001 CVE-2026-3005 keystone 27.1.0 $VENV),
+ $(rp CVE-2026-3001 keystone 27.1.0 "")]}
+EOF
+}
+okept="' '.join(m['vulnerability']['id'] for m in r['matches'])"
+ofix(){ q "next(m['vulnerability']['fix']['versions'] for m in r['matches'] if m['vulnerability']['id'] == '$1')"; }
+owhy(){ q "next(m['appliedIgnoreRules'][0]['reason'].split(' (ossa.git')[0] for m in r['ignoredMatches'] if m['vulnerability']['id'] == '$1')"; }
+
+osreport; KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/ossa" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout"
+chk "OSSA pass exits 0" "$RC" "0"
+chk "  kept" "$(q "$okept")" "GHSA-k002 GHSA-n001 GHSA-g001 GHSA-o001 GHSA-x001 GHSA-r001 CVE-2026-3001"
+chk "  outside every range: a later release of a fixed series" "$(owhy GHSA-k001)" "OSSA: OSSA-2099-001 affects keystone >=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=27.0.0 <27.0.1, >=28.0.0 <28.0.1, not 27.1.0"
+chk "  a release candidate of a series it never affected" "$(owhy GHSA-k003)" "OSSA: OSSA-2099-001 affects keystone >=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=27.0.0 <27.0.1, >=28.0.0 <28.0.1, not 29.0.0.0rc1"
+chk "  inside a range: its series' fix" "$(ofix GHSA-k002)" "['27.0.1']"
+chk "  a capitalized product, a quoted CVE" "$(ofix GHSA-n001)" "['31.1.1']"
+chk "  the series' fix release itself" "$(owhy GHSA-n002)" "OSSA: OSSA-2099-002 affects nova >=30.0.0 <30.2.1, >=31.0.0 <31.1.1, not 31.1.1"
+chk "  prose versions judge nothing" "$(ofix GHSA-g001)" "['9.9']"
+chk "  a dotted package name, a CVE with a note" "$(ofix GHSA-o001)" "['16.1.3']"
+chk "  the advisory's second product" "$(owhy GHSA-o002)" "OSSA: OSSA-2099-004 affects python-keystoneclient <5.6.1, not 5.6.1"
+chk "  a CVE named for another package: untouched" "$(ofix GHSA-x001)" "['9.9']"
+chk "  descriptor" "$(q "r['descriptor']['ossaRecheck']['judged'], r['descriptor']['ossaRecheck']['ignored'], r['descriptor']['ossaRecheck']['kept'], r['descriptor']['ossaRecheck']['advisories']['commit'] == '$(git -C "$T/ossa" rev-parse HEAD)'")" "8 4 4 True"
+chk "  summary" "$OUT" "OpenStack python matches: 8 named by an OSSA, 4 ignored by it, 4 kept"
+chk "  checkout holds only the advisories" "$(cd "$T/ossa-checkout" && find . -path ./.git -prune -o -type f -print | grep -vc '^\./ossa/OSSA-.*\.yaml$')" "0"
+
+# The next scan fetches what changed: the advisory now says keystone 27.0.0 is not affected
+adv OSSA-2099-001 "  - product: keystone\n    version: '>=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=28.0.0 <28.0.1'\n" "  - cve-id: CVE-2026-3001\n"
+git -C "$T/ossa" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -am two
+osreport; KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/ossa" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout"
+chk "  second run updates" "$(owhy GHSA-k002)" "OSSA: OSSA-2099-001 affects keystone >=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=28.0.0 <28.0.1, not 27.0.0"
+
+osreport; cp "$T/vuln.json" "$T/before.json"
+KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout2"
+chk "ossa.git unreachable fails" "$RC" "1"
+chk "  and says so" "$(grep -c "cannot fetch the OpenStack security advisories from file://$T/nowhere" <<<"$OUT")" "1"
+chk "  report untouched" "$(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "same"
+KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout5"
+chk "without --ossa: nothing fetched, report untouched" "$RC $(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "0 same"
+echo '{"matches": []}' > "$T/vuln.json"
+KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout3"
+chk "no python match: no fetch" "$RC $([ -e "$T/ossa-checkout3" ] && echo yes || echo no)" "0 no"
+
+pv(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.pyver('$1') < m.pyver('$2'))"; }
+chk "pyver rc before its release" "$(pv 29.0.0.0rc1 29.0.0)" "True"
+chk "pyver dev before a pre-release" "$(pv 1.0.dev1 1.0a1)" "True"
+chk "pyver release before post" "$(pv 1.0 1.0.post1)" "True"
+chk "pyver numeric, not text" "$(pv 27.9.0 27.10.0)" "True"
+chk "pyver trailing zeros equal" "$(pv 27.1 27.1.0) $(pv 27.1.0 27.1)" "False False"
 
 vc(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.vercmp('$1', '$2'))"; }
 chk "vercmp newer base release" "$(vc 8.el9 6.el9_7.1)" "1"
