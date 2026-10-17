@@ -75,9 +75,15 @@ when a fix commit the advisory names is an ancestor of it, or when the newest re
 from is outside every affected range, at or above every fixed release, and was released after all
 of them, the fixed releases being tags of the repository. That last condition keeps a renumbered
 project's old commits: prometheus's 2021 commit descends from v2.26.0, which sorts above its 3.x
-module versions (v0.311.3) but came long before them. A fixed pseudo-version whose commit it does
-not contain keeps it. The clones hold commits only and are brought up to date on later scans, the
-report's descriptor lists them, and GOMODULE_GIT in the environment points at a mirror.
+module versions (v0.311.3) but came long before them. The ranges GitHub gives under the
+repository's other module paths count too (github.com/elastic/beats for github.com/elastic/beats/v7).
+A fixed pseudo-version whose commit it does not contain keeps the match, unless the commit is itself
+a release, which the pseudo-version then only names. The clones hold commits only and are brought
+up to date on later scans, the report's descriptor lists them, and GOMODULE_GIT in the environment
+points at a mirror. With the same option, a match from the Go vulnerability database that names a
+module with no affected range at all, every version and no fix, moves to "ignoredMatches" when the
+project's own advisory for the flaw (a GitHub advisory the repository published) names only the
+repository's other module paths: containerd v1 for a flaw in a CRI feature v2 added.
 """
 
 import argparse
@@ -718,8 +724,9 @@ def recheck_ossa(rep, path):
 
 
 # A Go pseudo-version names a commit: v0.0.0-20250227174106-7829dbe62d7f,
-# v1.5.1-0.20260427112133-525d1bab07e0, v1.2.3-pre.0.20200101000000-0123456789ab.
-PSEUDO = re.compile(r'^v?\d+\.\d+\.\d+-(?:[0-9A-Za-z.]+\.)?(\d{14})-([0-9a-f]{12})$')
+# v1.5.1-0.20260427112133-525d1bab07e0, v1.2.3-pre.0.20200101000000-0123456789ab. A build from a
+# modified tree carries build metadata after it: v7.0.0-20260930214605-b80bf8464fba+dirty.
+PSEUDO = re.compile(r'^v?\d+\.\d+\.\d+-(?:[0-9A-Za-z.]+\.)?(\d{14})-([0-9a-f]{12})(?:\+[0-9A-Za-z.-]+)?$')
 RELEASE_TAG = re.compile(r'^v(\d+)\.(\d+)\.(\d+)$')
 GO_COND = re.compile(r'^\s*(<=|>=|<|>|=)\s*v?(\S+?)\s*$')
 
@@ -746,9 +753,12 @@ def go_in_range(ver, conds):
 _ADV = {}
 
 
-def advisory(vid, module, repo):
-    """The affected ranges [(conditions, fix or None)] and fix commits grype's own database holds
-    for vid on module, from GitHub's advisory; None if it has none for that module."""
+def same_repo(name, repo):
+    """True if name is repo's module path, or the same path with a major-version suffix."""
+    return re.fullmatch(rf'github\.com/{re.escape(repo)}(/v\d+)?', name) is not None
+
+
+def db_search(vid):
     if vid not in _ADV:
         out = subprocess.run(
             [GRYPE, 'db', 'search', '--vuln', vid, '-o', 'json'],
@@ -757,13 +767,23 @@ def advisory(vid, module, repo):
         if out.returncode:
             sys.exit(f'recheckvulns: cannot read {vid} from grype\'s database')
         _ADV[vid] = json.loads(out.stdout or '[]')
-    ranges, commits = [], set()
-    for rec in _ADV[vid]:
+    return _ADV[vid]
+
+
+def advisory(vid, module, repo):
+    """The affected ranges [(conditions, fix or None)] and fix commits grype's own database holds
+    for vid, from GitHub's advisory, on module and on the repository's other module paths (the
+    same project, released under another major version: github.com/elastic/beats for
+    github.com/elastic/beats/v7); None if it names the module under neither."""
+    ranges, commits, named = [], set(), False
+    for rec in db_search(vid):
         if rec['vulnerability'].get('provider') != 'github':
             continue
         for p in rec.get('packages') or []:
-            if p['package'].get('ecosystem') != 'go-module' or p['package'].get('name') != module:
+            pkg = p.get('package') or {}
+            if pkg.get('ecosystem') != 'go-module' or not same_repo(pkg.get('name', ''), repo):
                 continue
+            named |= pkg['name'] == module
             for r in p['detail'].get('ranges') or []:
                 conds = [GO_COND.match(c) for c in r['version']['constraint'].split(',')]
                 if conds and all(conds):
@@ -772,7 +792,7 @@ def advisory(vid, module, repo):
             m = re.match(rf'https://github\.com/{re.escape(repo)}/commit/([0-9a-f]{{7,40}})\b', ref['url'])
             if m:
                 commits.add(m.group(1))
-    return (ranges, commits) if ranges else None
+    return (ranges, commits) if ranges and named else None
 
 
 def fetch_repo(url, path):
@@ -796,6 +816,29 @@ def ancestor(path, a, b):
                           stderr=subprocess.DEVNULL).returncode == 0
 
 
+def project_advisory(m, repo):
+    """(GHSA, module paths) when the Go vulnerability database's record behind m names its module
+    with no affected range at all, while the project's own GitHub advisory for the same flaw names
+    only the repository's other module paths; else None."""
+    vul, art = m['vulnerability'], m['artifact']
+    rec = next((r for r in db_search(vul['id']) if r['vulnerability'].get('provider') == 'govulndb'), None)
+    pkgs = [p for p in (rec or {}).get('packages') or [] if (p.get('package') or {}).get('name') == art['name']]
+    if not pkgs or any(p['detail'].get('ranges') for p in pkgs):
+        return None
+    for g in [x['id'] for x in m.get('relatedVulnerabilities') or [] if x['id'].startswith('GHSA-')]:
+        for r in db_search(g):
+            v = r['vulnerability']
+            if v.get('provider') != 'github' or not any(
+                u['url'].startswith(f'https://github.com/{repo}/security/advisories/') for u in v.get('refs') or []
+            ):
+                continue
+            names = {p['package']['name'] for p in r.get('packages') or []
+                     if (p.get('package') or {}).get('ecosystem') == 'go-module'}
+            if names and art['name'] not in names and all(same_repo(n, repo) for n in names):
+                return g, sorted(names)
+    return None
+
+
 def recheck_gopseudo(rep, path):
     """Re-judge matches on Go modules at a pseudo-version by the module's own history in place; a
     summary, or None if the report has no such match."""
@@ -806,7 +849,18 @@ def recheck_gopseudo(rep, path):
         parts = art['name'].split('/')
         if pm and len(parts) >= 3 and parts[0] == 'github.com':
             todo.append((m, f'{parts[1]}/{parts[2]}', pm.group(2)))
-    if not todo:
+    # The Go vulnerability database can list a project's older module path with no range at all
+    # (every version, no fix) where the project's own advisory names only its newer one: containerd
+    # v1 for a flaw in a CRI feature v2 added. grype reports such a match without a constraint.
+    blanket = [
+        (m, '/'.join(m['artifact']['name'].split('/')[1:3])) for m in rep['matches']
+        if m['artifact']['type'] == 'go-module' and m['artifact']['name'].startswith('github.com/')
+        and len(m['artifact']['name'].split('/')) >= 3 and not PSEUDO.match(m['artifact']['version'])
+        and m['vulnerability'].get('namespace', '').startswith('govulndb')
+        and any((d.get('found') or {}).get('versionConstraint', '').startswith('none')
+                for d in m.get('matchDetails') or [])
+    ]
+    if not todo and not blanket:
         return None
 
     repos = {}
@@ -823,8 +877,18 @@ def recheck_gopseudo(rep, path):
             tags[name] = int(date or 0)
         repos[repo] = (clone, tags)
 
-    ignored = {'fix commit': [], 'release': []}
+    ignored = {'fix commit': [], 'release': [], 'project advisory': []}
     kept = 0
+    deferred = 0
+    for m, repo in blanket:
+        said = project_advisory(m, repo)
+        if not said:
+            continue
+        deferred += 1
+        g, names = said
+        ignore(m, f'Go vulnerability database: {m["vulnerability"]["id"]} names {m["artifact"]["name"]} '
+                  f'with no affected range; the project\'s own advisory {g} names only {", ".join(names)}')
+        ignored['project advisory'].append(m)
     for m, repo, short in todo:
         vul, art = m['vulnerability'], m['artifact']
         clone, tags = repos[repo]
@@ -843,14 +907,22 @@ def recheck_gopseudo(rep, path):
             # The module path has no major-version suffix, so the project's releases cannot be
             # named: every version a Go build can link is a pseudo-version, which sorts below
             # every fixed release. Judge by the newest release the commit descends from instead,
-            # when the fixes are releases of this repository and that one came after them all.
+            # when the fixes are releases of this repository and that one came after them all. A
+            # fixed pseudo-version the commit does not contain keeps the match, unless the commit
+            # is itself a release: the pseudo-version then only names that release, and a fix on
+            # another branch says nothing about it (beats/v7 at v9.5.5, its fix commit on 9.2).
             fixes = [f for _, f in ranges if f and not PSEUDO.match(f)]
             merged = [t for t in (git_out(clone, 'tag', '--merged', sha, '--list', 'v*') or '').split()
                       if RELEASE_TAG.match(t)]
-            if pseudo_fixes or not fixes or not merged or any('v' + f not in tags for f in fixes):
+            exact = [t for t in merged
+                     if (git_out(clone, 'rev-parse', '-q', '--verify', t + '^{commit}') or '').strip() == sha]
+            if (
+                (pseudo_fixes and not exact) or not fixes or not merged
+                or any('v' + f not in tags for f in fixes)
+            ):
                 kept += 1
                 continue
-            base = max(merged, key=semkey)
+            base = max(exact or merged, key=semkey)
             if (
                 any(go_in_range(base, conds) for conds, _ in ranges)
                 or semkey(base) < max(semkey(f) for f in fixes)
@@ -859,8 +931,8 @@ def recheck_gopseudo(rep, path):
                 kept += 1
                 continue
             why = (
-                f'descends from {base}, released after every fixed release '
-                f'({", ".join(sorted(set(fixes), key=semkey))}) and outside every affected range'
+                f'{"is release" if exact else "descends from"} {base}, released after every fixed '
+                f'release ({", ".join(sorted(set(fixes), key=semkey))}) and outside every affected range'
             )
             by = 'release'
         ignore(m, f'go pseudo-version: {art["name"]} {art["version"]} is commit {sha[:12]}, which {why}')
@@ -870,6 +942,7 @@ def recheck_gopseudo(rep, path):
     rep['matches'] = [m for m in rep['matches'] if id(m) not in drop]
     rep['ignoredMatches'] = (
         (rep.get('ignoredMatches') or []) + ignored['fix commit'] + ignored['release']
+        + ignored['project advisory']
     )
     rep.setdefault('descriptor', {})['goPseudoRecheck'] = {
         'source': GOMODULE_GIT,
@@ -877,10 +950,12 @@ def recheck_gopseudo(rep, path):
         'judged': len(todo),
         'ignored': {by: len(ms) for by, ms in ignored.items()},
         'kept': kept,
+        'blanketJudged': len(blanket),
     }
     return (
         f'Go pseudo-version matches: {len(todo)} judged; {len(ignored["fix commit"])} ignored by a '
-        f'fix commit, {len(ignored["release"])} by a release; {kept} kept'
+        f'fix commit, {len(ignored["release"])} by a release; {kept} kept. Go vulnerability database '
+        f'matches with no range: {len(blanket)} judged; {deferred} ignored by the project\'s own advisory'
     )
 
 

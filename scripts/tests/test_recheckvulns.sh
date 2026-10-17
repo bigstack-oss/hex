@@ -339,9 +339,47 @@ chk "  kept" "$(q "$gkept")" "GHSA-k001@${LINKED:0:12} GHSA-k002@${LINKED:0:12} 
 chk "  a fix commit the advisory names is an ancestor" "$(gwhy GHSA-f001)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which contains the fix commit ${FIX:0:12}"
 chk "  so is a fixed pseudo-version's commit" "$(gwhy GHSA-f002)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which contains the fix commit ${FIX:0:12}"
 chk "  descends from a release after every fix" "$(gwhy GHSA-r001)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which descends from v2.6.3, released after every fixed release (1.6.27, 2.2.4) and outside every affected range"
-chk "  descriptor" "$(q "r['descriptor']['goPseudoRecheck']['repositories'], r['descriptor']['goPseudoRecheck']['judged'], r['descriptor']['goPseudoRecheck']['ignored'], r['descriptor']['goPseudoRecheck']['kept']")" "['acme/widget'] 10 {'fix commit': 2, 'release': 1} 7"
-chk "  summary" "$OUT" "Go pseudo-version matches: 10 judged; 2 ignored by a fix commit, 1 by a release; 7 kept"
+chk "  descriptor" "$(q "r['descriptor']['goPseudoRecheck']['repositories'], r['descriptor']['goPseudoRecheck']['judged'], r['descriptor']['goPseudoRecheck']['ignored'], r['descriptor']['goPseudoRecheck']['kept']")" "['acme/widget'] 10 {'fix commit': 2, 'release': 1, 'project advisory': 0} 7"
+chk "  summary" "$OUT" "Go pseudo-version matches: 10 judged; 2 ignored by a fix commit, 1 by a release; 7 kept. Go vulnerability database matches with no range: 0 judged; 0 ignored by the project's own advisory"
 chk "  the clone holds no trees" "$(git -C "$T/gomodules/acme/widget.git" rev-parse --is-bare-repository)" "true"
+
+# A build from a modified tree (+dirty); a pseudo-version that names a release, under the module path
+# with a major-version suffix, whose fix commit is on another branch while the repository's other
+# module path gives semantic ranges; the same advisory on a commit that is no release; an advisory
+# naming only the other path. And the Go vulnerability database naming the old module path with no
+# range, where the project's own advisory names only the new one.
+PT=$(pseudo $(git -C "$G" rev-parse v2.6.3))
+graw(){ echo "$2" > "$T/gadv/$1.json"; }
+pk(){ echo "{\"package\": {\"name\": \"$1\", \"ecosystem\": \"go-module\"}, \"detail\": {\"ranges\": [$2]}}"; }
+gadv GHSA-r002 "$(rg '<1.6.27' '"1.6.27"'), $(rg '>=2.0.0,<2.2.4' '"2.2.4"')" ""
+graw GHSA-s001 "[{\"vulnerability\": {\"id\": \"GHSA-s001\", \"provider\": \"github\", \"refs\": []}, \"packages\": [$(pk github.com/acme/widget "$(rg '<1.6.27' '"1.6.27"'), $(rg '>=2.0.0,<2.2.4' '"2.2.4"')"), $(pk github.com/acme/widget/v7 "$(rg "<0.0.0-20260129092249-${SIDE:0:12}" "\"0.0.0-20260129092249-${SIDE:0:12}\"")")]}]"
+graw GHSA-s002 "[{\"vulnerability\": {\"id\": \"GHSA-s002\", \"provider\": \"github\", \"refs\": []}, \"packages\": [$(pk github.com/acme/widget "$(rg '<2.2.4' '"2.2.4"')")]}]"
+own='{"url": "https://github.com/acme/widget/security/advisories/GHSA-p00X"}'
+govdb(){ graw $1 "[{\"vulnerability\": {\"id\": \"$1\", \"provider\": \"govulndb\"}, \"packages\": [$(pk github.com/acme/widget "$2")]}]"; }
+ghsa(){ graw $1 "[{\"vulnerability\": {\"id\": \"$1\", \"provider\": \"github\", \"refs\": [$3]}, \"packages\": [$2]}]"; }
+govdb GO-2099-0001 ""; ghsa GHSA-p001 "$(pk github.com/acme/widget/v2 "$(rg '>=2.1.0,<2.1.9' '"2.1.9"')")" "${own/p00X/p001}"
+govdb GO-2099-0002 ""; ghsa GHSA-p002 "$(pk github.com/acme/widget/v2 "$(rg '>=2.1.0,<2.1.9' '"2.1.9"')")" ""
+govdb GO-2099-0003 "$(rg '<1.7.40' '"1.7.40"')"; ghsa GHSA-p003 "$(pk github.com/acme/widget/v2 "$(rg '>=2.1.0,<2.1.9' '"2.1.9"')")" "${own/p00X/p003}"
+govdb GO-2099-0004 ""; ghsa GHSA-p004 "$(pk github.com/acme/widget "$(rg '<1.7.40' '"1.7.40"')"), $(pk github.com/acme/widget/v2 "$(rg '>=2.1.0,<2.1.9' '"2.1.9"')")" "${own/p00X/p004}"
+govdb GO-2099-0005 ""; ghsa GHSA-p005 "$(pk github.com/acme/widget/v2 "$(rg '>=2.1.0,<2.1.9' '"2.1.9"')")" "${own/p00X/p005}"
+gv(){ echo '{"vulnerability": {"id": "'$1'", "namespace": "govulndb:language:go", "severity": "Critical", "fix": {"versions": [], "state": "not-fixed"}}, "relatedVulnerabilities": [{"id": "CVE-2099-'${1: -4}'"}, {"id": "'$2'"}], "matchDetails": [{"type": "exact-direct-match", "found": {"versionConstraint": "'$3'"}}], "artifact": {"name": "github.com/acme/widget", "version": "v1.7.36", "type": "go-module"}}'; }
+goreport2(){ cat > "$T/vuln.json" <<EOF
+{"descriptor": {"name": "grype"}, "matches": [
+ $(gm GHSA-r002 github.com/acme/widget ${PL}+dirty), $(gm GHSA-s001 github.com/acme/widget/v7 $PT), $(gm GHSA-s001 github.com/acme/widget/v7 $PL),
+ $(gm GHSA-s002 github.com/acme/widget/v7 $PT),
+ $(gv GO-2099-0001 GHSA-p001 'none (unknown)'), $(gv GO-2099-0002 GHSA-p002 'none (unknown)'), $(gv GO-2099-0003 GHSA-p003 'none (unknown)'),
+ $(gv GO-2099-0004 GHSA-p004 'none (unknown)'), $(gv GO-2099-0005 GHSA-p005 '<1.7.40 (go)')]}
+EOF
+}
+goreport2; KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/gomods" GRYPE="$T/bin/grype" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules"
+g2kept="' '.join(m['vulnerability']['id'] + '@' + m['artifact']['name'].split('/')[-1] for m in r['matches'])"
+gwhy2(){ q "next(m['appliedIgnoreRules'][0]['reason'] for m in r['ignoredMatches'] if m['vulnerability']['id'] == '$1' and m['artifact']['version'] == '$2')"; }
+chk "Go pass, second report, exits 0" "$RC" "0"
+chk "  kept" "$(q "$g2kept")" "GHSA-s001@v7 GHSA-s002@v7 GO-2099-0002@widget GO-2099-0003@widget GO-2099-0004@widget GO-2099-0005@widget"
+chk "  a +dirty build is judged by its commit" "$(gwhy2 GHSA-r002 ${PL}+dirty)" "go pseudo-version: github.com/acme/widget ${PL}+dirty is commit ${LINKED:0:12}, which descends from v2.6.3, released after every fixed release (1.6.27, 2.2.4) and outside every affected range"
+chk "  a release, by the other module path's ranges" "$(gwhy2 GHSA-s001 $PT)" "go pseudo-version: github.com/acme/widget/v7 $PT is commit $(git -C "$G" rev-parse v2.6.3 | cut -c1-12), which is release v2.6.3, released after every fixed release (1.6.27, 2.2.4) and outside every affected range"
+chk "  the project's own advisory names only the new module path" "$(gwhy2 GO-2099-0001 v1.7.36)" "Go vulnerability database: GO-2099-0001 names github.com/acme/widget with no affected range; the project's own advisory GHSA-p001 names only github.com/acme/widget/v2"
+chk "  summary" "$OUT" "Go pseudo-version matches: 4 judged; 0 ignored by a fix commit, 2 by a release; 2 kept. Go vulnerability database matches with no range: 4 judged; 1 ignored by the project's own advisory"
 
 # The next scan fetches what changed: a new release
 git -C "$G" checkout -q main && gc 2026-03-01T00:00:00 four && gt v2.7.0 && git -C "$T/gomods/acme/widget" fetch -q "$G" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
