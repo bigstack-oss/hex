@@ -203,10 +203,14 @@ adv OSSA-2099-001 "  - product: keystone\n    version: '>=8.0.0 <25.0.1, >=26.0.
 adv OSSA-2099-002 "  - product: Nova\n    version: '>=30.0.0 <30.2.1, >=31.0.0 <31.1.1'\n" "  - cve-id: 'CVE-2026-3002'\n"
 adv OSSA-2099-003 "  - product: glance\n    version: All versions\n" "  - cve-id: CVE-2026-3003\n"
 adv OSSA-2099-004 "  - product: oslo.messaging\n    version: '<16.1.3'\n  - product: python-keystoneclient\n    version: '<5.6.1'\n" "  - cve-id: CVE-2026-3004 (client to proxy)\n"
+adv OSSA-2099-005 "  - product: nova\n    version: '<2014.2.3, >=2015.1.0 <2015.1.2'\n" "  - cve-id: CVE-2026-3010\n"
+adv OSSA-2099-006 "  - product: glance\n    version: '<=2014.2.3, >=2015.1.0, <=2015.1.1'\n" "  - cve-id: CVE-2026-3011\n"
 echo 'not an advisory' > "$T/ossa/README.rst"
 git -C "$T/ossa" init -q -b master && git -C "$T/ossa" add -A &&
     git -C "$T/ossa" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m one
 VENV=/opt/openstack-epoxy/lib/python3.12/site-packages
+# A match whose fix grype states as given: <id> <CVE> <package> <version> <fix versions as JSON>
+pd(){ p "$1" "$2" "$3" "$4" $VENV | sed "s/\"versions\": \[\"9.9\"\]/\"versions\": $5/"; }
 osreport(){ cat > "$T/vuln.json" <<EOF
 {"descriptor": {"name": "grype"}, "matches": [
  $(p GHSA-k001 CVE-2026-3001 keystone 27.1.0 $VENV), $(p GHSA-k002 CVE-2026-3001 keystone 27.0.0 $VENV),
@@ -214,6 +218,11 @@ osreport(){ cat > "$T/vuln.json" <<EOF
  $(p GHSA-n002 CVE-2026-3002 nova 31.1.1 $VENV), $(p GHSA-g001 CVE-2026-3003 glance 30.0.0 $VENV),
  $(p GHSA-o001 CVE-2026-3004 oslo.messaging 16.1.2 $VENV), $(p GHSA-o002 CVE-2026-3004 python-keystoneclient 5.6.1 $VENV),
  $(p GHSA-x001 CVE-2026-3001 nova 31.0.0 $VENV), $(p GHSA-r001 CVE-2026-3005 keystone 27.1.0 $VENV),
+ $(pd GHSA-d001 CVE-2026-3003 glance 30.2.0 '["2014.2.3"]'), $(pd GHSA-d002 CVE-2026-3009 nova 31.3.1 '["2014.1.4", "2013.2.4"]'),
+ $(pd GHSA-d003 CVE-2026-3009 nova 31.3.1 '["2014.1.4", "28.0.1"]'), $(pd GHSA-d004 CVE-2026-3009 nova 2013.2.1 '["2014.1.4"]'),
+ $(pd GHSA-d005 CVE-2026-3009 certifi 2024.2.2 '["2024.7.4"]'), $(pd GHSA-d006 CVE-2026-3001 keystone 27.0.0 '["2014.1.4"]'),
+ $(pd GHSA-e001 CVE-2026-3010 nova 31.3.1 '["2014.2.3"]'), $(pd GHSA-e002 CVE-2026-3010 nova 2014.2.1 '["2014.2.3"]'),
+ $(pd GHSA-e003 CVE-2026-3011 glance 30.2.0 '[]'), $(pd GHSA-e004 CVE-2026-3011 glance 2015.1.1 '[]'),
  $(rp CVE-2026-3001 keystone 27.1.0 "")]}
 EOF
 }
@@ -223,7 +232,7 @@ owhy(){ q "next(m['appliedIgnoreRules'][0]['reason'].split(' (ossa.git')[0] for 
 
 osreport; KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/ossa" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout"
 chk "OSSA pass exits 0" "$RC" "0"
-chk "  kept" "$(q "$okept")" "GHSA-k002 GHSA-n001 GHSA-g001 GHSA-o001 GHSA-x001 GHSA-r001 CVE-2026-3001"
+chk "  kept" "$(q "$okept")" "GHSA-k002 GHSA-n001 GHSA-g001 GHSA-o001 GHSA-x001 GHSA-r001 GHSA-d003 GHSA-d004 GHSA-d005 GHSA-d006 GHSA-e002 GHSA-e004 CVE-2026-3001"
 chk "  outside every range: a later release of a fixed series" "$(owhy GHSA-k001)" "OSSA: OSSA-2099-001 affects keystone >=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=27.0.0 <27.0.1, >=28.0.0 <28.0.1, not 27.1.0"
 chk "  a release candidate of a series it never affected" "$(owhy GHSA-k003)" "OSSA: OSSA-2099-001 affects keystone >=8.0.0 <25.0.1, >=26.0.0 <26.1.1, >=27.0.0 <27.0.1, >=28.0.0 <28.0.1, not 29.0.0.0rc1"
 chk "  inside a range: its series' fix" "$(ofix GHSA-k002)" "['27.0.1']"
@@ -233,8 +242,18 @@ chk "  prose versions judge nothing" "$(ofix GHSA-g001)" "['9.9']"
 chk "  a dotted package name, a CVE with a note" "$(ofix GHSA-o001)" "['16.1.3']"
 chk "  the advisory's second product" "$(owhy GHSA-o002)" "OSSA: OSSA-2099-004 affects python-keystoneclient <5.6.1, not 5.6.1"
 chk "  a CVE named for another package: untouched" "$(ofix GHSA-x001)" "['9.9']"
-chk "  descriptor" "$(q "r['descriptor']['ossaRecheck']['judged'], r['descriptor']['ossaRecheck']['ignored'], r['descriptor']['ossaRecheck']['kept'], r['descriptor']['ossaRecheck']['advisories']['commit'] == '$(git -C "$T/ossa" rev-parse HEAD)'")" "8 4 4 True"
-chk "  summary" "$OUT" "OpenStack python matches: 8 named by an OSSA, 4 ignored by it, 4 kept"
+chk "  a prose advisory, a fix from the YYYY.N releases" "$(owhy GHSA-d001)" "OSSA: glance is an OpenStack project, and its fix 2014.2.3 is a YYYY.N release, all of which came before its semantic versions such as 30.2.0"
+chk "  no advisory names it, the project is OpenStack's" "$(owhy GHSA-d002)" "OSSA: nova is an OpenStack project, and its fix 2014.1.4, 2013.2.4 is a YYYY.N release, all of which came before its semantic versions such as 31.3.1"
+chk "  a fix that is not all YYYY.N: untouched" "$(ofix GHSA-d003)" "['2014.1.4', '28.0.1']"
+chk "  an installed YYYY.N release: untouched" "$(ofix GHSA-d004)" "['2014.1.4']"
+chk "  a calendar-versioned package that is not OpenStack's: untouched" "$(ofix GHSA-d005)" "['2024.7.4']"
+chk "  an advisory's range decides first" "$(ofix GHSA-d006)" "['27.0.1']"
+chk "  ranges in YYYY.N releases do not take in a semantic version" "$(owhy GHSA-e001)" "OSSA: OSSA-2099-005 affects nova <2014.2.3, >=2015.1.0 <2015.1.2, not 31.3.1"
+chk "  but do take in an older YYYY.N one" "$(ofix GHSA-e002)" "['2014.2.3']"
+chk "  a range split at its comma is read whole" "$(owhy GHSA-e003)" "OSSA: OSSA-2099-006 affects glance <=2014.2.3, >=2015.1.0, <=2015.1.1, not 30.2.0"
+chk "    and still takes in its own versions" "$(ofix GHSA-e004)" "['2015.1.1']"
+chk "  descriptor" "$(q "r['descriptor']['ossaRecheck']['named'], r['descriptor']['ossaRecheck']['ignored'], r['descriptor']['ossaRecheck']['kept'], r['descriptor']['ossaRecheck']['advisories']['commit'] == '$(git -C "$T/ossa" rev-parse HEAD)'")" "14 {'advisory': 6, 'date-based fix': 2} 7 True"
+chk "  summary" "$OUT" "OpenStack python matches: 14 named by an OSSA; 6 ignored by the advisory, 2 by a date-based fix; 7 kept"
 chk "  checkout holds only the advisories" "$(cd "$T/ossa-checkout" && find . -path ./.git -prune -o -type f -print | grep -vc '^\./ossa/OSSA-.*\.yaml$')" "0"
 
 # The next scan fetches what changed: the advisory now says keystone 27.0.0 is not affected
@@ -260,6 +279,13 @@ chk "pyver dev before a pre-release" "$(pv 1.0.dev1 1.0a1)" "True"
 chk "pyver release before post" "$(pv 1.0 1.0.post1)" "True"
 chk "pyver numeric, not text" "$(pv 27.9.0 27.10.0)" "True"
 chk "pyver trailing zeros equal" "$(pv 27.1 27.1.0) $(pv 27.1.0 27.1)" "False False"
+or(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.ossa_ranges('$1'))"; }
+chk "ossa_ranges merges a split range" "$(or '<24.1.3, >=25.0.0 <26.1.1, >=27.0.0, <29.0.1')" "[[('<', '24.1.3')], [('>=', '25.0.0'), ('<', '26.1.1')], [('>=', '27.0.0'), ('<', '29.0.1')]]"
+chk "ossa_ranges keeps a trailing lower bound open" "$(or '<24.1.3, >=27.0.0')" "[[('<', '24.1.3')], [('>=', '27.0.0')]]"
+chk "ossa_ranges: prose is None" "$(or 'Folsom, Grizzly') $(or 'All versions')" "None None"
+ov(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.osver('$1') < m.osver('$2'))"; }
+chk "osver YYYY.N before semantic" "$(ov 2015.1.2 12.0.0) $(ov 31.3.1 2014.2.3)" "True False"
+chk "osver within an era, as pyver" "$(ov 2014.1.4 2014.2.3) $(ov 27.0.1 27.1.0)" "True True"
 
 vc(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.vercmp('$1', '$2'))"; }
 chk "vercmp newer base release" "$(vc 8.el9 6.el9_7.1)" "1"

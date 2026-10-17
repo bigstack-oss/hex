@@ -55,7 +55,13 @@ series: OSSA-2026-007 fixed keystone in 25.0.1, 26.1.1, 27.0.1 and 28.0.1, its G
 advisory's own affected versions: outside every range it moves to "ignoredMatches", inside one it
 stays with that range's fix. A match is cleared only when every advisory naming its CVE for the
 package gives ranges: one whose versions are prose (the oldest: "All versions", "Folsom,
-Grizzly") leaves it as grype has it. The checkout is kept like the CNA's, and the report's
+Grizzly") does not clear it. Those oldest flaws have a second tell. OpenStack versioned its
+releases YYYY.N until Liberty (2015.2) and semantically since, so every semantic version came
+after every YYYY.N one; but GitHub's advisories state those fixes as YYYY.N releases, which a
+semantic version compares below: nova 31.3.1 is reported for a flaw fixed in 2014.1.4. The pass
+compares in that order, an advisory's ranges included, and a match on a project the advisories
+name, whose every fix grype names is a YYYY.N release and whose version is semantic, moves to
+"ignoredMatches" too. The checkout is kept like the CNA's, and the report's
 descriptor records its commit; OSSA_GIT in the environment points at a mirror.
 """
 
@@ -528,18 +534,39 @@ def pyver(v):
     )
 
 
+def osver(v):
+    """An OpenStack project's version order: its YYYY.N releases (until Liberty, 2015.2) all came
+    before its semantic versions (12.0.0 onward), so 31.3.1 sorts after 2014.2.3, not below it."""
+    p = pyver(v)
+    return None if p is None else (0 if p[0][0] >= 2000 else 1, p)
+
+
 OSSA_COND = r'(<=|>=|==|!=|<|>)\s*(\d[\w.]*)'
 
 
 def ossa_ranges(spec):
     """An advisory's affected versions as ranges, each a list of (operator, version); None for
     prose ("All versions", "Folsom, Grizzly") or anything else that is not purely ranges."""
-    ranges = []
+    segs = []
     for seg in spec.split(','):
         conds = re.findall(OSSA_COND, seg)
         if not conds or re.sub(OSSA_COND, '', seg).strip():
             return None
-        ranges.append(conds)
+        segs.append(conds)
+    # A few advisories split one range at its comma: "<=2014.2.3, >=2015.1.0, <=2015.1.1" and
+    # ">=25.0.0, <26.1.0" mean 2015.1.0 to 2015.1.1 and 25.0.0 to 26.1.0, not everything from
+    # 2015.1.0 or 25.0.0 up. A lower bound alone, followed by an upper bound alone, is one range.
+    ranges = []
+    for conds in segs:
+        prev = ranges[-1] if ranges else None
+        if (
+            prev
+            and all(op in ('>', '>=') for op, _ in prev)
+            and all(op in ('<', '<=') for op, _ in conds)
+        ):
+            prev.extend(conds)
+        else:
+            ranges.append(list(conds))
     return ranges
 
 
@@ -552,7 +579,7 @@ def in_range(ver, conds):
         '==': lambda a, b: a == b,
         '!=': lambda a, b: a != b,
     }
-    return all(ops[op](ver, pyver(x)) for op, x in conds)
+    return all(ops[op](ver, osver(x)) for op, x in conds)
 
 
 def section(text, name):
@@ -593,6 +620,14 @@ def ossa_index(path):
     return index
 
 
+DATE_VERSION = re.compile(r'20\d\d\.\d+')
+
+
+def date_based(fixes):
+    """True if every version is one of OpenStack's old YYYY.N releases (2014.1.4, 2015.1.0)."""
+    return bool(fixes) and all(DATE_VERSION.match(x) for x in fixes)
+
+
 def recheck_ossa(rep, path):
     """Re-judge matches on OpenStack's python packages by the OSSAs in place; a summary, or None
     if the report has no python match to judge."""
@@ -603,27 +638,22 @@ def recheck_ossa(rep, path):
     except subprocess.CalledProcessError:
         sys.exit(f'recheckvulns: cannot fetch the OpenStack security advisories from {OSSA_GIT}')
     index = ossa_index(path)
+    projects = {p for said in index.values() for _, p, _ in said}
 
-    ignored, judged, kept = [], 0, 0
+    ignored = {'advisory': [], 'date-based fix': []}
+    named, kept = 0, 0
     for m in rep['matches']:
         vul, art = m['vulnerability'], m['artifact']
-        if art['type'] != 'python':
+        name, ver = pyname(art['name']), osver(art['version'])
+        if art['type'] != 'python' or name not in projects or ver is None:
             continue
         ids = [vul['id']] + [x.get('id', '') for x in m.get('relatedVulnerabilities') or []]
         cve = next((i for i in ids if i in index), None)
-        ver = pyver(art['version'])
-        said = [x for x in index.get(cve, []) if x[1] == pyname(art['name'])]
-        if not said or ver is None:
-            continue
-        judged += 1
+        said = [x for x in index.get(cve, []) if x[1] == name]
         ranges = [(oid, spec, ossa_ranges(spec)) for oid, _, spec in said]
-        hit = [
-            (oid, conds)
-            for oid, _, rs in ranges
-            if rs
-            for conds in rs
-            if in_range(ver, conds)
-        ]
+        hit = [(oid, conds) for oid, _, rs in ranges if rs for conds in rs if in_range(ver, conds)]
+        if said:
+            named += 1
         if hit:
             fix = next((x for op, x in hit[0][1] if op in ('<', '<=')), None)
             vul['fix'] = (
@@ -632,29 +662,41 @@ def recheck_ossa(rep, path):
                 else {'versions': [], 'state': 'not-fixed'}
             )
             kept += 1
-        elif all(rs for _, _, rs in ranges):
+            continue
+        if said and all(rs for _, _, rs in ranges):
             oid, spec, _ = ranges[0]
-            ignore(
-                m,
-                f'OSSA: {oid} affects {art["name"]} {spec}, not {art["version"]} '
-                f'(ossa.git {commit[:12]})',
-            )
-            ignored.append(m)
+            why, by = f'OSSA: {oid} affects {art["name"]} {spec}, not {art["version"]}', 'advisory'
         else:
-            kept += 1
+            # An advisory from before Liberty can give its versions as prose, and GitHub's states
+            # the fix as one of the project's old YYYY.N releases, which a semantic version
+            # compares below (31.3.1 < 2014.1.4). The project's semantic versions all came after.
+            fixes = (vul.get('fix') or {}).get('versions') or []
+            if not (date_based(fixes) and ver[0] == 1):
+                kept += bool(said)
+                continue
+            why = (
+                f'OSSA: {art["name"]} is an OpenStack project, and its fix {", ".join(fixes)} '
+                f'is a YYYY.N release, all of which came before its semantic versions such as '
+                f'{art["version"]}'
+            )
+            by = 'date-based fix'
+        ignore(m, f'{why} (ossa.git {commit[:12]})')
+        ignored[by].append(m)
 
-    drop = {id(m) for m in ignored}
+    drop = {id(m) for ms in ignored.values() for m in ms}
     rep['matches'] = [m for m in rep['matches'] if id(m) not in drop]
-    rep['ignoredMatches'] = (rep.get('ignoredMatches') or []) + ignored
+    rep['ignoredMatches'] = (
+        (rep.get('ignoredMatches') or []) + ignored['advisory'] + ignored['date-based fix']
+    )
     rep.setdefault('descriptor', {})['ossaRecheck'] = {
         'advisories': {'repository': OSSA_GIT, 'commit': commit, 'date': date},
-        'judged': judged,
-        'ignored': len(ignored),
+        'named': named,
+        'ignored': {by: len(ms) for by, ms in ignored.items()},
         'kept': kept,
     }
     return (
-        f'OpenStack python matches: {judged} named by an OSSA, {len(ignored)} ignored by it, '
-        f'{kept} kept'
+        f'OpenStack python matches: {named} named by an OSSA; {len(ignored["advisory"])} ignored '
+        f'by the advisory, {len(ignored["date-based fix"])} by a date-based fix; {kept} kept'
     )
 
 
