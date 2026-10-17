@@ -110,8 +110,11 @@ base_rootfs_install:
 	$(Q)$(INSTALL_MODULES) $(ROOTDIR) $(HEX_DATADIR)/os/base.modules
 	@# The Intel E610 (8086:57AE-57B2) is known to the kernel's own ixgbe from Linux 6.14. Every
 	@# image that carries NIC drivers takes ixgbe from the kernel's module tree, so check that tree:
-	@# fail the build on a kernel whose ixgbe lacks the E610 10GBASE-T id.
-	$(Q)modinfo -k $(KERNEL_VERS) -F alias ixgbe | grep -qi 'v00008086d000057B0'
+	@# fail the build on a kernel whose ixgbe lacks the E610 10GBASE-T id, or that has no ixgbe. The
+	@# module file is read directly: the jail installs its kernel packages without running depmod,
+	@# so its tree has no index to look ixgbe up by name in.
+	$(Q)f=$$(find /lib/modules/$(KERNEL_VERS)/kernel -name 'ixgbe.ko*' | head -1) && [ -n "$$f" ] && \
+		modinfo -F alias $$f | grep -qi 'v00008086d000057B0'
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/systemd-hexctl-sys.service ./lib/systemd/system
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/passwd ./etc
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/shadow ./etc
