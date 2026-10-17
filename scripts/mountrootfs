@@ -171,6 +171,9 @@ if [ $SKIPNEWCGZ -eq 0 ] ; then
     echo ${ROOTFS_SIZE}KB > $NEWIMG.size
 
     FINDARGS=
+    # The .cgz files below do not depend on each other, so they are compressed concurrently;
+    # every job's exit status is checked at the end because a bare `wait` would hide failures
+    PIDS=
     # fat32 has file size limit of 4GB
     if [ $ROOTFS_SIZE -gt 8388608 ] ; then
         # second level folders > 512 MiB under / are compressed into seperate .cgz
@@ -178,10 +181,12 @@ if [ $SKIPNEWCGZ -eq 0 ] ; then
         for BDIR in $(cd $ROOTDIR ; find . -maxdepth 2 -mindepth 2 -type d | xargs -i du -sm {} | awk ' $1 > 512 { print $2 }' | grep -v -e docker -e "usr/share") ; do
             FINDARGS+=" -path $BDIR -prune -o"
             SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
-            CreateCgz $SPLITIMG $ROOTDIR "$BDIR"
+            CreateCgz $SPLITIMG $ROOTDIR "$BDIR" &
+            PIDS+=" $!"
         done
         SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
-        (cd $ROOTDIR && find usr/share/opensearch usr/share/opensearch-dashboards | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+        (cd $ROOTDIR && find usr/share/opensearch usr/share/opensearch-dashboards | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG &
+        PIDS+=" $!"
         FINDARGS+=" -path ./usr/share/opensearch-dashboards -prune -o"
         FINDARGS+=" -path ./usr/share/opensearch -prune -o"
 
@@ -191,18 +196,28 @@ if [ $SKIPNEWCGZ -eq 0 ] ; then
             repo_dir="opt/docker/registry/docker/registry/v2/repositories"
             half=$(expr $(ls -1d ${ROOTDIR}/${blobs_dir}/* | wc -l) / 2 + 1)
             SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
-            (cd $ROOTDIR && find $repo_dir $(ls -d ${blobs_dir}/* | head -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+            (cd $ROOTDIR && find $repo_dir $(ls -d ${blobs_dir}/* | head -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG &
+            PIDS+=" $!"
             SPLITIMG=${ROOTDIR}_$((SPLITCNT++)).cgz
-            (cd $ROOTDIR && find $registry_dir $(ls -d ${blobs_dir}/* | tail -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG
+            (cd $ROOTDIR && find $registry_dir $(ls -d ${blobs_dir}/* | tail -$half) | cpio -o -H newc --quiet ) | pigz -9 > $SPLITIMG &
+            PIDS+=" $!"
         fi
         FINDARGS+=" -path ./opt/docker -prune -o"
 
         if [ $SPLITCNT -gt 0 ] ; then
-            CreateCgz ${ROOTDIR}_0.cgz $ROOTDIR "$FINDARGS -print"
+            CreateCgz ${ROOTDIR}_0.cgz $ROOTDIR "$FINDARGS -print" &
+            PIDS+=" $!"
         fi
     fi
 
-    CreateCgz $NEWIMG $ROOTDIR
+    CreateCgz $NEWIMG $ROOTDIR &
+    PIDS+=" $!"
+
+    FAILED=0
+    for PID in $PIDS ; do
+        wait $PID || FAILED=1
+    done
+    [ $FAILED -eq 0 ] || Error "failed to create $NEWIMG or its split .cgz files"
 fi
 
 exit 0
