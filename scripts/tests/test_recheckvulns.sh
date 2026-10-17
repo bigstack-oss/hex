@@ -2,8 +2,10 @@
 #
 # Unit test for scripts/recheckvulns.py: which kernel matches the kernel CNA's records move to
 # ignoredMatches, the fix and severity of the ones that stay, and that nothing else is touched;
-# likewise for RHEL python rpms by Red Hat's records and OpenStack's packages by the OSSAs.
-# Self-contained: vulns.git and ossa.git are local repos, Red Hat's security data a file:// directory.
+# likewise for RHEL python rpms by Red Hat's records, OpenStack's packages by the OSSAs, and Go modules
+# at a pseudo-version by their repository's history. Self-contained: vulns.git, ossa.git and the Go
+# module's repository are local repos, Red Hat's security data a file:// directory, and grype a
+# stand-in that answers from files.
 #
 # Needs bash, git and python3.
 # Run: bash test_recheckvulns.sh
@@ -272,6 +274,93 @@ chk "without --ossa: nothing fetched, report untouched" "$RC $(cmp -s "$T/before
 echo '{"matches": []}' > "$T/vuln.json"
 KERNEL_VULNS_GIT="file://$T/nowhere" OSSA_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout5" --ossa "$T/ossa-checkout3"
 chk "no python match: no fetch" "$RC $([ -e "$T/ossa-checkout3" ] && echo yes || echo no)" "0 no"
+
+# Go modules at a pseudo-version, judged by the module's own history. acme/widget's main line:
+# v2.1.0 (2018), v1.6.27 (2019-03), the fix commit, v2.2.4 (2019-06), v2.6.3 (2021-12), then the
+# commit a build links (2025-02). On a side branch from v2.1.0, a later fix (2026-01) tagged v2.6.5,
+# and v0.305.2, a renumbered line's release, tagged the same year.
+G="$T/gosrc"
+gc(){ GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1" git -C "$G" -c user.name=t -c user.email=t@t \
+    -c commit.gpgsign=false commit -q --allow-empty -m "$2"; }
+gt(){ git -C "$G" -c tag.gpgsign=false tag "$@"; }
+git init -q -b main "$G"
+gc 2018-01-01T00:00:00 base; gt v2.1.0
+gc 2019-03-01T00:00:00 one; gt v1.6.27; OLD=$(git -C "$G" rev-parse HEAD)
+gc 2019-05-01T00:00:00 fix; FIX=$(git -C "$G" rev-parse HEAD)
+gc 2019-06-01T00:00:00 two; gt v2.2.4
+gc 2021-12-01T00:00:00 three; gt v2.6.3
+gc 2025-02-27T17:41:06 linked; LINKED=$(git -C "$G" rev-parse HEAD)
+git -C "$G" checkout -q -b side v2.1.0
+gc 2026-01-29T09:22:49 sidefix; SIDE=$(git -C "$G" rev-parse HEAD); gt v2.6.5; gt v0.305.2
+mkdir -p "$T/gomods/acme" && git clone -q --bare "$G" "$T/gomods/acme/widget"
+pseudo(){ echo "v0.0.0-$(git -C "$G" log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S "$1")-${1:0:12}"; }
+PL=$(pseudo $LINKED) PO=$(pseudo $OLD)
+
+# grype's database, as `grype db search --vuln <id> -o json` gives it: GitHub's go-module record, and
+# a decoy from another provider
+mkdir -p "$T/gadv"
+gadv(){ cat > "$T/gadv/$1.json" <<EOF
+[{"vulnerability": {"id": "$1", "provider": "chainguard"}, "packages": [{"package": {"name": "widget", "ecosystem": "apk"}, "detail": {"ranges": [{"version": {"constraint": "< 0"}, "fix": {"version": "0"}}]}}]},
+ {"vulnerability": {"id": "$1", "provider": "github", "refs": [$3]}, "packages": [{"package": {"name": "github.com/acme/widget", "ecosystem": "go-module"}, "detail": {"ranges": [$2]}}]}]
+EOF
+}
+rg(){ echo "{\"version\": {\"constraint\": \"$1\"}, \"fix\": {\"version\": ${2:-null}}}"; }
+gadv GHSA-f001 "$(rg '>=2.0.0,<2.2.4' '"2.2.4"')" "{\"url\": \"https://github.com/acme/widget/commit/$FIX\"}"
+gadv GHSA-f002 "$(rg "<0.0.0-20190501000000-${FIX:0:12}" "\"0.0.0-20190501000000-${FIX:0:12}\"")" ""
+gadv GHSA-r001 "$(rg '<1.6.27' '"1.6.27"'), $(rg '>=2.0.0,<2.2.4' '"2.2.4"')" ""
+gadv GHSA-k001 "$(rg "<0.0.0-20260129092249-${SIDE:0:12}" "\"0.0.0-20260129092249-${SIDE:0:12}\""), $(rg '>=2.0.0,<2.2.4' '"2.2.4"')" ""
+gadv GHSA-k002 "$(rg '>=2.6.0,<2.6.5' '"2.6.5"')" ""
+gadv GHSA-k003 "$(rg '<2.3.11' '"2.3.11"')" ""
+gadv GHSA-k004 "$(rg '<=2.1.4')" ""
+gadv GHSA-k005 "$(rg '<0.305.2' '"0.305.2"')" ""
+mkdir -p "$T/bin"
+cat > "$T/bin/grype" <<EOF
+#!/bin/bash
+[ "\$1 \$2 \$3 \$5 \$6" = "db search --vuln -o json" ] || exit 2
+cat "$T/gadv/\$4.json" 2>/dev/null || echo '[]'
+EOF
+chmod +x "$T/bin/grype"
+gm(){ echo '{"vulnerability": {"id": "'$1'", "namespace": "github:language:go", "severity": "High", "fix": {"versions": ["9.9"], "state": "fixed"}}, "artifact": {"name": "'$2'", "version": "'$3'", "type": "go-module"}}'; }
+goreport(){ cat > "$T/vuln.json" <<EOF
+{"descriptor": {"name": "grype"}, "matches": [
+ $(gm GHSA-f001 github.com/acme/widget $PL), $(gm GHSA-f002 github.com/acme/widget $PL), $(gm GHSA-r001 github.com/acme/widget $PL),
+ $(gm GHSA-k001 github.com/acme/widget $PL), $(gm GHSA-k002 github.com/acme/widget $PL), $(gm GHSA-k003 github.com/acme/widget $PL),
+ $(gm GHSA-k004 github.com/acme/widget $PL), $(gm GHSA-k005 github.com/acme/widget $PO), $(gm GHSA-k006 github.com/acme/widget $PL),
+ $(gm GHSA-r001 github.com/acme/widget v0.0.0-20250101000000-0123456789ab), $(gm GHSA-r001 github.com/acme/widget v2.6.3+incompatible),
+ $(gm GHSA-r001 golang.org/x/widget $PL)]}
+EOF
+}
+gkept="' '.join(m['vulnerability']['id'] + '@' + m['artifact']['version'][-12:] for m in r['matches'])"
+gwhy(){ q "next(m['appliedIgnoreRules'][0]['reason'] for m in r['ignoredMatches'] if m['vulnerability']['id'] == '$1')"; }
+
+goreport; KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/gomods" GRYPE="$T/bin/grype" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules"
+chk "Go pass exits 0" "$RC" "0"
+chk "  kept" "$(q "$gkept")" "GHSA-k001@${LINKED:0:12} GHSA-k002@${LINKED:0:12} GHSA-k003@${LINKED:0:12} GHSA-k004@${LINKED:0:12} GHSA-k005@${OLD:0:12} GHSA-k006@${LINKED:0:12} GHSA-r001@0123456789ab GHSA-r001@incompatible GHSA-r001@${LINKED:0:12}"
+chk "  a fix commit the advisory names is an ancestor" "$(gwhy GHSA-f001)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which contains the fix commit ${FIX:0:12}"
+chk "  so is a fixed pseudo-version's commit" "$(gwhy GHSA-f002)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which contains the fix commit ${FIX:0:12}"
+chk "  descends from a release after every fix" "$(gwhy GHSA-r001)" "go pseudo-version: github.com/acme/widget $PL is commit ${LINKED:0:12}, which descends from v2.6.3, released after every fixed release (1.6.27, 2.2.4) and outside every affected range"
+chk "  descriptor" "$(q "r['descriptor']['goPseudoRecheck']['repositories'], r['descriptor']['goPseudoRecheck']['judged'], r['descriptor']['goPseudoRecheck']['ignored'], r['descriptor']['goPseudoRecheck']['kept']")" "['acme/widget'] 10 {'fix commit': 2, 'release': 1} 7"
+chk "  summary" "$OUT" "Go pseudo-version matches: 10 judged; 2 ignored by a fix commit, 1 by a release; 7 kept"
+chk "  the clone holds no trees" "$(git -C "$T/gomodules/acme/widget.git" rev-parse --is-bare-repository)" "true"
+
+# The next scan fetches what changed: a new release
+git -C "$G" checkout -q main && gc 2026-03-01T00:00:00 four && gt v2.7.0 && git -C "$T/gomods/acme/widget" fetch -q "$G" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+goreport; KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/gomods" GRYPE="$T/bin/grype" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules"
+chk "  second run fetches the new tag" "$(git -C "$T/gomodules/acme/widget.git" tag --list v2.7.0)" "v2.7.0"
+
+goreport; cp "$T/vuln.json" "$T/before.json"
+KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/nowhere" GRYPE="$T/bin/grype" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules2"
+chk "a repository unreachable fails" "$RC" "1"
+chk "  and says so" "$(grep -c "cannot fetch acme/widget from file://$T/nowhere" <<<"$OUT")" "1"
+chk "  report untouched" "$(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "same"
+KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/gomods" GRYPE=false run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules"
+chk "grype's database unreadable fails" "$RC $(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "1 same"
+echo '{"matches": []}' > "$T/vuln.json"
+KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules3"
+chk "no pseudo-version: no fetch" "$RC $([ -e "$T/gomodules3" ] && echo yes || echo no)" "0 no"
+sk(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.semkey('$1') < m.semkey('$2'))"; }
+chk "semkey pseudo-version before its release" "$(sk 0.0.0-20250227174106-7829dbe62d7f 0.0.1) $(sk 1.5.1-0.20260427112133-525d1bab07e0 1.5.1)" "True True"
+chk "semkey rc before release, numeric" "$(sk 1.0.0-rc.0 1.0.0) $(sk 2.9.9 2.10.0)" "True True"
 
 pv(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.pyver('$1') < m.pyver('$2'))"; }
 chk "pyver rc before its release" "$(pv 29.0.0.0rc1 29.0.0)" "True"

@@ -66,10 +66,11 @@ sbom: $(PROJ_SBOM)
 # the package-level SBOM to each image (it says why that one, not the full SBOM). Before the
 # report ships, its kernel matches are re-judged by the kernel CNA's records and re-rated, its
 # matches on python packages from RHEL's rpms by Red Hat's records and the rpms' changelogs, and
-# its matches on OpenStack's own python packages by the OpenStack Security Advisories
+# its matches on OpenStack's own python packages by the OpenStack Security Advisories, and
+# its matches on Go modules linked at a pseudo-version by the module's own history
 # (recheckvulns.py says why); kernel-vulns and ossa-advisories are its checkouts of the CNA's
-# records and of the advisories, the SBOM names the rpms, and the scanned rootfs holds their
-# changelogs. Before the scan, a Go binary whose own
+# records and of the advisories, go-module-repos its commits-only clones of those modules'
+# repositories, the SBOM names the rpms, and the scanned rootfs holds their changelogs. Before the scan, a Go binary whose own
 # version syft could only guess, or not at all, takes the version of the rpm that ships it
 # (fixgoversions.py says when), so the SBOM that is scanned and ships names the real one.
 $(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages $(HEX_SCRIPTSDIR)/recheckvulns.py $(HEX_SCRIPTSDIR)/fixgoversions.py $(PROJ_VEX)
@@ -78,7 +79,7 @@ $(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages $(HEX_
 	$(call RUN_CMD_TIMED, grype sbom:$< $(foreach v,$(PROJ_VEX),--vex $(v)) --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
 	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
 	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/makesbompackages $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom_packages.json,"  GEN     sbom_packages.json")
-	$(call RUN_CMD_TIMED, python3 $(HEX_SCRIPTSDIR)/recheckvulns.py $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json kernel-vulns --sbom $< --root $(PROJ_BASE_ROOTFS) --ossa ossa-advisories,"  RECHECK vuln")
+	$(call RUN_CMD_TIMED, python3 $(HEX_SCRIPTSDIR)/recheckvulns.py $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json kernel-vulns --sbom $< --root $(PROJ_BASE_ROOTFS) --ossa ossa-advisories --gomodules go-module-repos,"  RECHECK vuln")
 	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
 
 syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
@@ -87,5 +88,5 @@ syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
 
 PKGCLEAN += $(PROJ_SBOM) syft-fs-cubecos.cdx.json
 # Downloads: kept by `make clean`, so the next build reuses them once their digest checks out, and
-# fetches only what changed in kernel-vulns and ossa-advisories
-DISTCLEAN += $(notdir $(SYFT_RPM) $(GRYPE_RPM)) kernel-vulns ossa-advisories
+# fetches only what changed in kernel-vulns, ossa-advisories and go-module-repos
+DISTCLEAN += $(notdir $(SYFT_RPM) $(GRYPE_RPM)) kernel-vulns ossa-advisories go-module-repos
