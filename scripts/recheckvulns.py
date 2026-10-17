@@ -5,7 +5,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Re-judge grype's kernel matches by the kernel CNA, and RHEL python rpm matches by Red Hat.
+"""Re-judge grype's kernel matches by the kernel CNA, RHEL rpm matches by Red Hat, OpenStack's by its OSSAs.
 
 grype judges a kernel by data that does not describe it. The vmlinuz is matched by NVD's CPE
 ranges, which often stop at the mainline fix and leave out the stable backports (CVE-2026-43197:
@@ -46,6 +46,23 @@ The rpm is the SBOM's rpm of that name and version (python3-<name> for a Python 
 by CentOS or Red Hat with a Stream or RHEL dist tag, so a SIG (el9s) or EPEL build, which carries
 none of RHEL's backports, keeps grype's verdict; kernel rpms are left to the kernel pass. A match
 that stays is rated by Red Hat where Red Hat rates it.
+
+OpenStack's own packages, in the service venvs, grype matches by GitHub's advisories, and those can
+name only the newest series' fix where an OpenStack Security Advisory fixed every maintained
+series: OSSA-2026-007 fixed keystone in 25.0.1, 26.1.1, 27.0.1 and 28.0.1, its GitHub advisory says
+"< 28.0.1", and a 27.1.0 that carries the fix is reported. Given a checkout of the advisories
+(--ossa, ossa.git), a python match whose CVE an advisory names for that package is judged by the
+advisory's own affected versions: outside every range it moves to "ignoredMatches", inside one it
+stays with that range's fix. A match is cleared only when every advisory naming its CVE for the
+package gives ranges: one whose versions are prose (the oldest: "All versions", "Folsom,
+Grizzly") does not clear it. Those oldest flaws have a second tell. OpenStack versioned its
+releases YYYY.N until Liberty (2015.2) and semantically since, so every semantic version came
+after every YYYY.N one; but GitHub's advisories state those fixes as YYYY.N releases, which a
+semantic version compares below: nova 31.3.1 is reported for a flaw fixed in 2014.1.4. The pass
+compares in that order, an advisory's ranges included, and a match on a project the advisories
+name, whose every fix grype names is a YYYY.N release and whose version is semantic, moves to
+"ignoredMatches" too. The checkout is kept like the CNA's, and the report's
+descriptor records its commit; OSSA_GIT in the environment points at a mirror.
 """
 
 import argparse
@@ -66,6 +83,7 @@ KERNEL_VULNS_GIT = os.environ.get(
 REDHAT_SECDATA = os.environ.get(
     'REDHAT_SECDATA', 'https://access.redhat.com/hydra/rest/securitydata'
 )
+OSSA_GIT = os.environ.get('OSSA_GIT', 'https://opendev.org/openstack/ossa.git')
 RH_SEVERITY = {'Critical': 'Critical', 'Important': 'High', 'Moderate': 'Medium', 'Low': 'Low'}
 RHEL = 'Red Hat Enterprise Linux 9'
 DISTRO_PUBLISHERS = {'CentOS', 'Red Hat, Inc.'}
@@ -121,24 +139,19 @@ def judge(cna, ver):
     return 'affected', None
 
 
-def fetch_records(vulns):
-    """Clone or update the checkout of the CNA's records; return its commit and date."""
+def fetch_git(url, path, files):
+    """Clone or update a checkout of url's master, keeping only files; return its commit and date."""
     # git.kernel.org serves no partial clones, so a first clone takes the whole tree (~1 minute);
-    # the checkout keeps only the JSON records, and later scans fetch just what changed.
-    git = ['git', '-C', vulns]
-    if os.path.isdir(os.path.join(vulns, '.git')):
-        subprocess.run(
-            git + ['fetch', '-q', '--depth', '1', KERNEL_VULNS_GIT, 'master'], check=True
-        )
+    # the checkout keeps only the records, and later scans fetch just what changed.
+    git = ['git', '-C', path]
+    if os.path.isdir(os.path.join(path, '.git')):
+        subprocess.run(git + ['fetch', '-q', '--depth', '1', url, 'master'], check=True)
         subprocess.run(git + ['reset', '-q', '--hard', 'FETCH_HEAD'], check=True)
     else:
         subprocess.run(
-            ['git', 'clone', '-q', '--depth', '1', '--no-checkout', KERNEL_VULNS_GIT, vulns],
-            check=True,
+            ['git', 'clone', '-q', '--depth', '1', '--no-checkout', url, path], check=True
         )
-        subprocess.run(
-            git + ['sparse-checkout', 'set', '--no-cone', '/cve/published/*/*.json'], check=True
-        )
+        subprocess.run(git + ['sparse-checkout', 'set', '--no-cone', files], check=True)
         subprocess.run(git + ['checkout', '-q'], check=True)
     out = subprocess.run(
         git + ['log', '-1', '--format=%H %cI'],
@@ -294,7 +307,7 @@ def recheck_kernel(rep, vulns):
         )
 
     try:
-        commit, date = fetch_records(vulns)
+        commit, date = fetch_git(KERNEL_VULNS_GIT, vulns, '/cve/published/*/*.json')
     except subprocess.CalledProcessError:
         sys.exit(f'recheckvulns: cannot fetch the kernel CNA records from {KERNEL_VULNS_GIT}')
 
@@ -490,6 +503,203 @@ def recheck_distro(rep, sbom, root):
     )
 
 
+def pyname(name):
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def pyver(v):
+    """PEP 440 order, enough for OpenStack's versions: 1.0.dev1 < 1.0rc1 < 1.0 < 1.0.post1."""
+    m = re.match(
+        r'v?(\d+(?:\.\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\d*))?'
+        r'(?:[-_.]?(post|rev|r)[-_.]?(\d*))?(?:[-_.]?dev[-_.]?(\d*))?',
+        v.lower(),
+    )
+    if not m:
+        return None
+    rel, pre, pren, post, postn, dev = m.groups()
+    nums = [int(x) for x in rel.split('.')]
+    nums += [0] * (10 - len(nums))
+    rank = {'a': 0, 'alpha': 0, 'b': 1, 'beta': 1}.get(pre, 2)
+    if pre:
+        pk = (0, rank, int(pren or 0))
+    elif dev is not None and post is None:
+        pk = (-1, 0, 0)
+    else:
+        pk = (1, 0, 0)
+    return (
+        tuple(nums),
+        pk,
+        int(postn or 0) if post else -1,
+        int(dev or 0) if dev is not None else float('inf'),
+    )
+
+
+def osver(v):
+    """An OpenStack project's version order: its YYYY.N releases (until Liberty, 2015.2) all came
+    before its semantic versions (12.0.0 onward), so 31.3.1 sorts after 2014.2.3, not below it."""
+    p = pyver(v)
+    return None if p is None else (0 if p[0][0] >= 2000 else 1, p)
+
+
+OSSA_COND = r'(<=|>=|==|!=|<|>)\s*(\d[\w.]*)'
+
+
+def ossa_ranges(spec):
+    """An advisory's affected versions as ranges, each a list of (operator, version); None for
+    prose ("All versions", "Folsom, Grizzly") or anything else that is not purely ranges."""
+    segs = []
+    for seg in spec.split(','):
+        conds = re.findall(OSSA_COND, seg)
+        if not conds or re.sub(OSSA_COND, '', seg).strip():
+            return None
+        segs.append(conds)
+    # A few advisories split one range at its comma: "<=2014.2.3, >=2015.1.0, <=2015.1.1" and
+    # ">=25.0.0, <26.1.0" mean 2015.1.0 to 2015.1.1 and 25.0.0 to 26.1.0, not everything from
+    # 2015.1.0 or 25.0.0 up. A lower bound alone, followed by an upper bound alone, is one range.
+    ranges = []
+    for conds in segs:
+        prev = ranges[-1] if ranges else None
+        if (
+            prev
+            and all(op in ('>', '>=') for op, _ in prev)
+            and all(op in ('<', '<=') for op, _ in conds)
+        ):
+            prev.extend(conds)
+        else:
+            ranges.append(list(conds))
+    return ranges
+
+
+def in_range(ver, conds):
+    ops = {
+        '<': lambda a, b: a < b,
+        '<=': lambda a, b: a <= b,
+        '>': lambda a, b: a > b,
+        '>=': lambda a, b: a >= b,
+        '==': lambda a, b: a == b,
+        '!=': lambda a, b: a != b,
+    }
+    return all(ops[op](ver, osver(x)) for op, x in conds)
+
+
+def section(text, name):
+    """A top-level key's block of an advisory's YAML, as text."""
+    m = re.search(rf'^{name}:[^\n]*\n((?:[ \t-].*\n?|\n)*)', text, re.M)
+    return m.group(1) if m else ''
+
+
+def ossa_index(path):
+    """{CVE: [(advisory, product, affected versions)]} from a checkout of ossa.git. The YAML is
+    read for its two blocks only, so no YAML library is needed: affected-products, whose items
+    name a product and its versions, and vulnerabilities, whose items name the CVEs."""
+    index = {}
+    folder = os.path.join(path, 'ossa')
+    for f in sorted(os.listdir(folder)):
+        if not re.match(r'OSSA-\d+-\d+\.yaml$', f):
+            continue
+        with open(os.path.join(folder, f)) as fh:
+            text = fh.read()
+        cves = sorted(set(re.findall(r'CVE-\d{4}-\d+', section(text, 'vulnerabilities'))))
+        items, item = [], {}
+        for line in section(text, 'affected-products').splitlines():
+            m = re.match(r'\s*(-\s+)?(product|version):\s*(.*?)\s*$', line)
+            if not m:
+                continue
+            if m.group(1) and item:
+                items.append(item)
+                item = {}
+            item[m.group(2)] = m.group(3).strip('\'"')
+        if item:
+            items.append(item)
+        for it in items:
+            if 'product' in it and 'version' in it:
+                for cve in cves:
+                    index.setdefault(cve, []).append(
+                        (f[:-5], pyname(it['product']), it['version'])
+                    )
+    return index
+
+
+DATE_VERSION = re.compile(r'20\d\d\.\d+')
+
+
+def date_based(fixes):
+    """True if every version is one of OpenStack's old YYYY.N releases (2014.1.4, 2015.1.0)."""
+    return bool(fixes) and all(DATE_VERSION.match(x) for x in fixes)
+
+
+def recheck_ossa(rep, path):
+    """Re-judge matches on OpenStack's python packages by the OSSAs in place; a summary, or None
+    if the report has no python match to judge."""
+    if not any(m['artifact']['type'] == 'python' for m in rep['matches']):
+        return None
+    try:
+        commit, date = fetch_git(OSSA_GIT, path, '/ossa/*.yaml')
+    except subprocess.CalledProcessError:
+        sys.exit(f'recheckvulns: cannot fetch the OpenStack security advisories from {OSSA_GIT}')
+    index = ossa_index(path)
+    projects = {p for said in index.values() for _, p, _ in said}
+
+    ignored = {'advisory': [], 'date-based fix': []}
+    named, kept = 0, 0
+    for m in rep['matches']:
+        vul, art = m['vulnerability'], m['artifact']
+        name, ver = pyname(art['name']), osver(art['version'])
+        if art['type'] != 'python' or name not in projects or ver is None:
+            continue
+        ids = [vul['id']] + [x.get('id', '') for x in m.get('relatedVulnerabilities') or []]
+        cve = next((i for i in ids if i in index), None)
+        said = [x for x in index.get(cve, []) if x[1] == name]
+        ranges = [(oid, spec, ossa_ranges(spec)) for oid, _, spec in said]
+        hit = [(oid, conds) for oid, _, rs in ranges if rs for conds in rs if in_range(ver, conds)]
+        if said:
+            named += 1
+        if hit:
+            fix = next((x for op, x in hit[0][1] if op in ('<', '<=')), None)
+            vul['fix'] = (
+                {'versions': [fix], 'state': 'fixed'}
+                if fix
+                else {'versions': [], 'state': 'not-fixed'}
+            )
+            kept += 1
+            continue
+        if said and all(rs for _, _, rs in ranges):
+            oid, spec, _ = ranges[0]
+            why, by = f'OSSA: {oid} affects {art["name"]} {spec}, not {art["version"]}', 'advisory'
+        else:
+            # An advisory from before Liberty can give its versions as prose, and GitHub's states
+            # the fix as one of the project's old YYYY.N releases, which a semantic version
+            # compares below (31.3.1 < 2014.1.4). The project's semantic versions all came after.
+            fixes = (vul.get('fix') or {}).get('versions') or []
+            if not (date_based(fixes) and ver[0] == 1):
+                kept += bool(said)
+                continue
+            why = (
+                f'OSSA: {art["name"]} is an OpenStack project, and its fix {", ".join(fixes)} '
+                f'is a YYYY.N release, all of which came before its semantic versions such as '
+                f'{art["version"]}'
+            )
+            by = 'date-based fix'
+        ignore(m, f'{why} (ossa.git {commit[:12]})')
+        ignored[by].append(m)
+
+    drop = {id(m) for ms in ignored.values() for m in ms}
+    rep['matches'] = [m for m in rep['matches'] if id(m) not in drop]
+    rep['ignoredMatches'] = (
+        (rep.get('ignoredMatches') or []) + ignored['advisory'] + ignored['date-based fix']
+    )
+    rep.setdefault('descriptor', {})['ossaRecheck'] = {
+        'advisories': {'repository': OSSA_GIT, 'commit': commit, 'date': date},
+        'named': named,
+        'ignored': {by: len(ms) for by, ms in ignored.items()},
+        'kept': kept,
+    }
+    return (
+        f'OpenStack python matches: {named} named by an OSSA; {len(ignored["advisory"])} ignored '
+        f'by the advisory, {len(ignored["date-based fix"])} by a date-based fix; {kept} kept'
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('report', help="grype's JSON report, rewritten in place")
@@ -500,6 +710,11 @@ def main():
     )
     ap.add_argument('--sbom', help='the CycloneDX SBOM the report was scanned from')
     ap.add_argument('--root', help="the rootfs the SBOM was made from, for its rpms' changelogs")
+    ap.add_argument(
+        '--ossa',
+        help='checkout of the OpenStack security advisories (ossa.git): cloned when missing, '
+        "brought up to date otherwise; with it, OpenStack's python packages are re-judged",
+    )
     args = ap.parse_args()
 
     with open(args.report) as f:
@@ -508,9 +723,11 @@ def main():
     done = [recheck_kernel(rep, args.vulns)]
     if args.sbom:
         done.append(recheck_distro(rep, args.sbom, args.root))
+    if args.ossa:
+        done.append(recheck_ossa(rep, args.ossa))
     done = [x for x in done if x]
     if not done:
-        print('no kernel image in the report: nothing to re-check')
+        print('no kernel image or python package in the report: nothing to re-check')
         return
 
     with open(args.report + '.tmp', 'w') as f:
