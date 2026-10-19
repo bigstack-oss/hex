@@ -70,5 +70,13 @@ mk sbom PROJ_VEX=missing.openvex.json; chk "missing document: fails" "$RC" "2"
 chk "missing document: grype not run" "$(args)" ""
 chk "missing document: named" "$(grep -c 'missing.openvex.json' <<<"$OUT")" "1"
 
+# sbom-images is opt-in: it needs a registry, and hands it, the VEX documents and the rootfs pair
+# to scanimages.py (tested on its own in test_scanimages.sh).
+mk sbom-images; chk "sbom-images without a registry: fails" "$RC" "2"
+chk "sbom-images without a registry: says so" "$(grep -c 'PROJ_SBOM_REGISTRY names no registry' <<<"$OUT")" "1"
+mk -n sbom-images PROJ_SBOM_REGISTRY=/opt/docker/registry PROJ_VEX=a.openvex.json
+chk "sbom-images: registry and VEX reach the script" "$(grep -c 'scanimages.py --root rootfs.stamp --registry /opt/docker/registry --vex a.openvex.json' <<<"$OUT")" "1"
+chk "sbom-images: rootfs pair in, images pair out" "$(grep -o -- '--sbom [^ ]*_sbom.json --vuln [^ ]*_vuln.json --out-sbom [^ ]*_sbom_images.json --out-vuln [^ ]*_vuln_images.json' <<<"$OUT" | wc -l)" "1"
+
 echo "test_projsbom: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

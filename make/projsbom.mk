@@ -54,8 +54,19 @@ GRYPE_RPM := $(GITHUB_DL_BASE)/anchore/grype/releases/download/v$(GRYPE_VER)/gry
 # scanning without it.
 PROJ_VEX ?=
 
+# Registries the rootfs ships container images in, as storage roots relative to the rootfs
+# (Docker Distribution's filesystem layout, e.g. /opt/docker/registry). The `sbom` target scans
+# the rootfs only and does not see inside them. `sbom-images` is a separate, opt-in target: it
+# scans each image on its own (scripts/scanimages.py) and writes a second SBOM and report,
+# <release>_sbom_images.json and <release>_vuln_images.json, that add the images to copies of the
+# rootfs ones. The rootfs SBOM and report stay as they are, so whatever consumes them -- the
+# DefectDojo import, the issue filing -- does not see the images unless it is pointed at the new
+# pair.
+PROJ_SBOM_REGISTRY ?=
+
 help::
 	$(Q)echo "sbom         Create SBOM (syft) and vulnerability report (grype)"
+	$(Q)echo "sbom-images  Add the images in PROJ_SBOM_REGISTRY to a second SBOM and report"
 
 .PHONY: sbom
 sbom: $(PROJ_SBOM)
@@ -87,6 +98,18 @@ syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
 	$(call RUN_CMD_TIMED, cd $< && syft --config $(SRCDIR)/syft.yml --source-version $(PROJ_NAME)_$(PROJ_VERSION) ./,"  GEN     $@")
 
 PKGCLEAN += $(PROJ_SBOM) syft-fs-cubecos.cdx.json
+
+# Runs after `sbom`, whose SBOM and checked report it starts from, and always rescans: the images
+# are judged by grype's database as of now. Its scratch dir holds one image's blobs at a time.
+.PHONY: sbom-images
+sbom-images: $(PROJ_SBOM) $(HEX_SCRIPTSDIR)/scanimages.py
+	$(Q)[ -n "$(strip $(PROJ_SBOM_REGISTRY))" ] || { echo "sbom-images: PROJ_SBOM_REGISTRY names no registry" ; exit 1 ; }
+	$(call RUN_CMD_TIMED, R=$$(readlink $(PROJ_RELEASE)) && rm -f $(PROJ_SHIPDIR)/$${R}_sbom_images.json $(PROJ_SHIPDIR)/$${R}_vuln_images.json && \
+		python3 $(HEX_SCRIPTSDIR)/scanimages.py --root $(PROJ_BASE_ROOTFS) $(foreach r,$(PROJ_SBOM_REGISTRY),--registry $(r)) $(foreach v,$(PROJ_VEX),--vex $(v)) \
+		--sbom $(PROJ_SHIPDIR)/$${R}_sbom.json --vuln $(PROJ_SHIPDIR)/$${R}_vuln.json \
+		--out-sbom $(PROJ_SHIPDIR)/$${R}_sbom_images.json --out-vuln $(PROJ_SHIPDIR)/$${R}_vuln_images.json --work sbom-images.work,"  SCAN    images")
+
+PKGCLEAN += sbom-images.work
 # Downloads: kept by `make clean`, so the next build reuses them once their digest checks out, and
 # fetches only what changed in kernel-vulns, ossa-advisories and go-module-repos
 DISTCLEAN += $(notdir $(SYFT_RPM) $(GRYPE_RPM)) kernel-vulns ossa-advisories go-module-repos
