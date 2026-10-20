@@ -164,6 +164,33 @@ DownloadPkg()
         fi
     done
 
+    # A copy older than the build the rootfs already has is removed too. The pass above weighs
+    # only the copies in this directory, so a newer build fetched with -d stays after the
+    # repositories pass it whenever an earlier install brought theirs in, and localinstall is
+    # then a downgrade that dnf refuses as a conflicting request. A locked copy stays. One rpm
+    # query lists the rootfs and one the directory, and only a copy whose package.arch is
+    # installed at another version is compared.
+    { rpm --root $ROOTDIR -qa --qf 'I %{N}.%{ARCH} %{EPOCHNUM}:%{V}-%{R}\n' ; \
+      rpm -qp --qf 'F %{N}.%{ARCH} %{EPOCHNUM}:%{V}-%{R} %{N}-%{V}-%{R}.%{ARCH}.rpm\n' *.rpm 2>/dev/null ; } |
+    awk '$1 == "I" { inst[$2] = inst[$2] " " $3 ; next }
+         ($2 in inst) && index(inst[$2] " ", " " $3 " ") == 0 { print $4, $3, inst[$2] }' |
+    while read pkg pkgevr installed ; do
+        [ -e $pkg ] || continue
+        if grep -q ${pkg%.*.rpm} $ROOTDIR/locked_rpms.txt 2>/dev/null ; then
+            continue
+        fi
+        for evr in $installed ; do
+            retcmp=0
+            rpmdev-vercmp $evr $pkgevr >/dev/null 2>&1 || retcmp=$?
+            if [ $retcmp -eq 11 ] ; then
+                echo "$PROG: $pkg is older than the installed $evr, removed"
+                echo $pkg >> $ROOTDIR/removed_rpms.txt
+                rm -f $pkg
+                break
+            fi
+        done
+    done
+
     cd $PWD
 }
 
