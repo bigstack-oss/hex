@@ -12,6 +12,8 @@ INSTALL_ARC     := $(SHELL) $(HEX_SCRIPTSDIR)/installarc
 INSTALL_MODULES := $(SHELL) $(HEX_SCRIPTSDIR)/installmodules
 INSTALL_FIRMWARE := $(SHELL) $(HEX_SCRIPTSDIR)/installfirmware
 INSTALL_PIP     := $(SHELL) $(HEX_SCRIPTSDIR)/installpip
+CHECK_RPMS      := $(SHELL) $(HEX_SCRIPTSDIR)/checkrpms
+IMPORT_RPM_KEYS := $(SHELL) $(HEX_SCRIPTSDIR)/importrpmkeys
 
 ifeq ($(WEAK_DEP),0)
 INSTALL_DNF     := $(SHELL) $(HEX_SCRIPTSDIR)/installdnf
@@ -21,3 +23,8 @@ endif
 
 LOCKED_RPMS     := $(ROOTDIR)/locked_rpms.txt
 BLKLST_RPMS     := $(ROOTDIR)/blklst_rpms.txt
+# Lines of '<key file> <fingerprint> ...', imported by installdnf into the rootfs keyring once
+# each fingerprint matches, and of '<sha256> <rpm file name>' for an rpm that carries no
+# signature the keyring trusts. See scripts/importrpmkeys and scripts/checkrpms.
+RPM_KEYS        := $(ROOTDIR)/rpm_keys.txt
+PINNED_RPMS     := $(ROOTDIR)/pinned_rpms.txt

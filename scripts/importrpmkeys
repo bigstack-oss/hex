@@ -1,0 +1,80 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+
+Usage() {
+    echo "Usage: $PROG [-c] <root-dir> <keys-file>"
+    echo "  Import rpm signing keys into <root-dir>'s rpm keyring, each only once its fingerprint is"
+    echo "  checked. Each line of <keys-file> is '<key file> <fingerprint> ...', each fingerprint 40 hex"
+    echo "  digits: the armored key file, a relative path read from <keys-file>'s directory, must hold"
+    echo "  exactly the primary keys the line lists. Blank lines and"
+    echo "  '#' comments are skipped, and so is a line whose keys the keyring already holds. A file that"
+    echo "  holds any other key, or lacks one, stops the import."
+    echo "-c   Import nothing: fail, naming them, if the keyring holds a key that no line pins"
+    exit 1
+}
+
+AUDIT=0
+while getopts "c" OPT ; do
+    case $OPT in
+        c) AUDIT=1 ;;
+        *) Usage ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[ $# -eq 2 ] || Usage
+ROOT=$1 KEYS=$2
+[ -d "$ROOT" ] && [ -f "$KEYS" ] || Usage
+
+# A throwaway home: gpg only reads the key files here, so no keyring or agent of the build host's
+# is touched.
+GNUPGHOME=$(mktemp -d)
+export GNUPGHOME
+trap 'rm -rf "$GNUPGHOME"' EXIT
+
+norm() { tr 'a-f' 'A-F' ; }
+# The fingerprints of the primary keys in the armored keys read from stdin, sorted, on one line
+fprs() {
+    gpg --batch --with-colons --show-keys 2>/dev/null |
+    awk -F: '$1 == "pub" { want = 1 ; next } $1 == "fpr" && want { print $10 ; want = 0 }' | norm | sort -u | xargs
+}
+
+# installdnf runs this before every install, so a line whose keys the keyring already holds is
+# skipped: what the keyring holds is read once, from the armored keys rpm keeps for them.
+HAVE=" $(rpm --root "$ROOT" -q gpg-pubkey --qf '%{DESCRIPTION}\n' 2>/dev/null | fprs) "
+
+# dnf imports a repository's key on its own when it installs from that repository with -y, so
+# the audit is what holds a keyring to the keys the list pins.
+if [ $AUDIT -eq 1 ] ; then
+    PINNED=" $(awk '$1 !~ /^#/ { for (i = 2; i <= NF; i++) print $i }' "$KEYS" | norm | sort -u | xargs) "
+    EXTRA=
+    for f in $HAVE ; do
+        case "$PINNED" in *" $f "*) ;; *) EXTRA+=" $f" ;; esac
+    done
+    [ -z "$EXTRA" ] || { echo "$PROG: the keyring of $ROOT holds key(s) $KEYS does not pin:$EXTRA" >&2 ; exit 1 ; }
+    exit 0
+fi
+
+while read -r file pins ; do
+    case "$file" in ""|\#*) continue ;; esac
+    [ -n "$pins" ] || { echo "$PROG: $file has no pinned fingerprint" >&2 ; exit 1 ; }
+    pin=$(for f in $pins ; do echo $f ; done | norm | sort -u | xargs)
+    new=
+    for f in $pin ; do
+        case "$HAVE" in *" $f "*) ;; *) new=1 ;; esac
+    done
+    [ -n "$new" ] || continue
+    case "$file" in /*) ;; *) file=$(dirname "$KEYS")/$file ;; esac
+    [ -f "$file" ] || { echo "$PROG: no key file $file" >&2 ; exit 1 ; }
+    got=$(fprs < "$file")
+    if [ "$got" != "$pin" ] ; then
+        echo "$PROG: $file holds key(s) [${got:-none}], pinned [$pin]" >&2
+        exit 1
+    fi
+    rpm --root "$ROOT" --import "$file"
+    HAVE+="$pin "
+done < "$KEYS"

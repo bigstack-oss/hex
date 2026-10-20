@@ -1,0 +1,71 @@
+#!/bin/bash
+# HEX SDK
+
+set -e
+
+PROG=$(basename $0)
+
+Usage() {
+    echo "Usage: $PROG <root-dir> <rpm-dir> [<pins-file>]"
+    echo "  Check every *.rpm in <rpm-dir> before it is installed into <root-dir>. Each one must"
+    echo "  carry a signature that verifies against a key in <root-dir>'s rpm keyring, or have the"
+    echo "  sha256 that <pins-file> pins for its file name (lines of '<sha256> <file name>'). Every"
+    echo "  rpm that does neither is named, and the exit status is 1."
+    exit 1
+}
+
+[ $# -eq 2 ] || [ $# -eq 3 ] || Usage
+ROOT=$1 DIR=$2 PINS=${3:-}
+[ -d "$ROOT" ] && [ -d "$DIR" ] || Usage
+
+shopt -s nullglob
+FILES=("$DIR"/*.rpm)
+[ ${#FILES[@]} -gt 0 ] || exit 0
+
+# rpmkeys prints one '<file>: <result>' line per rpm. An rpm whose signature verifies against the
+# keyring reads 'digests signatures OK'. An unsigned rpm reads only 'digests OK', with exit
+# status 0, so the status alone cannot tell it from a signed one: the result has to say
+# 'signatures OK'. Warnings about keys in the keyring that rpm cannot load go to stderr.
+declare -A RESULT
+while IFS= read -r line ; do
+    RESULT[${line%%: *}]=${line#*: }
+done < <(rpmkeys --root "$ROOT" -K "${FILES[@]}" 2>/dev/null || true)
+
+# The last pin for a name wins, so a list a build appends to keeps the newest one.
+pinned() {
+    [ -n "$PINS" ] && [ -f "$PINS" ] && awk -v n="$1" '$1 !~ /^#/ && $2 == n { p = $1 } END { print p }' "$PINS"
+}
+
+BAD=()
+for f in "${FILES[@]}" ; do
+    name=${f##*/}
+    case "${RESULT[$f]:-}" in
+    *"signatures OK") continue ;;
+    esac
+    want=$(pinned "$name" || true)
+    if [ -n "$want" ] ; then
+        got=$(sha256sum < "$f" | cut -d' ' -f1)
+        [ "$got" != "$want" ] || continue
+        BAD+=("$name: sha256 $got, pinned $want")
+        continue
+    fi
+    # The verbose check names what failed: the first signature or digest that is not OK.
+    v=$(rpmkeys --root "$ROOT" -Kv "$f" 2>&1 || true)
+    why=$(echo "$v" | grep -m1 -E ': (NOKEY|BAD|NOTTRUSTED|NOTFOUND)( |$)' | sed 's/^ *//' || true)
+    case "$why" in
+    *"key ID "*": NOKEY")
+        id=${why##*key ID } ; why="signed with key ${id%: NOKEY}, which is not in the rootfs keyring" ;;
+    "")
+        if echo "$v" | grep -q 'digest: OK' ; then
+            why="not signed"
+        else
+            why=$(echo "$v" | tail -1)
+        fi ;;
+    esac
+    BAD+=("$name: $why, and no sha256 pinned")
+done
+
+[ ${#BAD[@]} -eq 0 ] && exit 0
+echo "$PROG: ${#BAD[@]} rpm(s) in $DIR have no signature the rootfs trusts and no matching sha256 pin:" >&2
+printf '    %s\n' "${BAD[@]}" >&2
+exit 1
