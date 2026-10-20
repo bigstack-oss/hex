@@ -210,6 +210,13 @@ SetAutostart
 RootfsBind $RPMDIR $(basename $RPMDIR)
 DownloadPkg $*
 
+# Every rpm about to be installed must carry a signature that verifies against the rootfs's rpm
+# keyring, or the sha256 the project pins for its file name in pinned_rpms.txt; any other fails
+# the install, named. The keys rpm_keys.txt lists are imported first, each only once its
+# fingerprint matches the one pinned beside it. dnf checks no signature on local rpms.
+[ ! -f $ROOTDIR/rpm_keys.txt ] || /bin/bash $HEX_SCRIPTSDIR/importrpmkeys $ROOTDIR $ROOTDIR/rpm_keys.txt
+/bin/bash $HEX_SCRIPTSDIR/checkrpms $ROOTDIR $RPMDIR $ROOTDIR/pinned_rpms.txt
+
 chroot $ROOTDIR /usr/bin/env PATH=/root/null:$PATH sh -c "cd $(basename $RPMDIR) && $DNF $OPTIONS $CMD *.rpm"
 
 exit 0

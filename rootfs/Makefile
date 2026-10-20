@@ -57,6 +57,9 @@ RPMS-mini:
 .PHONY: mini_rootfs_install
 mini_rootfs_install:: RPMS-mini
 	$(Q)cd $< && dnf download -y $(addsuffix .x86_64,$(MINI_PKGS))
+	@# installrpm unpacks rpms with rpm2cpio, so the mini ramdisk has no rpm keyring: what the
+	@# jail's repositories served is checked against the jail's own
+	$(Q)$(CHECK_RPMS) / $(BLDDIR)/$<
 	$(Q)$(INSTALL_RPM) $(ROOTDIR) $$(ls -d $(BLDDIR)/$</*.rpm)
 	$(Q)ldconfig -r $(ROOTDIR)
 	@# install busybox
