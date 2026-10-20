@@ -61,7 +61,9 @@ PROJ_VEX ?=
 # <release>_sbom_images.json and <release>_vuln_images.json, that add the images to copies of the
 # rootfs ones. The rootfs SBOM and report stay as they are, so whatever consumes them -- the
 # DefectDojo import, the issue filing -- does not see the images unless it is pointed at the new
-# pair.
+# pair. The images are scanned without PROJ_VEX: its statements name each package by a purl with no
+# version and were judged on the rootfs's own copies, while grype applies them to any image package
+# with that purl -- a verdict on the rootfs's setuptools would hide another setuptools in an image.
 PROJ_SBOM_REGISTRY ?=
 
 help::
@@ -105,7 +107,7 @@ PKGCLEAN += $(PROJ_SBOM) syft-fs-cubecos.cdx.json
 sbom-images: $(PROJ_SBOM) $(HEX_SCRIPTSDIR)/scanimages.py
 	$(Q)[ -n "$(strip $(PROJ_SBOM_REGISTRY))" ] || { echo "sbom-images: PROJ_SBOM_REGISTRY names no registry" ; exit 1 ; }
 	$(call RUN_CMD_TIMED, R=$$(readlink $(PROJ_RELEASE)) && rm -f $(PROJ_SHIPDIR)/$${R}_sbom_images.json $(PROJ_SHIPDIR)/$${R}_vuln_images.json && \
-		python3 $(HEX_SCRIPTSDIR)/scanimages.py --root $(PROJ_BASE_ROOTFS) $(foreach r,$(PROJ_SBOM_REGISTRY),--registry $(r)) $(foreach v,$(PROJ_VEX),--vex $(v)) \
+		python3 $(HEX_SCRIPTSDIR)/scanimages.py --root $(PROJ_BASE_ROOTFS) $(foreach r,$(PROJ_SBOM_REGISTRY),--registry $(r)) \
 		--sbom $(PROJ_SHIPDIR)/$${R}_sbom.json --vuln $(PROJ_SHIPDIR)/$${R}_vuln.json \
 		--out-sbom $(PROJ_SHIPDIR)/$${R}_sbom_images.json --out-vuln $(PROJ_SHIPDIR)/$${R}_vuln_images.json --work sbom-images.work,"  SCAN    images")
 

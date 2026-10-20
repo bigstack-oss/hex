@@ -17,7 +17,9 @@ The rootfs SBOM and report are inputs, never changed. The outputs are a second p
     descriptor gains an `images` list: each manifest digest, its tags, distro and match counts.
 
 grype's database is updated once, then held for every image, so all of them are judged by the same
-data. syft and grype come from PATH.
+data. No VEX document is applied: a project's statements name packages by a purl with no version
+and were judged on its rootfs's own copies, and grype would apply them to any image package with
+that purl. syft and grype come from PATH.
 """
 import argparse
 import json
@@ -132,7 +134,6 @@ def main():
     ap.add_argument('--out-sbom', required=True)
     ap.add_argument('--out-vuln', required=True)
     ap.add_argument('--work', required=True, help='scratch dir, emptied before and removed after')
-    ap.add_argument('--vex', action='append', default=[], help='OpenVEX document for grype (repeatable)')
     a = ap.parse_args()
 
     shutil.rmtree(a.work, ignore_errors=True)
@@ -166,7 +167,7 @@ def main():
             name, tag = ref.rsplit(':', 1)
             run(['syft', 'scan', 'oci-dir:' + layout, '-q', '--source-name', name, '--source-version', tag,
                  '-o', 'cyclonedx-json=' + cdx], env)
-            rep = json.loads(run(['grype', 'sbom:' + cdx, '-o', 'json'] + sum((['--vex', v] for v in a.vex), []), env))
+            rep = json.loads(run(['grype', 'sbom:' + cdx, '-o', 'json'], env))
             shutil.rmtree(layout)
             with open(cdx) as f:
                 ibom = json.load(f)

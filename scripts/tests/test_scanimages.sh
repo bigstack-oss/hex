@@ -2,7 +2,7 @@
 #
 # Unit test for scripts/scanimages.py: one scan per unique image in a registry's storage, an
 # index resolved to linux/amd64, blobs copied in as regular files, one grype database for every
-# image, the image named in each match's location and in the SBOM, the rootfs inputs left as they
+# image and no VEX document, the image named in each match's location and in the SBOM, the rootfs inputs left as they
 # are, and a missing manifest or blob, or a failed scan, stopping it. syft and grype are stand-ins
 # that check what they are handed and record their arguments.
 #
@@ -57,20 +57,19 @@ tag a 1 "$MA"; tag lib/a 1 "$MA"; tag b 2 "$IX"
 
 echo '{"bomFormat":"CycloneDX","components":[{"bom-ref":"root-1","type":"library","name":"r"}],"dependencies":[]}' > "$T/sbom.json"
 echo '{"matches":[{"vulnerability":{"id":"CVE-0","severity":"Critical"},"artifact":{"name":"r","locations":[{"path":"/usr/lib/r"}]}}],"descriptor":{"name":"grype"}}' > "$T/vuln.json"
-echo '{}' > "$T/a.openvex.json"
 before=$(sha256sum "$T/sbom.json" "$T/vuln.json")
 
 scan(){ rm -f "$T/syft.calls" "$T/syft.blobs" "$T/grype.calls" "$T/out.sbom.json" "$T/out.vuln.json"
     OUT=$(python3 "$SCAN" --root "$T/root" --registry /opt/docker/registry --sbom "$T/sbom.json" --vuln "$T/vuln.json" \
         --out-sbom "$T/out.sbom.json" --out-vuln "$T/out.vuln.json" --work "$T/work" "$@" 2>&1); RC=$?; }
 
-scan --vex "$T/a.openvex.json"
+scan
 chk "exits 0" "$RC" "0"
 chk "one scan per unique image" "$(sort "$T/syft.calls" | tr '\n' ' ')" "a:1 b:2 "
 chk "each layout carries manifest, config and layers" "$(tr '\n' ' ' < "$T/syft.blobs")" "4 3 "
 chk "database updated once, first" "$(head -1 "$T/grype.calls")" "db update auto=unset"
 chk "images judged with the database held" "$(grep -c 'auto=false' "$T/grype.calls")" "2"
-chk "VEX reaches grype" "$(grep -c -- "--vex $T/a.openvex.json" "$T/grype.calls")" "2"
+chk "no VEX reaches grype" "$(grep -c -- '--vex' "$T/grype.calls")" "0"
 chk "work dir removed" "$([ -e "$T/work" ] && echo left || echo gone)" "gone"
 chk "inputs unchanged" "$(sha256sum "$T/sbom.json" "$T/vuln.json")" "$before"
 
