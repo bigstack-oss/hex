@@ -226,7 +226,14 @@ SourceListUpdate()
     echo "keepcache=True" >> $ROOTDIR/etc/dnf/dnf.conf
     echo "retries=10" >> $ROOTDIR/etc/dnf/dnf.conf
 
-    chroot $ROOTDIR dnf reinstall -y --nogpgcheck dnf* *gpg* rpm glibc
+    # The rootfs trusts only the keys hex pins, each imported once its fingerprint matches, and
+    # the list goes into the rootfs as rpm_keys.txt for installdnf, which a project appends its
+    # own keys to. Every dnf below checks signatures against them.
+    local KEYDIR=$(cd $HEX_SCRIPTSDIR/../data/os/rpm-gpg && pwd)
+    sed -e '/^#/d' -e '/^$/d' -e "s;^;$KEYDIR/;" $KEYDIR/rpm_keys.txt >> $ROOTDIR/rpm_keys.txt
+    /bin/bash $HEX_SCRIPTSDIR/importrpmkeys $ROOTDIR $ROOTDIR/rpm_keys.txt
+
+    chroot $ROOTDIR dnf reinstall -y dnf* *gpg* rpm glibc
     chroot $ROOTDIR dnf clean all
     chroot $ROOTDIR rm -f /var/lib/rpm/.rpm.lock
 
@@ -254,14 +261,13 @@ hash@SSH = -SHA1
 etm@SSH = DISABLE_NON_ETM
 EOF
     chroot $ROOTDIR sh -c 'update-crypto-policies --set DEFAULT:SHA1:CUBE-PQ:CUBE-HARDEN'
-    chroot $ROOTDIR sh -c 'rpm --import /etc/pki/rpm-gpg/*' || true
     XTRA_REPO+="https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm "
     XTRA_REPO+="https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-9.noarch.rpm "
     XTRA_REPO+="http://rpms.remirepo.net/enterprise/remi-release-9.rpm"
     # work around intermittent Curl error (7): Couldn't connect to server (likely rate limits)
     for C in {1..5} ; do
-        if chroot $ROOTDIR dnf install -y --nogpgcheck $XTRA_REPO ; then
+        if chroot $ROOTDIR dnf install -y --setopt=localpkg_gpgcheck=1 $XTRA_REPO ; then
             break
         else
             sleep 60
@@ -271,6 +277,7 @@ EOF
     chroot $ROOTDIR sh -c 'dnf config-manager --enable crb'
     chroot $ROOTDIR dnf clean all
     chroot $ROOTDIR dnf -y update
+    /bin/bash $HEX_SCRIPTSDIR/importrpmkeys -c $ROOTDIR $ROOTDIR/rpm_keys.txt
     rm -f $ROOTDIR/etc/resolv.conf
     umount $ROOTDIR/proc
 }

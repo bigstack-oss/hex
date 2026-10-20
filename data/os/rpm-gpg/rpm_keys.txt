@@ -1,0 +1,9 @@
+# The rpm signing keys a bootstrapped rootfs trusts, as '<key file> <fingerprint>'. makerootfs
+# imports each once its fingerprint matches and appends these lines to the rootfs's
+# rpm_keys.txt. CentOS's signs the Stream repositories the image comes with; the others sign the
+# release rpms makerootfs installs and the repositories those add.
+RPM-GPG-KEY-CentOS-Official 99DB70FAE1D7CE227FB6488205B555B38483C65D
+RPM-GPG-KEY-EPEL-9 FF8AD1344597106ECE813B918A3872BF3228467C
+RPM-GPG-KEY-rpmfusion-free-el-9 EDC00FE7418C9DF7EF4991A47403EA33296458F3
+RPM-GPG-KEY-rpmfusion-nonfree-el-9 BB24128A4BB3C3352C0B75A2E4174E6BAAB212EA
+RPM-GPG-KEY-remi2021 B1ABF71E14C9D74897E198A8B19527F1478F8947
