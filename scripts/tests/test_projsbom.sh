@@ -79,6 +79,9 @@ mk -n sbom-images PROJ_SBOM_REGISTRY=/opt/docker/registry PROJ_VEX=a.openvex.jso
 chk "sbom-images: the registry reaches the script" "$(grep -c 'scanimages.py --root rootfs.stamp --registry /opt/docker/registry --sbom' <<<"$OUT")" "1"
 chk "sbom-images: PROJ_VEX does not" "$(grep 'scanimages.py' <<<"$OUT" | grep -c -- '--vex')" "0"
 chk "sbom-images: rootfs pair in, images pair out" "$(grep -o -- '--sbom [^ ]*_sbom.json --vuln [^ ]*_vuln.json --out-sbom [^ ]*_sbom_images.json --out-vuln [^ ]*_vuln_images.json' <<<"$OUT" | wc -l)" "1"
+chk "sbom-images: 4 images at a time by default" "$(grep -c -- '--work sbom-images.work --jobs 4' <<<"$OUT")" "1"
+mk -n sbom-images PROJ_SBOM_REGISTRY=/opt/docker/registry PROJ_SBOM_IMAGES_JOBS=8
+chk "sbom-images: PROJ_SBOM_IMAGES_JOBS sets --jobs" "$(grep -c -- '--jobs 8' <<<"$OUT")" "1"
 
 echo "test_projsbom: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

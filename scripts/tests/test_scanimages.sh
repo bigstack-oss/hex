@@ -3,8 +3,9 @@
 # Unit test for scripts/scanimages.py: one scan per unique image in a registry's storage, an
 # index resolved to linux/amd64, blobs copied in as regular files, one grype database for every
 # image and no VEX document, the image named in each match's location and in the SBOM, the rootfs inputs left as they
-# are, and a missing manifest or blob, or a failed scan, stopping it. syft and grype are stand-ins
-# that check what they are handed and record their arguments.
+# are, and a missing manifest or blob, or a failed scan, stopping it. --jobs scans images at the
+# same time and writes the same outputs as a serial scan. syft and grype are stand-ins that check
+# what they are handed and record their arguments.
 #
 # Needs bash, coreutils and python3.
 # Run: bash test_scanimages.sh
@@ -28,6 +29,8 @@ echo "\$5:\$7" >> "$T/syft.calls"
 for b in "\$L"/blobs/sha256/*; do [ -f "\$b" ] && [ ! -L "\$b" ] || { echo "\$b is not a regular file" >&2; exit 1; }; done
 ls "\$L/blobs/sha256" | wc -l >> "$T/syft.blobs"
 [ "\$5" = "broken" ] && { echo "syft broke" >&2; exit 3; }
+# With $T/slow, each scan lasts a while and records how many were running at its end.
+if [ -e "$T/slow" ]; then touch "$T/run.\$\$"; sleep 1; ls "$T"/run.* | wc -l >> "$T/peak"; rm -f "$T/run.\$\$"; fi
 cat > "\$out" <<'J'
 {"bomFormat":"CycloneDX","components":[{"bom-ref":"pkg-1","type":"library","name":"x","version":"1"},
  {"bom-ref":"os-1","type":"operating-system","name":"debian"}],"dependencies":[{"ref":"pkg-1","dependsOn":["os-1"]}]}
@@ -86,6 +89,22 @@ chk "image components nest under their container" "$(q "$T/out.sbom.json" "[len(
 chk "bom-refs stay unique" "$(q "$T/out.sbom.json" "(lambda r: len(r) == len(set(r)))([c['bom-ref'] for c in d['components']] + [s['bom-ref'] for c in d['components'] for s in c.get('components', [])])")" "True"
 chk "dependencies follow the prefixed refs" "$(q "$T/out.sbom.json" "all(x['ref'].startswith('image:') and all(y.startswith('image:') for y in x['dependsOn']) for x in d['dependencies'])")" "True"
 
+# --jobs: the same outputs as the serial scan above, byte for byte, with the scans overlapping.
+cp "$T/out.sbom.json" "$T/serial.sbom.json"; cp "$T/out.vuln.json" "$T/serial.vuln.json"
+scan --jobs 2
+chk "jobs 2: exits 0" "$RC" "0"
+chk "jobs 2: one scan per unique image" "$(sort "$T/syft.calls" | tr '\n' ' ')" "a:1 b:2 "
+chk "jobs 2: same SBOM as serial" "$(cmp -s "$T/serial.sbom.json" "$T/out.sbom.json" && echo same || echo differs)" "same"
+chk "jobs 2: same report as serial" "$(cmp -s "$T/serial.vuln.json" "$T/out.vuln.json" && echo same || echo differs)" "same"
+chk "jobs 2: images listed in serial order" "$(grep -o 'IMAGE .*' <<<"$OUT" | tr '\n' ' ')" \
+    "IMAGE   /opt/docker/registry/a:1 (1 matches) IMAGE   /opt/docker/registry/b:2 (1 matches) "
+chk "jobs 2: work dir removed" "$([ -e "$T/work" ] && echo left || echo gone)" "gone"
+touch "$T/slow"
+rm -f "$T/peak"; scan --jobs 2; chk "jobs 2: scans overlap" "$(sort -n "$T/peak" | tail -1)" "2"
+rm -f "$T/peak"; scan --jobs 1; chk "jobs 1: one scan at a time" "$(sort -n "$T/peak" | tail -1)" "1"
+rm -f "$T/slow" "$T/peak"
+scan --jobs 0; chk "jobs 0: usage error" "$RC" "2"; chk "jobs 0: says why" "$(grep -c -- '--jobs must be at least 1' <<<"$OUT")" "1"
+
 # Failures stop the scan and leave no output behind.
 mv "$V/repositories/b" "$T/b.saved"
 H=${L1#sha256:}; mv "$V/blobs/sha256/${H:0:2}/$H/data" "$T/l1.saved"
@@ -96,6 +115,8 @@ mv "$T/l1.saved" "$V/blobs/sha256/${H:0:2}/$H/data"; mv "$T/b.saved" "$V/reposit
 tag broken 9 "$MB"
 scan; chk "failed syft: fails" "$RC" "1"; chk "failed syft: reported" "$(grep -c 'syft failed (3): syft broke' <<<"$OUT")" "1"
 chk "failed syft: no SBOM" "$([ -e "$T/out.sbom.json" ] && echo written || echo none)" "none"
+scan --jobs 3; chk "failed syft, jobs 3: fails" "$RC" "1"; chk "failed syft, jobs 3: reported" "$(grep -c 'syft failed (3): syft broke' <<<"$OUT")" "1"
+chk "failed syft, jobs 3: no report" "$([ -e "$T/out.vuln.json" ] && echo written || echo none)" "none"
 rm -rf "$V/repositories/broken"
 
 python3 - "$V" "$IX" <<'EOF'
