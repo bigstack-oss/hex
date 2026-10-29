@@ -2,8 +2,9 @@
 #
 # Unit test for scripts/recheckvulns.py: which kernel matches the kernel CNA's records move to
 # ignoredMatches, the fix and severity of the ones that stay, and that nothing else is touched;
-# likewise for RHEL python rpms by Red Hat's records, OpenStack's packages by the OSSAs, and Go modules
-# at a pseudo-version by their repository's history. Self-contained: vulns.git, ossa.git and the Go
+# likewise for RHEL python rpms by Red Hat's records, OpenStack's packages by the OSSAs, Go modules
+# at a pseudo-version by their repository's history, and the matches rpms built outside the distro
+# gain by their upstream's CPE, VEX applied. Self-contained: vulns.git, ossa.git and the Go
 # module's repository are local repos, Red Hat's security data a file:// directory, and grype a
 # stand-in that answers from files.
 #
@@ -396,6 +397,68 @@ chk "grype's database unreadable fails" "$RC $(cmp -s "$T/before.json" "$T/vuln.
 echo '{"matches": []}' > "$T/vuln.json"
 KERNEL_VULNS_GIT="file://$T/nowhere" GOMODULE_GIT="file://$T/nowhere" run "$T/vuln.json" "$T/checkout6" --gomodules "$T/gomodules3"
 chk "no pseudo-version: no fetch" "$RC $([ -e "$T/gomodules3" ] && echo yes || echo no)" "0 no"
+
+# rpms built outside the distro (--cpe): ISC's BIND build, matched by its upstream's CPE. The grype
+# stand-in insists the database is not updated, keeps the stand-in SBOM it was handed, and knows
+# three flaws in bind 9.20.29.
+cat > "$T/bin/grype-cpe" <<EOF
+#!/usr/bin/env python3
+import json, os, sys
+if os.environ.get('GRYPE_DB_AUTO_UPDATE') != 'false' or sys.argv[2:] != ['-o', 'json']:
+    sys.exit(3)
+doc = json.load(open(sys.argv[1][len('sbom:'):]))
+json.dump(doc, open('$T/cpe-standins.json', 'w'))
+ms = []
+for c in doc['components']:
+    if c['cpe'].startswith('cpe:2.3:a:isc:bind:9.20.29:'):
+        for v in ('CVE-2026-2001', 'CVE-2026-2002', 'CVE-2026-2003'):
+            ms.append({'vulnerability': {'id': v, 'namespace': 'nvd:cpe', 'severity': 'High', 'fix': {'versions': ['9.20.30'], 'state': 'fixed'}},
+                       'matchDetails': [{'type': 'cpe-match', 'matcher': 'stock-matcher', 'searchedBy': {'cpes': [c['cpe']]}}],
+                       'artifact': {'name': c['name'], 'version': c['version'], 'type': 'binary'}})
+json.dump({'matches': ms}, sys.stdout)
+EOF
+chmod +x "$T/bin/grype-cpe"
+qc(){ echo '{"type": "library", "name": "'$1'", "version": "'$2'", "publisher": "Fedora Project COPR (isc/bind)", "purl": "pkg:rpm/centos/'$1'@'$2'?arch=x86_64&distro=centos-9", "properties": [{"name": "syft:location:0:path", "value": "/var/lib/rpm/rpmdb.sqlite"}, {"name": "syft:metadata:sourceRpm", "value": "'$3'-'$2'.src.rpm"}]}'; }
+cat > "$T/cpesbom.json" <<EOF
+{"components": [$(qc isc-bind-bind-utils 9.20.29-1.1.el9 isc-bind-bind), $(qc isc-bind-bind 9.20.29-1.1.el9 isc-bind-bind),
+ $(qc isc-bind-libuv 1.49.2-1.el9 isc-bind-libuv), $(c bind 32:9.16.23-1.el9 CentOS bind)]}
+EOF
+# VEX: one rpm only; another only through an alias; a different version; a status that ignores nothing
+cat > "$T/vex.json" <<EOF
+{"statements": [
+ {"vulnerability": {"name": "CVE-2026-2001"}, "products": [{"@id": "pkg:rpm/centos/isc-bind-bind"}], "status": "not_affected"},
+ {"vulnerability": {"name": "GHSA-0003", "aliases": ["CVE-2026-2003"]}, "products": [{"@id": "pkg:rpm/centos/isc-bind-bind"}, {"@id": "pkg:rpm/centos/isc-bind-bind-utils"}], "status": "fixed"},
+ {"vulnerability": {"name": "CVE-2026-2002"}, "products": [{"@id": "pkg:rpm/centos/isc-bind-bind@9.20.28-1.1.el9"}], "status": "not_affected"},
+ {"vulnerability": {"name": "CVE-2026-2002"}, "products": [{"@id": "pkg:rpm/centos/isc-bind-bind-utils"}], "status": "affected"}]}
+EOF
+cpereport(){ echo '{"descriptor": {"name": "grype"}, "matches": ['"$(m CVE-2026-0003 nvd:cpe Critical openssl 3.5.1 binary)"']}' > "$T/vuln.json"; }
+cpeids(){ q "' '.join(m['vulnerability']['id'] + '/' + m['artifact']['name'] for m in r['$1'] if m['artifact']['name'] != 'openssl')"; }
+cperun(){ KERNEL_VULNS_GIT="file://$T/nowhere" GRYPE="$T/bin/grype-cpe" run "$T/vuln.json" "$T/checkout7" --sbom "$T/cpesbom.json" "$@"; }
+
+cpereport; cperun --cpe isc-bind-bind=cpe:2.3:a:isc:bind --cpe isc-bind-libuv=cpe:2.3:a:libuv:libuv --vex "$T/vex.json"
+chk "CPE pass exits 0" "$RC" "0"
+chk "  one stand-in per upstream version, the bystander bind not among them" "$(python3 -c "import json; print(' '.join(c['name'] + '@' + c['version'] + '=' + c['cpe'] for c in json.load(open('$T/cpe-standins.json'))['components']))")" "bind@9.20.29=cpe:2.3:a:isc:bind:9.20.29:*:*:*:*:*:*:* libuv@1.49.2=cpe:2.3:a:libuv:libuv:1.49.2:*:*:*:*:*:*:*"
+chk "  added, against every rpm of the source" "$(cpeids matches)" "CVE-2026-2002/isc-bind-bind CVE-2026-2001/isc-bind-bind-utils CVE-2026-2002/isc-bind-bind-utils"
+chk "  VEX: the named rpm only, an alias, not another version or an affected status" "$(cpeids ignoredMatches)" "CVE-2026-2001/isc-bind-bind CVE-2026-2003/isc-bind-bind CVE-2026-2003/isc-bind-bind-utils"
+chk "  ignored the way grype ignores by VEX" "$(q "[m['appliedIgnoreRules'] for m in r['ignoredMatches'] if m['vulnerability']['id'] == 'CVE-2026-2003'][0]")" "[{'namespace': 'vex', 'vex-status': 'fixed'}]"
+chk "  the artifact is the rpm" "$(q "next((a['type'], a['purl'], a['cpes'][0], a['upstreams'], a['locations']) for m in r['matches'] for a in [m['artifact']] if a['name'] == 'isc-bind-bind')")" "('rpm', 'pkg:rpm/centos/isc-bind-bind@9.20.29-1.1.el9?arch=x86_64&distro=centos-9', 'cpe:2.3:a:isc:bind:9.20.29:*:*:*:*:*:*:*', [{'name': 'isc-bind-bind'}], [{'path': '/var/lib/rpm/rpmdb.sqlite'}])"
+chk "  grype's own match untouched" "$(q "[m['artifact']['name'] for m in r['matches']][0], len(r['matches'])")" "openssl 4"
+chk "  descriptor" "$(q "(lambda d: (d['sources'], d['rpms'], d['added'], d['ignored']))(r['descriptor']['cpeRecheck'])")" "({'isc-bind-bind': 'cpe:2.3:a:isc:bind', 'isc-bind-libuv': 'cpe:2.3:a:libuv:libuv'}, ['isc-bind-bind-9.20.29-1.1.el9', 'isc-bind-bind-utils-9.20.29-1.1.el9', 'isc-bind-libuv-1.49.2-1.el9'], 3, {'vex': 3})"
+chk "  summary" "$(echo "$OUT" | tail -1)" "upstream CPE matches (2 source rpms, 3 rpms): 3 added, 3 ignored by VEX"
+
+cpereport; cperun --cpe isc-bind-bind=cpe:2.3:a:isc:bind
+chk "without --vex every match is added" "$(cpeids matches)" "CVE-2026-2001/isc-bind-bind CVE-2026-2002/isc-bind-bind CVE-2026-2003/isc-bind-bind CVE-2026-2001/isc-bind-bind-utils CVE-2026-2002/isc-bind-bind-utils CVE-2026-2003/isc-bind-bind-utils"
+
+cpereport; cperun --cpe nothing-here=cpe:2.3:a:isc:bind
+chk "no rpm of the source: no stand-in scan, no descriptor" "$RC $(q "'cpeRecheck' in r['descriptor']")" "0 False"
+
+cpereport; cp "$T/vuln.json" "$T/before.json"
+KERNEL_VULNS_GIT="file://$T/nowhere" GRYPE=false run "$T/vuln.json" "$T/checkout7" --sbom "$T/cpesbom.json" --cpe isc-bind-bind=cpe:2.3:a:isc:bind
+chk "grype failing on the stand-ins fails, report untouched" "$RC $(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "1 same"
+run "$T/vuln.json" "$T/checkout7" --cpe isc-bind-bind=cpe:2.3:a:isc:bind
+chk "--cpe without --sbom is a usage error" "$RC" "2"
+run "$T/vuln.json" "$T/checkout7" --sbom "$T/cpesbom.json" --cpe isc-bind-bind=isc:bind
+chk "--cpe with no CPE prefix is a usage error" "$RC" "2"
 sk(){ python3 -B -c "import importlib.util as u; s = u.spec_from_file_location('r', '$SCRIPT'); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.semkey('$1') < m.semkey('$2'))"; }
 chk "semkey pseudo-version before its release" "$(sk 0.0.0-20250227174106-7829dbe62d7f 0.0.1) $(sk 1.5.1-0.20260427112133-525d1bab07e0 1.5.1)" "True True"
 chk "semkey rc before release, numeric" "$(sk 1.0.0-rc.0 1.0.0) $(sk 2.9.9 2.10.0)" "True True"

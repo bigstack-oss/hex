@@ -5,7 +5,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Re-judge grype's kernel matches by the kernel CNA, RHEL rpm matches by Red Hat, OpenStack's by its OSSAs, Go pseudo-versions by their commit.
+"""Re-judge grype's kernel matches by the kernel CNA, RHEL rpm matches by Red Hat, OpenStack's by its OSSAs, Go pseudo-versions by their commit; match rpms built outside the distro by their upstream's CPE.
 
 grype judges a kernel by data that does not describe it. The vmlinuz is matched by NVD's CPE
 ranges, which often stop at the mainline fix and leave out the stable backports (CVE-2026-43197:
@@ -84,6 +84,18 @@ points at a mirror. With the same option, a match from the Go vulnerability data
 module with no affected range at all, every version and no fix, moves to "ignoredMatches" when the
 project's own advisory for the flaw (a GitHub advisory the repository published) names only the
 repository's other module paths: containerd v1 for a flaw in a CRI feature v2 added.
+
+An rpm built outside the distribution gets no match at all: grype judges an rpm by its
+distribution's advisories, which do not name it, and does not match rpms by CPE. ISC's own BIND
+build (isc-bind-bind, from ISC's COPR) is reported for nothing, while NVD's records for
+cpe:2.3:a:isc:bind name the 9.20 releases each flaw was fixed in. Given --cpe SOURCE=CPE, a source
+rpm's name and its upstream's CPE prefix, every rpm the SBOM says was built from SOURCE is matched
+the way grype matches a binary of that upstream: one grype run over a stand-in package carrying
+the CPE at the rpm's version, from the same database as the scan. Each match is added against
+every such rpm. grype applied the VEX documents to its own matches only, so the ones given with
+--vex are applied to these the way grype applies them: a not_affected or fixed statement that
+names the vulnerability, or an alias of it, for the rpm's purl moves the match to
+"ignoredMatches". The report's descriptor lists the sources and the rpms.
 """
 
 import argparse
@@ -94,6 +106,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -959,6 +972,150 @@ def recheck_gopseudo(rep, path):
     )
 
 
+CPE_PREFIX = re.compile(r'cpe:2\.3:[aho]:[^:*]+:[^:*]+')
+
+
+def upstream_rpms(path, sources):
+    """The SBOM's rpms built from the named source packages: {source: [component]}."""
+    with open(path) as f:
+        sbom = json.load(f)
+    found = {}
+    for c in sbom.get('components') or []:
+        if not (c.get('purl') or '').startswith('pkg:rpm/'):
+            continue
+        props = {p['name']: p['value'] for p in c.get('properties') or []}
+        src = re.match(r'(.+)-[^-]+-[^-]+\.src\.rpm$', props.get('syft:metadata:sourceRpm', ''))
+        evr = re.match(r'(?:\d+:)?.+-[^-]+$', c.get('version', ''))
+        if src and evr and src.group(1) in sources:
+            found.setdefault(src.group(1), []).append(c)
+    return found
+
+
+def rpm_upstream_version(v):
+    return re.match(r'(?:\d+:)?(.+)-[^-]+$', v).group(1)
+
+
+def cpe_at(prefix, version):
+    return f'{prefix}:{version}' + ':*' * 7
+
+
+def cpe_probe(probes):
+    """grype's matches for stand-ins of the (CPE prefix, version) pairs, by pair."""
+    names = {(p.split(':')[4], v): (p, v) for p, v in probes}
+    doc = {
+        'bomFormat': 'CycloneDX', 'specVersion': '1.5', 'version': 1,
+        'metadata': {'component': {'type': 'operating-system', 'name': 'recheckvulns'}},
+        'components': [
+            {'bom-ref': f'cpe-{i}', 'type': 'application', 'name': name, 'version': v,
+             'cpe': cpe_at(p, v)}
+            for i, ((name, v), (p, _)) in enumerate(sorted(names.items()))
+        ],
+    }
+    with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
+        json.dump(doc, f)
+    try:
+        # The scan has just brought the database up to date; this run must judge by the same one
+        out = subprocess.run(
+            [GRYPE, 'sbom:' + f.name, '-o', 'json'],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            env=dict(os.environ, GRYPE_DB_AUTO_UPDATE='false', GRYPE_CHECK_FOR_APP_UPDATE='false'),
+        )
+    finally:
+        os.unlink(f.name)
+    if out.returncode:
+        sys.exit('recheckvulns: grype could not scan the CPE stand-ins')
+    hits = {}
+    for m in json.loads(out.stdout or '{}').get('matches') or []:
+        pair = names.get((m['artifact']['name'], m['artifact']['version']))
+        if pair:
+            hits.setdefault(pair, []).append(m)
+    return hits
+
+
+def purl_key(purl, versioned):
+    p = re.sub(r'[?#].*$', '', purl)
+    return p if versioned else p.split('@')[0]
+
+
+def vex_statements(paths):
+    """(vulnerability names, product purls, status) of the not_affected and fixed statements."""
+    out = []
+    for path in paths:
+        with open(path) as f:
+            doc = json.load(f)
+        for s in doc.get('statements') or []:
+            if s.get('status') not in ('not_affected', 'fixed'):
+                continue
+            v = s.get('vulnerability') or {}
+            names = {v.get('name')} | set(v.get('aliases') or [])
+            out.append((names, [p.get('@id', '') for p in s.get('products') or []], s['status']))
+    return out
+
+
+def vex_status(m, statements):
+    ids = {m['vulnerability']['id']} | {x.get('id') for x in m.get('relatedVulnerabilities') or []}
+    purl = m['artifact']['purl']
+    for names, products, status in statements:
+        # A product with a version names that version only, one without names every version
+        if ids & names and any(purl_key(purl, '@' in p) == purl_key(p, True) for p in products):
+            return status
+    return None
+
+
+def recheck_cpe(rep, sbom, cpes, vex):
+    """Add matches on the rpms built from each named source by its upstream's CPE; a summary, or
+    None if the SBOM has no such rpm."""
+    found = upstream_rpms(sbom, cpes)
+    if not found:
+        return None
+    hits = cpe_probe(
+        {(cpes[s], rpm_upstream_version(c['version'])) for s, cs in found.items() for c in cs}
+    )
+    statements = vex_statements(vex)
+
+    added, ignored = [], []
+    for src, cs in sorted(found.items()):
+        for c in sorted(cs, key=lambda c: c['name']):
+            v = rpm_upstream_version(c['version'])
+            props = {p['name']: p['value'] for p in c.get('properties') or []}
+            art = {
+                'id': c.get('bom-ref', ''), 'name': c['name'], 'version': c['version'],
+                'type': 'rpm',
+                'locations': [{'path': props[k]} for k in sorted(props)
+                              if re.fullmatch(r'syft:location:\d+:path', k)],
+                'language': '', 'licenses': [], 'cpes': [cpe_at(cpes[src], v)],
+                'purl': c['purl'], 'upstreams': [{'name': src}],
+            }
+            for h in hits.get((cpes[src], v), []):
+                m = {
+                    'vulnerability': h['vulnerability'],
+                    'relatedVulnerabilities': h.get('relatedVulnerabilities') or [],
+                    'matchDetails': h.get('matchDetails') or [],
+                    'artifact': art,
+                }
+                status = vex_status(m, statements)
+                if status:
+                    m['appliedIgnoreRules'] = [{'namespace': 'vex', 'vex-status': status}]
+                    ignored.append(m)
+                else:
+                    added.append(m)
+
+    rep['matches'] = rep['matches'] + added
+    rep['ignoredMatches'] = (rep.get('ignoredMatches') or []) + ignored
+    rpms = sorted(f'{c["name"]}-{c["version"]}' for cs in found.values() for c in cs)
+    rep.setdefault('descriptor', {})['cpeRecheck'] = {
+        'sources': {s: cpes[s] for s in sorted(found)},
+        'rpms': rpms,
+        'vex': list(vex),
+        'added': len(added),
+        'ignored': {'vex': len(ignored)},
+    }
+    return (
+        f'upstream CPE matches ({len(found)} source rpms, {len(rpms)} rpms): {len(added)} added, '
+        f'{len(ignored)} ignored by VEX'
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('report', help="grype's JSON report, rewritten in place")
@@ -980,7 +1137,24 @@ def main():
         'pseudo-version: cloned when missing, brought up to date otherwise; with it, those '
         'matches are re-judged by the module\'s own history',
     )
+    ap.add_argument(
+        '--cpe', action='append', default=[], metavar='SOURCE=CPE',
+        help='match the rpms built from source rpm SOURCE by their upstream\'s CPE prefix, '
+        'cpe:2.3:a:VENDOR:PRODUCT (repeatable; needs --sbom)',
+    )
+    ap.add_argument(
+        '--vex', action='append', default=[],
+        help='an OpenVEX document to apply to the matches --cpe adds (repeatable)',
+    )
     args = ap.parse_args()
+    cpes = {}
+    for x in args.cpe:
+        src, _, cpe = x.partition('=')
+        if not src or not CPE_PREFIX.fullmatch(cpe):
+            ap.error(f'--cpe {x}: want SOURCE=cpe:2.3:a:VENDOR:PRODUCT')
+        cpes[src] = cpe
+    if cpes and not args.sbom:
+        ap.error('--cpe needs --sbom')
 
     with open(args.report) as f:
         rep = json.load(f)
@@ -992,9 +1166,11 @@ def main():
         done.append(recheck_ossa(rep, args.ossa))
     if args.gomodules:
         done.append(recheck_gopseudo(rep, args.gomodules))
+    if cpes:
+        done.append(recheck_cpe(rep, args.sbom, cpes, args.vex))
     done = [x for x in done if x]
     if not done:
-        print('no kernel image, python package or Go pseudo-version in the report: nothing to re-check')
+        print('no kernel image, python package, Go pseudo-version or --cpe rpm to re-check')
         return
 
     with open(args.report + '.tmp', 'w') as f:
