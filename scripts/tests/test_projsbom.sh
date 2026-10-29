@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Unit test for make/projsbom.mk's PROJ_VEX wiring: which --vex flags reach grype, that a
-# changed document triggers a rescan, and that a missing one stops the scan. grype is a stand-in
+# changed document triggers a rescan, and that a missing one stops the scan; and that
+# PROJ_SBOM_CPES and PROJ_VEX reach the re-check. grype is a stand-in
 # that records its arguments, so it runs in seconds with no scanner, no DB and no network.
 #
 # Needs bash, GNU make, coreutils and python3.
@@ -69,6 +70,13 @@ rm -f "$T/proj.sbom"
 mk sbom PROJ_VEX=missing.openvex.json; chk "missing document: fails" "$RC" "2"
 chk "missing document: grype not run" "$(args)" ""
 chk "missing document: named" "$(grep -c 'missing.openvex.json' <<<"$OUT")" "1"
+
+# PROJ_SBOM_CPES reaches the re-check, with PROJ_VEX to apply to the matches it adds
+rm -f "$T/proj.sbom"
+mk -n sbom "PROJ_SBOM_CPES=isc-bind-bind=cpe:2.3:a:isc:bind x=cpe:2.3:a:y:z" PROJ_VEX=a.openvex.json
+chk "PROJ_SBOM_CPES: --cpe each, --vex each" "$(grep -c -- '--gomodules go-module-repos --cpe isc-bind-bind=cpe:2.3:a:isc:bind --cpe x=cpe:2.3:a:y:z --vex a.openvex.json' <<<"$OUT")" "1"
+mk -n sbom
+chk "no PROJ_SBOM_CPES: no --cpe" "$(grep 'recheckvulns.py' <<<"$OUT" | grep -c -- '--cpe')" "0"
 
 # sbom-images is opt-in: it needs a registry, and hands it and the rootfs pair to scanimages.py
 # (tested on its own in test_scanimages.sh), but not PROJ_VEX, whose statements were judged on
