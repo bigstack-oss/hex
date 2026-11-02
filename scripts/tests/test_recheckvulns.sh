@@ -449,8 +449,13 @@ chk "  summary" "$(echo "$OUT" | tail -1)" "upstream CPE matches (2 source rpms,
 cpereport; cperun --cpe isc-bind-bind=cpe:2.3:a:isc:bind
 chk "without --vex every match is added" "$(cpeids matches)" "CVE-2026-2001/isc-bind-bind CVE-2026-2002/isc-bind-bind CVE-2026-2003/isc-bind-bind CVE-2026-2001/isc-bind-bind-utils CVE-2026-2002/isc-bind-bind-utils CVE-2026-2003/isc-bind-bind-utils"
 
-cpereport; cperun --cpe nothing-here=cpe:2.3:a:isc:bind
-chk "no rpm of the source: no stand-in scan, no descriptor" "$RC $(q "'cpeRecheck' in r['descriptor']")" "0 False"
+cpereport; cp "$T/vuln.json" "$T/before.json"; rm -f "$T/cpe-standins.json"
+cperun --cpe nothing-here=cpe:2.3:a:isc:bind
+chk "a source that names no rpm fails, report untouched" "$RC $(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "1 same"
+chk "  and names the source" "$(grep -c 'names no rpm in the SBOM: nothing-here$' <<<"$OUT")" "1"
+chk "  before any stand-in scan" "$([ -e "$T/cpe-standins.json" ] && echo scanned || echo none)" "none"
+cperun --cpe isc-bind-bind=cpe:2.3:a:isc:bind --cpe nothing-here=cpe:2.3:a:isc:bind
+chk "one unmatched source among matched ones fails too" "$RC $(cmp -s "$T/before.json" "$T/vuln.json" && echo same)" "1 same"
 
 cpereport; cp "$T/vuln.json" "$T/before.json"
 KERNEL_VULNS_GIT="file://$T/nowhere" GRYPE=false run "$T/vuln.json" "$T/checkout7" --sbom "$T/cpesbom.json" --cpe isc-bind-bind=cpe:2.3:a:isc:bind

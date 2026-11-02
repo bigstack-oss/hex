@@ -95,7 +95,9 @@ the CPE at the rpm's version, from the same database as the scan. Each match is 
 every such rpm. grype applied the VEX documents to its own matches only, so the ones given with
 --vex are applied to these the way grype applies them: a not_affected or fixed statement that
 names the vulnerability, or an alias of it, for the rpm's purl moves the match to
-"ignoredMatches". The report's descriptor lists the sources and the rpms.
+"ignoredMatches". The report's descriptor lists the sources and the rpms. A SOURCE that names no
+rpm in the SBOM stops the re-check, as a missing VEX document stops the scan: a renamed source
+rpm, or a list not kept in step, would otherwise leave those rpms unmatched with nothing to say so.
 """
 
 import argparse
@@ -1063,11 +1065,11 @@ def vex_status(m, statements):
 
 
 def recheck_cpe(rep, sbom, cpes, vex):
-    """Add matches on the rpms built from each named source by its upstream's CPE; a summary, or
-    None if the SBOM has no such rpm."""
+    """Add matches on the rpms built from each named source by its upstream's CPE; summarize."""
     found = upstream_rpms(sbom, cpes)
-    if not found:
-        return None
+    missing = sorted(set(cpes) - set(found))
+    if missing:
+        sys.exit(f'recheckvulns: --cpe names no rpm in the SBOM: {", ".join(missing)}')
     hits = cpe_probe(
         {(cpes[s], rpm_upstream_version(c['version'])) for s, cs in found.items() for c in cs}
     )
