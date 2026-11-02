@@ -78,6 +78,10 @@ struct Migrate {
     Migrate(const char *module, const char *pattern);
 };
 
+struct MigrateParallel {
+    MigrateParallel(const char *module, const char *pattern);
+};
+
 typedef bool (*ShutdownFunc)(ConfigShutdownMode /*shutdownMode*/);
 
 struct Shutdown {

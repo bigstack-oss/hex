@@ -186,6 +186,7 @@ struct Statics {
     MigrateFuncMap preMigrateFuncMap;
     MigrateFuncMap postMigrateFuncMap;
     MigrateFilesMap migrateFilesMap;
+    MigrateFilesMap migrateParallelFilesMap;
     ShutdownFuncMap shutdownFuncMap;
     ShutdownPidFilesMap shutdownPidFilesMap;
     SupportSet supportFileSet;

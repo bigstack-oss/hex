@@ -342,9 +342,14 @@ int ApplyTrigger(ArgVec argv);
 /**
  *  @def CONFIG_MIGRATE(module, func)       # run sequence 1
  *  @def CONFIG_MIGRATE(module, path)       # run sequence 2
+ *  @def CONFIG_MIGRATE_PARALLEL(module, path) # run sequence 2
  *  @def CONFIG_MIGRATE_POST(module, func)  # run sequence 3
  *  @hideinitializer
  *  @brief Register files or directories that are copied from an old to the upgraded filesystem
+ *
+ *  Parallel patterns are copied alongside the serial copies. Use for large directories
+ *  that no other pattern copies into. Each module's parallel patterns are
+ *  copied in order by one thread and logged to /var/log/migrate.<module>.log.
  *
  *  @param module   Name of module registering migration request.
  *  @param func     Migration function.
@@ -352,6 +357,9 @@ int ApplyTrigger(ArgVec argv);
  */
 #define CONFIG_MIGRATE(module, func_or_path) \
     static hex_config::Migrate HEX_CAT(s_migrate_, __LINE__)(#module, func_or_path)
+
+#define CONFIG_MIGRATE_PARALLEL(module, path) \
+    static hex_config::MigrateParallel HEX_CAT(s_migrate_, __LINE__)(#module, path)
 
 #define CONFIG_MIGRATE_POST(module, func) \
     static hex_config::Migrate HEX_CAT(s_migrate_, __LINE__)(#module, func, true)

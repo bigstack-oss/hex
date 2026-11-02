@@ -797,6 +797,15 @@ Migrate::Migrate(const char *module, const char *pattern)
     s_staticsPtr->migrateFilesMap.insert(std::pair<std::string, std::string>(module, pattern));
 }
 
+MigrateParallel::MigrateParallel(const char *module, const char *pattern)
+{
+    StaticsInit();
+    ModuleMap::iterator it = s_staticsPtr->moduleMap.find(module);
+    if (it == s_staticsPtr->moduleMap.end())
+        HexLogFatal("CONFIG_MIGRATE_PARALLEL(%s, ...): module not found",  module);
+    s_staticsPtr->migrateParallelFilesMap.insert(std::pair<std::string, std::string>(module, pattern));
+}
+
 Shutdown::Shutdown(const char *module, ShutdownFunc shutdown)
 {
     StaticsInit();
@@ -2366,6 +2375,31 @@ UsageMigrate()
 }
 
 static int
+MigratePattern(const char *module, const char *pattern, const char *prevRootDir, const char *logFile)
+{
+    HexLogInfo("migrate start: module %s pattern %s", module, pattern);
+    auto t1 = high_resolution_clock::now();
+    int fd = open(logFile, O_WRONLY | O_APPEND | O_CREAT, 0644);
+    if (fd >= 0) {
+        FILE *fp = fdopen(fd, "a");
+        if (fp != NULL) {
+            fprintf(fp, "== migrate %s %s\n", module, pattern);
+            fclose(fp);
+        } else {
+            close(fd);
+        }
+    }
+
+    int status = HexSystemF(0, "cd %s && rsync -aAXRv '--exclude=/var/log/migrate*.log' ./%s / >>%s 2>&1",
+                           prevRootDir, pattern, logFile);
+    auto t2 = high_resolution_clock::now();
+    int rc = HexExitStatus(status);
+    HexLogInfo("migrate end: module %s pattern %s exit %d took %.1f secs", module, pattern, rc,
+               (float)duration_cast<milliseconds>(t2 - t1).count() / 1000.0);
+    return rc;
+}
+
+static int
 MainMigrate(int argc, char **argv)
 {
     if (argc != 3)
@@ -2404,18 +2438,36 @@ MainMigrate(int argc, char **argv)
     // Copy all files that match migrate patterns
     // (Run after migrate function so that function can be used to prepare/delete directories, etc.)
     unlink("/var/log/migrate.log");
+    auto copyStart = high_resolution_clock::now();
+    MigrateFilesMap& parallelFiles = s_staticsPtr->migrateParallelFilesMap;
+    std::vector<std::thread> workers;
+    const std::string rootDir = prevRootDir;
+    for (MigrateFilesMap::iterator it = parallelFiles.begin(); it != parallelFiles.end();) {
+        const std::string module = it->first;
+        std::vector<std::string> patterns;
+        std::pair<MigrateFilesMap::iterator, MigrateFilesMap::iterator> range = parallelFiles.equal_range(module);
+        for (; it != range.second; ++it)
+            patterns.push_back(it->second);
+        const std::string logFile = "/var/log/migrate." + module + ".log";
+        unlink(logFile.c_str());
+        workers.push_back(std::thread([module, patterns, rootDir, logFile]() {
+            for (std::vector<std::string>::const_iterator pattern = patterns.begin(); pattern != patterns.end(); ++pattern)
+                MigratePattern(module.c_str(), pattern->c_str(), rootDir.c_str(), logFile.c_str());
+        }));
+    }
+    HexLogInfo("migrate: %zu parallel copies started", workers.size());
+
     MigrateFilesMap& files = s_staticsPtr->migrateFilesMap;
     for (MigrateFilesMap::iterator filesit = files.begin(); filesit != files.end(); ++filesit) {
         const char *module = filesit->first.c_str();
         const char *pattern = filesit->second.c_str();
-        HexLogDebugN(RRA, "Migrating data for module %s", module);
-        if (HexSystemF(0, "cd %s && rsync -aAXRv ./%s / >>/var/log/migrate.log 2>&1 || true",
-                        prevRootDir, pattern) != 0) {
-            HexLogError("Failed to migrate data for module %s", module);
-            //TODO: HexLogEventNoArg("Failed to migrate data for module");
-            status = EXIT_FAILURE;
-        }
+        MigratePattern(module, pattern, prevRootDir, "/var/log/migrate.log");
     }
+
+    for (std::vector<std::thread>::iterator it = workers.begin(); it != workers.end(); ++it)
+        it->join();
+    HexLogInfo("migrate: copied %zu patterns in %.1f secs", files.size() + parallelFiles.size(),
+               (float)duration_cast<milliseconds>(high_resolution_clock::now() - copyStart).count() / 1000.0);
 
     // Call all post-migrate functions
     MigrateFuncMap& postFuncs = s_staticsPtr->postMigrateFuncMap;
