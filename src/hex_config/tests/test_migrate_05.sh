@@ -10,9 +10,11 @@ done
 echo log > testdir/var/log/test5/x.txt
 echo OLD-SLOT > testdir/var/log/migrate.log
 echo OLD-SLOT > testdir/var/log/migrate.big.log
+mkdir -p testdir/var/log/journal/test5
+echo OLD-SLOT > testdir/var/log/journal/test5/system.journal
 
 # make sure target directories don't exist
-rm -rf /etc/test5 /var/log/test5
+rm -rf /etc/test5 /var/log/test5 /var/log/journal/test5
 
 ./$TEST -e migrate 1.0 $(pwd)/testdir 2> migrate05.err
 cat migrate05.err
@@ -33,6 +35,7 @@ grep -q log /var/log/test5/x.txt
 [ "$(grep -c OLD-SLOT /var/log/migrate.big.log)" -eq 0 ]
 [ "$(head -1 /var/log/migrate.log)" = "== migrate test /etc/test5/serial" ]
 [ "$(head -1 /var/log/migrate.big.log)" = "== migrate big /etc/test5/big" ]
+[ ! -e /var/log/journal/test5 ]
 
 # remove bogus previous root directory & files
 rm -rf testdir migrate05.err /etc/test5 /var/log/test5 /var/log/migrate.big.log

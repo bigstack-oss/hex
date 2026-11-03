@@ -2390,7 +2390,11 @@ MigratePattern(const char *module, const char *pattern, const char *prevRootDir,
         }
     }
 
-    int status = HexSystemF(0, "cd %s && rsync -aAXRv '--exclude=/var/log/migrate*.log' ./%s / >>%s 2>&1",
+    // Each slot keeps its own journal. journald is already writing /var/log/journal when the
+    // migrate runs, so a copy would overwrite its open files, or leave another machine-id's
+    // directory that it never vacuums.
+    int status = HexSystemF(0, "cd %s && rsync -aAXRv '--exclude=/var/log/migrate*.log' "
+                           "'--exclude=/var/log/journal' ./%s / >>%s 2>&1",
                            prevRootDir, pattern, logFile);
     auto t2 = high_resolution_clock::now();
     int rc = HexExitStatus(status);
