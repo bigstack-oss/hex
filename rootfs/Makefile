@@ -121,6 +121,10 @@ base_rootfs_install:
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/systemd-hexctl-sys.service ./lib/systemd/system
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/passwd ./etc
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/shadow ./etc
+	@# INSTALL_DATA replaces the file at 0644; put back the distro's 0000, readable by root only.
+	@# Everything after keeps the mode it finds: passwd, useradd and their shadow- backups, the
+	@# products' account steps, and every image built on this rootfs.
+	$(Q)chmod 0000 $(ROOTDIR)/etc/shadow
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/group ./etc
 	$(Q)$(INSTALL_DATA) $(ROOTDIR) $(HEX_DATADIR)/os/hosts ./etc
 	$(Q)$(INSTALL_DATA) -f $(ROOTDIR) $(HEX_DATADIR)/os/bashrc.def ./root/.bashrc

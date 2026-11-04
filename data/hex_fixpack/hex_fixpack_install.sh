@@ -80,7 +80,10 @@ Rollback()
     logger -t $PROG "$FIXPACK_NAME uninstall successful"
     echo "$FIXPACK_NAME uninstall successful"
     /usr/sbin/hex_config fixpack_add_history "$FIXPACK_ID" "$FIXPACK_NAME" "NO" "$FIXPACK_DESCRIPTION" "Uninstalled"
-    fixpack_sync uninstall
+    if ! fixpack_sync uninstall; then
+        logger -t $PROG "$FIXPACK_NAME uninstalled, but the rollback is not recorded in this node's git"
+        echo "Warning: $FIXPACK_NAME is uninstalled, but the rollback is not recorded in this node's git"
+    fi
     exit 0
 }
 
@@ -100,7 +103,11 @@ Cleanup()
         exec 1>&3
         echo "$FIXPACK install successful"
         /usr/sbin/hex_config fixpack_add_history "$FIXPACK_ID" "$FIXPACK_NAME" "$ROLLBACK" "$FIXPACK_DESCRIPTION" "Installed"
-        fixpack_sync install
+        if ! fixpack_sync install >>/var/support/fixpack/$FIXPACK.log 2>&1; then
+            logger -t $PROG "$FIXPACK installed, but its change is not recorded in this node's git"
+            echo "Warning: $FIXPACK is installed, but its change is not recorded in this node's git;"
+            echo "see /var/support/fixpack/$FIXPACK.log, then record it with: hex_sdk git_push '$FIXPACK_ID'"
+        fi
     else
         logger -t $PROG "$FIXPACK install failed"
         echo "$FIXPACK install failed"
@@ -164,6 +171,13 @@ if [ -n "$SUPPORTED_FIRMWARES" ]; then
     if [ "$SUPPORTED" -eq "0" ]; then
         ExitError "$FIXPACK: fixpack is not valid for this firmware version" 9
     fi
+fi
+
+# Gate: the project can refuse the install before anything on this node changes, e.g. when
+# the change could not be recorded. fixpack_precheck (proj_functions) prints why.
+if type fixpack_precheck >/dev/null 2>&1; then
+    PRECHECK=$(fixpack_precheck 2>&1) || ExitError "$FIXPACK: not installed, this node is not ready:
+$PRECHECK" 10
 fi
 
 # Check no rollback flag

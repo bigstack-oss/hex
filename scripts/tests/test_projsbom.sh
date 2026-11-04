@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Unit test for make/projsbom.mk's PROJ_VEX wiring: which --vex flags reach grype, that a
-# changed document triggers a rescan, and that a missing one stops the scan. grype is a stand-in
+# changed document triggers a rescan, and that a missing one stops the scan; and that
+# PROJ_SBOM_CPES and PROJ_VEX reach the re-check. grype is a stand-in
 # that records its arguments, so it runs in seconds with no scanner, no DB and no network.
 #
 # Needs bash, GNU make, coreutils and python3.
@@ -70,6 +71,13 @@ mk sbom PROJ_VEX=missing.openvex.json; chk "missing document: fails" "$RC" "2"
 chk "missing document: grype not run" "$(args)" ""
 chk "missing document: named" "$(grep -c 'missing.openvex.json' <<<"$OUT")" "1"
 
+# PROJ_SBOM_CPES reaches the re-check, with PROJ_VEX to apply to the matches it adds
+rm -f "$T/proj.sbom"
+mk -n sbom "PROJ_SBOM_CPES=isc-bind-bind=cpe:2.3:a:isc:bind x=cpe:2.3:a:y:z" PROJ_VEX=a.openvex.json
+chk "PROJ_SBOM_CPES: --cpe each, --vex each" "$(grep -c -- '--gomodules go-module-repos --cpe isc-bind-bind=cpe:2.3:a:isc:bind --cpe x=cpe:2.3:a:y:z --vex a.openvex.json' <<<"$OUT")" "1"
+mk -n sbom
+chk "no PROJ_SBOM_CPES: no --cpe" "$(grep 'recheckvulns.py' <<<"$OUT" | grep -c -- '--cpe')" "0"
+
 # sbom-images is opt-in: it needs a registry, and hands it and the rootfs pair to scanimages.py
 # (tested on its own in test_scanimages.sh), but not PROJ_VEX, whose statements were judged on
 # the rootfs.
@@ -79,6 +87,9 @@ mk -n sbom-images PROJ_SBOM_REGISTRY=/opt/docker/registry PROJ_VEX=a.openvex.jso
 chk "sbom-images: the registry reaches the script" "$(grep -c 'scanimages.py --root rootfs.stamp --registry /opt/docker/registry --sbom' <<<"$OUT")" "1"
 chk "sbom-images: PROJ_VEX does not" "$(grep 'scanimages.py' <<<"$OUT" | grep -c -- '--vex')" "0"
 chk "sbom-images: rootfs pair in, images pair out" "$(grep -o -- '--sbom [^ ]*_sbom.json --vuln [^ ]*_vuln.json --out-sbom [^ ]*_sbom_images.json --out-vuln [^ ]*_vuln_images.json' <<<"$OUT" | wc -l)" "1"
+chk "sbom-images: 4 images at a time by default" "$(grep -c -- '--work sbom-images.work --jobs 4' <<<"$OUT")" "1"
+mk -n sbom-images PROJ_SBOM_REGISTRY=/opt/docker/registry PROJ_SBOM_IMAGES_JOBS=8
+chk "sbom-images: PROJ_SBOM_IMAGES_JOBS sets --jobs" "$(grep -c -- '--jobs 8' <<<"$OUT")" "1"
 
 echo "test_projsbom: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

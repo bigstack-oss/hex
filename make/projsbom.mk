@@ -54,6 +54,13 @@ GRYPE_RPM := $(GITHUB_DL_BASE)/anchore/grype/releases/download/v$(GRYPE_VER)/gry
 # scanning without it.
 PROJ_VEX ?=
 
+# Source rpms built outside the distro, as SOURCE=CPE pairs: the source rpm's name and its
+# upstream's CPE prefix (isc-bind-bind=cpe:2.3:a:isc:bind). grype matches an rpm only by its
+# distribution's advisories, which do not name such a build, so the report has no match on it at
+# all. recheckvulns.py adds them, matching every rpm built from SOURCE by the CPE at the rpm's
+# version, and applies PROJ_VEX to what it adds.
+PROJ_SBOM_CPES ?=
+
 # Registries the rootfs ships container images in, as storage roots relative to the rootfs
 # (Docker Distribution's filesystem layout, e.g. /opt/docker/registry). The `sbom` target scans
 # the rootfs only and does not see inside them. `sbom-images` is a separate, opt-in target: it
@@ -65,6 +72,10 @@ PROJ_VEX ?=
 # version and were judged on the rootfs's own copies, while grype applies them to any image package
 # with that purl -- a verdict on the rootfs's setuptools would hide another setuptools in an image.
 PROJ_SBOM_REGISTRY ?=
+
+# How many images `sbom-images` scans at a time. Each one holds its image's blobs in the scratch
+# dir and runs its own syft and grype, so N at a time take about N times the disk and memory of one.
+PROJ_SBOM_IMAGES_JOBS ?= 4
 
 help::
 	$(Q)echo "sbom         Create SBOM (syft) and vulnerability report (grype)"
@@ -80,8 +91,8 @@ sbom: $(PROJ_SBOM)
 # report ships, its kernel matches are re-judged by the kernel CNA's records and re-rated, its
 # matches on python packages from RHEL's rpms by Red Hat's records and the rpms' changelogs, and
 # its matches on OpenStack's own python packages by the OpenStack Security Advisories, and
-# its matches on Go modules linked at a pseudo-version by the module's own history
-# (recheckvulns.py says why); kernel-vulns and ossa-advisories are its checkouts of the CNA's
+# its matches on Go modules linked at a pseudo-version by the module's own history, and the rpms
+# PROJ_SBOM_CPES names gain the matches their upstream's CPE gives (recheckvulns.py says why); kernel-vulns and ossa-advisories are its checkouts of the CNA's
 # records and of the advisories, go-module-repos its commits-only clones of those modules'
 # repositories, the SBOM names the rpms, and the scanned rootfs holds their changelogs. Before the scan, a Go binary whose own
 # version syft could only guess, or not at all, takes the version of the rpm that ships it
@@ -92,7 +103,7 @@ $(PROJ_SBOM): syft-fs-cubecos.cdx.json $(HEX_SCRIPTSDIR)/makesbompackages $(HEX_
 	$(call RUN_CMD_TIMED, grype sbom:$< $(foreach v,$(PROJ_VEX),--vex $(v)) --output=json > $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json,"  SCAN    vuln")
 	$(call RUN_CMD_TIMED, cp -f $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json,"  COPY    $<")
 	$(call RUN_CMD_TIMED, $(SHELL) $(HEX_SCRIPTSDIR)/makesbompackages $< $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom_packages.json,"  GEN     sbom_packages.json")
-	$(call RUN_CMD_TIMED, python3 $(HEX_SCRIPTSDIR)/recheckvulns.py $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json kernel-vulns --sbom $< --root $(PROJ_BASE_ROOTFS) --ossa ossa-advisories --gomodules go-module-repos,"  RECHECK vuln")
+	$(call RUN_CMD_TIMED, python3 $(HEX_SCRIPTSDIR)/recheckvulns.py $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_vuln.json kernel-vulns --sbom $< --root $(PROJ_BASE_ROOTFS) --ossa ossa-advisories --gomodules go-module-repos $(foreach c,$(PROJ_SBOM_CPES),--cpe $(c)) $(foreach v,$(PROJ_VEX),--vex $(v)),"  RECHECK vuln")
 	$(call RUN_CMD_TIMED, ln -sf $(PROJ_SHIPDIR)/$$(readlink $(PROJ_RELEASE))_sbom.json $@,"  GEN     $@")
 
 syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
@@ -102,14 +113,15 @@ syft-fs-cubecos.cdx.json: $(PROJ_BASE_ROOTFS)
 PKGCLEAN += $(PROJ_SBOM) syft-fs-cubecos.cdx.json
 
 # Runs after `sbom`, whose SBOM and checked report it starts from, and always rescans: the images
-# are judged by grype's database as of now. Its scratch dir holds one image's blobs at a time.
+# are judged by grype's database as of now. Its scratch dir holds the blobs of the images being
+# scanned, PROJ_SBOM_IMAGES_JOBS of them at most.
 .PHONY: sbom-images
 sbom-images: $(PROJ_SBOM) $(HEX_SCRIPTSDIR)/scanimages.py
 	$(Q)[ -n "$(strip $(PROJ_SBOM_REGISTRY))" ] || { echo "sbom-images: PROJ_SBOM_REGISTRY names no registry" ; exit 1 ; }
 	$(call RUN_CMD_TIMED, R=$$(readlink $(PROJ_RELEASE)) && rm -f $(PROJ_SHIPDIR)/$${R}_sbom_images.json $(PROJ_SHIPDIR)/$${R}_vuln_images.json && \
 		python3 $(HEX_SCRIPTSDIR)/scanimages.py --root $(PROJ_BASE_ROOTFS) $(foreach r,$(PROJ_SBOM_REGISTRY),--registry $(r)) \
 		--sbom $(PROJ_SHIPDIR)/$${R}_sbom.json --vuln $(PROJ_SHIPDIR)/$${R}_vuln.json \
-		--out-sbom $(PROJ_SHIPDIR)/$${R}_sbom_images.json --out-vuln $(PROJ_SHIPDIR)/$${R}_vuln_images.json --work sbom-images.work,"  SCAN    images")
+		--out-sbom $(PROJ_SHIPDIR)/$${R}_sbom_images.json --out-vuln $(PROJ_SHIPDIR)/$${R}_vuln_images.json --work sbom-images.work --jobs $(PROJ_SBOM_IMAGES_JOBS),"  SCAN    images")
 
 PKGCLEAN += sbom-images.work
 # Downloads: kept by `make clean`, so the next build reuses them once their digest checks out, and

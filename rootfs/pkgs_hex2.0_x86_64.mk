@@ -38,16 +38,24 @@ BASE_PKGS_NOARCH += rootfiles
 
 CENTOS_MIRROR := https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages
 DISTRO := el9
-GRUB2_VER := 2.06-129
 
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-common-$(GRUB2_VER).$(DISTRO).noarch.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-pc-$(GRUB2_VER).$(DISTRO).x86_64.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-pc-modules-$(GRUB2_VER).$(DISTRO).noarch.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-tools-$(GRUB2_VER).$(DISTRO).x86_64.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-tools-extra-$(GRUB2_VER).$(DISTRO).x86_64.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-tools-minimal-$(GRUB2_VER).$(DISTRO).x86_64.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-efi-x64-$(GRUB2_VER).$(DISTRO).x86_64.rpm
-BASE_LOCK_PKGS += $(CENTOS_MIRROR)/grub2-efi-x64-modules-$(GRUB2_VER).$(DISTRO).noarch.rpm
+# GRUB2 comes from CentOS Stream's build system, not the mirror. The mirror keeps only a few builds
+# of a package, so a pinned one disappears: compose 20261103.0 dropped 2.06-129, and the base rootfs
+# stopped on its 404. Koji keeps every build, and its signed copies carry the same CentOS key
+# (8483c65d) the mirror's do. 2.06-135's grub2-pc runs grub2-install from its posttrans; in
+# makerootfs's chroot, which mounts no sysfs, its lsblk finds no disk to install on.
+KOJIHUB_DL_HOST ?= https://kojihub.stream.centos.org
+GRUB2_VER := 2.06-135
+GRUB2_KOJI := $(KOJIHUB_DL_HOST)/kojifiles/packages/grub2/$(subst -,/,$(GRUB2_VER)).$(DISTRO)/data/signed/8483c65d
+
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/noarch/grub2-common-$(GRUB2_VER).$(DISTRO).noarch.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/x86_64/grub2-pc-$(GRUB2_VER).$(DISTRO).x86_64.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/noarch/grub2-pc-modules-$(GRUB2_VER).$(DISTRO).noarch.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/x86_64/grub2-tools-$(GRUB2_VER).$(DISTRO).x86_64.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/x86_64/grub2-tools-extra-$(GRUB2_VER).$(DISTRO).x86_64.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/x86_64/grub2-tools-minimal-$(GRUB2_VER).$(DISTRO).x86_64.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/x86_64/grub2-efi-x64-$(GRUB2_VER).$(DISTRO).x86_64.rpm
+BASE_LOCK_PKGS += $(GRUB2_KOJI)/noarch/grub2-efi-x64-modules-$(GRUB2_VER).$(DISTRO).noarch.rpm
 # shim is Stream's own el9 build. The el8_2 one pinned here from the start predates the fix for
 # CVE-2023-40547, a remote code execution in shim's HTTP boot support. hex_install copies only
 # EFI/centos/shimx64.efi out of it, which both builds carry, and grub chain-loads under either.

@@ -20,8 +20,13 @@ grype's database is updated once, then held for every image, so all of them are 
 data. No VEX document is applied: a project's statements name packages by a purl with no version
 and were judged on its rootfs's own copies, and grype would apply them to any image package with
 that purl. syft and grype come from PATH.
+
+--jobs scans that many images at a time, each in its own scratch dir; grype only reads the
+database it holds. The results are merged in the same order whatever the number, so the outputs
+are the same as a serial scan's, byte for byte.
 """
 import argparse
+import concurrent.futures
 import json
 import os
 import shutil
@@ -134,7 +139,10 @@ def main():
     ap.add_argument('--out-sbom', required=True)
     ap.add_argument('--out-vuln', required=True)
     ap.add_argument('--work', required=True, help='scratch dir, emptied before and removed after')
+    ap.add_argument('--jobs', type=int, default=1, help='images scanned at a time (default 1)')
     a = ap.parse_args()
+    if a.jobs < 1:
+        ap.error('--jobs must be at least 1')
 
     shutil.rmtree(a.work, ignore_errors=True)
     os.makedirs(os.path.join(a.work, 'tmp'))
@@ -149,7 +157,8 @@ def main():
     with open(a.vuln) as f:
         vuln = json.load(f)
 
-    images = []
+    # Every unique image, in the order the reports list them: by registry, then by first tag.
+    todo = []
     for reg in a.registry:
         rel = '/' + reg.strip('/')
         v2 = os.path.join(a.root, reg.strip('/'), 'docker', 'registry', 'v2')
@@ -158,46 +167,65 @@ def main():
         by_digest = {}
         for name, tag, digest in find_tags(v2):
             by_digest.setdefault(digest, []).append('%s:%s' % (name, tag))
-        for n, (digest, refs) in enumerate(sorted(by_digest.items(), key=lambda kv: kv[1][0])):
-            ref = refs[0]
-            layout = os.path.join(a.work, 'layout')
-            shutil.rmtree(layout, ignore_errors=True)
-            mdigest = make_layout(v2, layout, ref, digest)
-            cdx = os.path.join(a.work, 'image.cdx.json')
-            name, tag = ref.rsplit(':', 1)
-            run(['syft', 'scan', 'oci-dir:' + layout, '-q', '--source-name', name, '--source-version', tag,
-                 '-o', 'cyclonedx-json=' + cdx], env)
-            rep = json.loads(run(['grype', 'sbom:' + cdx, '-o', 'json'], env))
-            shutil.rmtree(layout)
-            with open(cdx) as f:
-                ibom = json.load(f)
-            os.remove(cdx)
+        todo += [(rel, v2, digest, refs) for digest, refs in sorted(by_digest.items(), key=lambda kv: kv[1][0])]
 
-            where = '%s/%s' % (rel, ref)
-            matches = [located(m, where) for m in rep.get('matches', [])]
-            ignored = [located(m, where) for m in rep.get('ignoredMatches', [])]
-            vuln.setdefault('matches', []).extend(matches)
-            vuln.setdefault('ignoredMatches', []).extend(ignored)
+    def scan(n, rel, v2, digest, refs):
+        """(manifest digest, image SBOM, image report), scanned in work/<n>."""
+        work = os.path.join(a.work, str(n))
+        os.makedirs(os.path.join(work, 'tmp'))
+        ienv = dict(env, TMPDIR=os.path.join(work, 'tmp'), SYFT_CACHE_DIR=os.path.join(work, 'cache'))
+        ref = refs[0]
+        layout = os.path.join(work, 'layout')
+        mdigest = make_layout(v2, layout, ref, digest)
+        cdx = os.path.join(work, 'image.cdx.json')
+        name, tag = ref.rsplit(':', 1)
+        run(['syft', 'scan', 'oci-dir:' + layout, '-q', '--source-name', name, '--source-version', tag,
+             '-o', 'cyclonedx-json=' + cdx], ienv)
+        rep = json.loads(run(['grype', 'sbom:' + cdx, '-o', 'json'], ienv))
+        with open(cdx) as f:
+            ibom = json.load(f)
+        shutil.rmtree(work)
+        return mdigest, ibom, rep
 
-            pfx = 'image:%s/' % digest.split(':', 1)[1][:12]
-            comps, deps = prefix_refs(ibom, pfx)
-            sbom.setdefault('components', []).append({
-                'type': 'container', 'bom-ref': pfx.rstrip('/'), 'name': name, 'version': tag,
-                'properties': [{'name': 'hex:image:location', 'value': rel},
-                               {'name': 'hex:image:manifest-digest', 'value': mdigest}]
-                              + [{'name': 'hex:image:tag', 'value': r} for r in refs],
-                'components': comps})
-            sbom.setdefault('dependencies', []).extend(deps)
+    # A failed scan stops the rest: the ones not started are cancelled, the running ones finish.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs)
+    try:
+        futures = [pool.submit(scan, n, *t) for n, t in enumerate(todo)]
+        scanned = [f.result() for f in futures]
+    except BaseException:
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    pool.shutdown()
 
-            sev = {}
-            for m in matches:
-                s = m['vulnerability'].get('severity', 'Unknown')
-                sev[s] = sev.get(s, 0) + 1
-            distro = rep.get('distro', {})
-            images.append({'registry': rel, 'tags': refs, 'digest': mdigest,
-                           'distro': ('%s %s' % (distro.get('name', ''), distro.get('version', ''))).strip(),
-                           'matches': len(matches), 'ignoredMatches': len(ignored), 'severities': sev})
-            print('  IMAGE   %s (%d matches)' % (where, len(matches)), flush=True)
+    images = []
+    for (rel, _v2, digest, refs), (mdigest, ibom, rep) in zip(todo, scanned):
+        ref = refs[0]
+        name, tag = ref.rsplit(':', 1)
+        where = '%s/%s' % (rel, ref)
+        matches = [located(m, where) for m in rep.get('matches', [])]
+        ignored = [located(m, where) for m in rep.get('ignoredMatches', [])]
+        vuln.setdefault('matches', []).extend(matches)
+        vuln.setdefault('ignoredMatches', []).extend(ignored)
+
+        pfx = 'image:%s/' % digest.split(':', 1)[1][:12]
+        comps, deps = prefix_refs(ibom, pfx)
+        sbom.setdefault('components', []).append({
+            'type': 'container', 'bom-ref': pfx.rstrip('/'), 'name': name, 'version': tag,
+            'properties': [{'name': 'hex:image:location', 'value': rel},
+                           {'name': 'hex:image:manifest-digest', 'value': mdigest}]
+            + [{'name': 'hex:image:tag', 'value': r} for r in refs],
+            'components': comps})
+        sbom.setdefault('dependencies', []).extend(deps)
+
+        sev = {}
+        for m in matches:
+            s = m['vulnerability'].get('severity', 'Unknown')
+            sev[s] = sev.get(s, 0) + 1
+        distro = rep.get('distro', {})
+        images.append({'registry': rel, 'tags': refs, 'digest': mdigest,
+                       'distro': ('%s %s' % (distro.get('name', ''), distro.get('version', ''))).strip(),
+                       'matches': len(matches), 'ignoredMatches': len(ignored), 'severities': sev})
+        print('  IMAGE   %s (%d matches)' % (where, len(matches)), flush=True)
 
     vuln.setdefault('descriptor', {})['images'] = images
     for path, doc in ((a.out_sbom, sbom), (a.out_vuln, vuln)):
