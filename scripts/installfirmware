@@ -37,7 +37,11 @@ for FWLIST in $* ; do
     set -o noglob
     for pattern in $(cat $(readlink -fqn $FWLIST)) ; do
         ptn=$(echo $pattern | sed 's/*/.*/g')
-        (cd / ; rsync -aRKv $KERNEL_FIRMWARE_DIR $ROOTDIR/ >> $TEMP \;)
+        if ! (cd / ; rsync -aRKv $KERNEL_FIRMWARE_DIR $ROOTDIR/ >> $TEMP) ; then
+            # RemoveTempFiles on exit needs globbing back
+            set +o noglob
+            Error "failed to copy /$KERNEL_FIRMWARE_DIR to $ROOTDIR"
+        fi
         if [ "x$ptn" = "x.*" ] ; then
             touch $ALL_COPIED
             break
