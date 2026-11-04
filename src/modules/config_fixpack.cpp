@@ -482,7 +482,7 @@ FixpackRollbackMain(int argc, char* argv[])
         printf("Uninstall of fix pack %s is not permitted\n", fixpack.name.c_str());
         HexLogNotice("Fixpack %s: uninstall aborted, operation is not permitted.",fixpack.name.c_str());
         // TODO HexLogEvent("file=%s", fixpack.name.c_str());
-        return 0;
+        return CONFIG_EXIT_FAILURE;
     }
 
     // Remove marker files before rollback
