@@ -30,7 +30,7 @@ static const char UPDATE_HISTORY[] = "/var/appliance-db/update.history";
 static bool s_bUpdateModified = false;
 
 // public tunings
-CONFIG_TUNING_BOOL(UPDATE_SEC_AUTO, "update.security.autoupdate", TUNING_PUB, "Set to true to enable security auto update.", true);
+CONFIG_TUNING_BOOL(UPDATE_SEC_AUTO, "update.security.autoupdate", TUNING_PUB, "Set to true to enable security auto update.", false);
 
 // parse tunings
 PARSE_TUNING_BOOL(s_secAuto, UPDATE_SEC_AUTO);
