@@ -199,5 +199,7 @@ CONFIG_MODULE(syslog, 0, Parse, NULL, Prepare, Commit);
 // Start syslogd as early as possible and after eventsd so that config modules can log events
 // CONFIG_REQUIRES(syslog, events);
 CONFIG_FIRST(syslog);
+// rsyslog reads the timezone only at startup, so link /etc/localtime before restarting it
+CONFIG_REQUIRES(syslog, time);
 
 CONFIG_SUPPORT_FILE("/etc/rsyslogd.conf");

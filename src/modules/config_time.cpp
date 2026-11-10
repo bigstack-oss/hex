@@ -266,4 +266,5 @@ CONFIG_COMMAND(timezone,      TimezoneMain,     TimezoneUsage);
 CONFIG_COMMAND(show_timezone, TimezoneShowMain, TimezoneShowUsage);
 
 CONFIG_MODULE(time, 0, Parse, 0, 0, Commit);
+CONFIG_FIRST(time);
 
