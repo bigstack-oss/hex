@@ -20,6 +20,7 @@ TRACE_FLAG=
 depmod
 modprobe ext4
 /usr/sbin/hex_hwdetect -i $TRACE_FLAG
+LoadDiskDrivers
 
 # Parse kernel command line
 INIT="/sbin/init"
@@ -74,11 +75,32 @@ if cat /proc/cmdline | grep -wq single_mount_root ; then
     setsid cttyhack /bin/sh
 fi
 
+# Resolve again: a driver loaded in the shell above adds its disks only now
+if [ -z "$ROOTDEV" ] && [ -n "$ROOTUUID" ] ; then
+    ROOTDEV=$(blkid | grep $ROOTUUID | cut -d":" -f1)
+fi
+if [ -z "$BOOTDEV" ] && [ -n "$BOOTUUID" ] ; then
+    BOOTDEV=$(blkid | grep $BOOTUUID | cut -d":" -f1)
+fi
+
 WaitForDev $BOOTDEV
 WaitForDev $ROOTDEV
 
-# Mount root partition
-mount -o noatime $ROOTDEV /mnt/hdd
+# Mount root partition. Without a root device, switch_root exits, init dies and
+# the kernel panics with no hint, so stop in a shell instead. A driver loaded
+# there makes the UUIDs resolve on the next try.
+until [ -n "$ROOTDEV" ] && [ -e "$ROOTDEV" ] && mount -o noatime $ROOTDEV /mnt/hdd ; do
+    echo
+    echo "ERROR: cannot mount the root device ${ROOTDEV:-(UUID $ROOTUUID not found)}"
+    echo "Load the disk driver (modprobe <driver>), then exit the shell to retry"
+    setsid cttyhack /bin/sh
+    if [ -n "$ROOTUUID" ] ; then
+        ROOTDEV=$(blkid | grep $ROOTUUID | cut -d":" -f1)
+    fi
+    if [ -n "$BOOTUUID" ] ; then
+        BOOTDEV=$(blkid | grep $BOOTUUID | cut -d":" -f1)
+    fi
+done
 
 DoBackup()
 {

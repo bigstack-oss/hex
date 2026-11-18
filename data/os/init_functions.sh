@@ -143,6 +143,28 @@ UmountProcSysDev()
     umount /run
 }
 
+# Load the driver of every storage device by its modalias. hwdetect.d/<type>.rc
+# loads a fixed list, which misses controllers such as mpi3mr (Dell PERC 12).
+# Without this, those boxes boot only while install-time lines are in the
+# initramfs, and a fix pack that replaces initramfs.cgz drops them.
+# bc01 is the PCI mass storage class. Each pass binds the bus the last pass
+# created (pci -> virtio -> scsi on KVM); stop when no new alias shows up.
+LoadDiskDrivers()
+{
+    local pass m aliases last=
+    for pass in 1 2 3 4 5 ; do
+        aliases=$(find /sys/devices -name modalias -exec cat {} + 2>/dev/null |
+            grep -E '^(pci:.*bc01|virtio:|scsi:|nvme:)' | sort -u)
+        [ "$aliases" = "$last" ] && break
+        # one alias per line: some modalias strings (dmi:) contain ';'
+        echo "$aliases" | while read -r m ; do
+            [ -n "$m" ] && modprobe -q "$m" 2>/dev/null
+        done
+        last=$aliases
+        sleep 1
+    done
+}
+
 WaitForUuid()
 {
     local i
