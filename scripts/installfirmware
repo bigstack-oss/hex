@@ -30,7 +30,7 @@ fi
 shift 1
 
 ORIGIN=hex
-ALL_COPIED=$ROOTDIR/$KERNEL_MODULE_DIR/.all
+ALL_COPIED=$ROOTDIR/$KERNEL_FIRMWARE_DIR/.all
 TEMP=$(MakeTemp)
 for FWLIST in $* ; do
     [ ! -e  $ALL_COPIED ] || break
