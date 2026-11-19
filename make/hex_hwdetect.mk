@@ -47,6 +47,9 @@ ALL_MOD=/tmp/all.modules
 _ALL_FRM=/tmp/_all.firmware
 ALL_FRM=/tmp/all.firmware
 
+# The iso, usb and pxe installers run from RAM: they get the kernel modules but not the firmware
+iso_ramdisk_install usb_ramdisk_install pxe_ramdisk_install: HWDETECT_FIRMWARE := 0
+
 .PHONY: hex_hwdetect_install_essential
 hex_hwdetect_install_essential:
 	@if [ -z "$(ROOTDIR)" ]; then echo "Error: ROOTDIR not set" >&2; exit 1; fi
@@ -83,7 +86,7 @@ hex_hwdetect_install_essential:
 	$(Q)cat $(_ALL_MOD) | sort -u | sed "/^$$/d" > $(ALL_MOD)
 	$(Q)cat $(_ALL_FRM) | sort -u | sed "/^$$/d" > $(ALL_FRM)
 	$(Q)$(INSTALL_MODULES) $(ROOTDIR) $(ALL_MOD)
-	$(Q)$(INSTALL_FIRMWARE) $(ROOTDIR) $(ALL_FRM)
+	$(Q)[ "$(HWDETECT_FIRMWARE)" = 0 ] || $(INSTALL_FIRMWARE) $(ROOTDIR) $(ALL_FRM)
 
 hex_hwdetect_install: hex_hwdetect_install_essential
 	$(Q)$(INSTALL_SCRIPT) -f $(ROOTDIR) $(RC_NICDETECT) ./etc/rc.nicdetect
@@ -100,4 +103,4 @@ hex_hwdetect_install: hex_hwdetect_install_essential
 	$(Q)cat $(_ALL_MOD) | sort -u | sed "/^$$/d" > $(ALL_MOD)
 	$(Q)cat $(_ALL_FRM) | sort -u | sed "/^$$/d" > $(ALL_FRM)
 	$(Q)$(INSTALL_MODULES) $(ROOTDIR) $(ALL_MOD)
-	$(Q)$(INSTALL_FIRMWARE) $(ROOTDIR) $(ALL_FRM)
+	$(Q)[ "$(HWDETECT_FIRMWARE)" = 0 ] || $(INSTALL_FIRMWARE) $(ROOTDIR) $(ALL_FRM)
