@@ -1,6 +1,8 @@
 // HEX SDK
 
+#include <climits>
 #include <cstring>
+#include <string>
 
 #include <unistd.h>
 #include <errno.h>
@@ -35,6 +37,12 @@ SetTimezone(const char* timezone)
     }
 
     const char* sysTimezoneFile = "/etc/localtime";
+
+    char oldTarget[PATH_MAX];
+    ssize_t len = readlink(sysTimezoneFile, oldTarget, sizeof(oldTarget));
+    bool relinked = len < 0 || len >= static_cast<ssize_t>(sizeof(oldTarget)) ||
+                    timezoneFile != std::string(oldTarget, len);
+
     if (access(sysTimezoneFile, F_OK) == 0) {
         if (unlink(sysTimezoneFile) != 0) {
             int rc = errno;
@@ -49,6 +57,11 @@ SetTimezone(const char* timezone)
         HexLogError("Could not set new timezone file: %s\n", strerror(rc));
         return rc;
     }
+
+    // rsyslog reads the zone only at startup. A boot restarts it in the syslog commit,
+    // which runs after this module; any later change has to restart it here.
+    if (relinked && !IsBootstrap())
+        HexUtilSystemF(FWD, 0, "systemctl try-restart rsyslog");
 
     return 0;
 }
